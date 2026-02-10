@@ -108,10 +108,18 @@ class _WorkoutScreenState extends State<WorkoutScreen> {
   }
 
   Future<void> _toggleDone() async {
-    await db.toggleWorkoutForClientOnDay(
-      clientId: widget.clientId,
-      day: widget.day,
-    );
+    if (widget.templateIdx != null) {
+      await db.toggleWorkoutForClientOnDayWithTemplateIdx(
+        clientId: widget.clientId,
+        day: widget.day,
+        templateIdx: widget.templateIdx!,
+      );
+    } else {
+      await db.toggleWorkoutForClientOnDay(
+        clientId: widget.clientId,
+        day: widget.day,
+      );
+    }
     if (!mounted) return;
     setState(() {});
   }
