@@ -198,8 +198,7 @@ class _ClientProgramScreenState extends State<ClientProgramScreen> {
                                     MaterialPageRoute(
                                       builder: (_) => WorkoutScreen(
                                         clientId: widget.clientId,
-                                        day:
-                                            DateTime.now(), // или выбранная дата
+                                        day: chosenDay,
                                         templateIdx:
                                             slot.templateIdx, // 🔥 главное
                                       ),
