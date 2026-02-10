@@ -290,7 +290,10 @@ class AppDb extends _$AppDb {
         select(appointments).join([
             innerJoin(clients, clients.id.equalsExp(appointments.clientId)),
           ])
-          ..where(appointments.startAt.isBetweenValues(dayStart, dayEnd))
+          ..where(
+            appointments.startAt.isBiggerOrEqualValue(dayStart) &
+                appointments.startAt.isSmallerThanValue(dayEnd),
+          )
           ..orderBy([OrderingTerm.asc(appointments.startAt)]);
 
     return joinQuery.watch().map((rows) {
@@ -551,7 +554,8 @@ class AppDb extends _$AppDb {
               ..where(
                 (t) =>
                     t.clientId.equals(clientId) &
-                    t.performedAt.isBetweenValues(ds, de),
+                    t.performedAt.isBiggerOrEqualValue(ds) &
+                    t.performedAt.isSmallerThanValue(de),
               )
               ..orderBy([(t) => OrderingTerm.desc(t.performedAt)])
               ..limit(1))
@@ -625,7 +629,8 @@ class AppDb extends _$AppDb {
               ..where(
                 (t) =>
                     t.clientId.equals(clientId) &
-                    t.performedAt.isBetweenValues(ds, de),
+                    t.performedAt.isBiggerOrEqualValue(ds) &
+                    t.performedAt.isSmallerThanValue(de),
               )
               ..limit(1))
             .getSingleOrNull();
@@ -704,7 +709,8 @@ class AppDb extends _$AppDb {
               ..where(
                 (t) =>
                     t.clientId.equals(clientId) &
-                    t.performedAt.isBetweenValues(ds, de),
+                    t.performedAt.isBiggerOrEqualValue(ds) &
+                    t.performedAt.isSmallerThanValue(de),
               )
               ..limit(1))
             .getSingleOrNull();
@@ -835,7 +841,8 @@ class AppDb extends _$AppDb {
               ..where(
                 (t) =>
                     t.clientId.equals(clientId) &
-                    t.performedAt.isBetweenValues(ds, de),
+                    t.performedAt.isBiggerOrEqualValue(ds) &
+                    t.performedAt.isSmallerThanValue(de),
               )
               ..orderBy([(t) => OrderingTerm.desc(t.performedAt)])
               ..limit(1))
@@ -880,6 +887,68 @@ class AppDb extends _$AppDb {
     return true; // теперь выполнено
   }
 
+  Future<bool> toggleWorkoutForClientOnDayWithTemplateIdx({
+    required String clientId,
+    required DateTime day,
+    required int templateIdx,
+  }) async {
+    final ds = _dayStart(day);
+    final de = _dayEnd(day);
+
+    final existing =
+        await (select(workoutSessions)
+              ..where(
+                (t) =>
+                    t.clientId.equals(clientId) &
+                    t.templateIdx.equals(templateIdx) &
+                    t.performedAt.isBiggerOrEqualValue(ds) &
+                    t.performedAt.isSmallerThanValue(de),
+              )
+              ..orderBy([(t) => OrderingTerm.desc(t.performedAt)])
+              ..limit(1))
+            .getSingleOrNull();
+
+    if (existing != null) {
+      await (delete(
+        workoutExerciseResults,
+      )..where((r) => r.sessionId.equals(existing.id))).go();
+
+      await (delete(
+        workoutSessions,
+      )..where((t) => t.id.equals(existing.id))).go();
+
+      final st = await (select(
+        clientProgramStates,
+      )..where((t) => t.clientId.equals(clientId))).getSingleOrNull();
+
+      if (st != null) {
+        final newCompleted = st.completedInPlan > 0
+            ? st.completedInPlan - 1
+            : 0;
+        final newNextOffset = (st.nextOffset - 1) % 9;
+
+        await (update(
+          clientProgramStates,
+        )..where((t) => t.clientId.equals(clientId))).write(
+          ClientProgramStatesCompanion(
+            completedInPlan: Value(newCompleted),
+            nextOffset: Value(newNextOffset),
+          ),
+        );
+      }
+
+      return false;
+    }
+
+    await completeWorkoutForClientWithTemplateIdx(
+      clientId: clientId,
+      when: DateTime(day.year, day.month, day.day, 12, 0),
+      templateIdx: templateIdx,
+    );
+
+    return true;
+  }
+
   Future<
     (WorkoutDayInfo info, int? sessionId, List<WorkoutExerciseVm> exercises)
   >
@@ -902,7 +971,8 @@ class AppDb extends _$AppDb {
               ..where(
                 (t) =>
                     t.clientId.equals(clientId) &
-                    t.performedAt.isBetweenValues(ds, de),
+                    t.performedAt.isBiggerOrEqualValue(ds) &
+                    t.performedAt.isSmallerThanValue(de),
               )
               ..orderBy([(t) => OrderingTerm.desc(t.performedAt)])
               ..limit(1))
@@ -1018,7 +1088,8 @@ class AppDb extends _$AppDb {
                 (t) =>
                     t.clientId.equals(clientId) &
                     t.templateIdx.equals(templateIdx) & // ✅ вот это ключевое
-                    t.performedAt.isBetweenValues(ds, de),
+                    t.performedAt.isBiggerOrEqualValue(ds) &
+                    t.performedAt.isSmallerThanValue(de),
               )
               ..orderBy([(t) => OrderingTerm.desc(t.performedAt)])
               ..limit(1))
@@ -1171,7 +1242,8 @@ class AppDb extends _$AppDb {
                 ..where(
                   (t) =>
                       t.clientId.equals(clientId) &
-                      t.performedAt.isBetweenValues(ds, de),
+                      t.performedAt.isBiggerOrEqualValue(ds) &
+                      t.performedAt.isSmallerThanValue(de),
                 )
                 ..orderBy([(t) => OrderingTerm.desc(t.performedAt)])
                 ..limit(1))
@@ -1196,7 +1268,8 @@ class AppDb extends _$AppDb {
                   ..where(
                     (t) =>
                         t.clientId.equals(clientId) &
-                        t.performedAt.isBetweenValues(ds, de),
+                        t.performedAt.isBiggerOrEqualValue(ds) &
+                        t.performedAt.isSmallerThanValue(de),
                   )
                   ..orderBy([(t) => OrderingTerm.desc(t.performedAt)])
                   ..limit(1))
@@ -1204,6 +1277,11 @@ class AppDb extends _$AppDb {
       }
 
       if (sess == null) return;
+
+      if (templateIdx != null && sess.templateIdx != templateIdx) {
+        // На выбранный день уже есть другая тренировка — не пишем результаты в чужую сессию.
+        return;
+      }
 
       // upsert результатов
       for (final entry in resultsByTemplateExerciseId.entries) {
@@ -1284,25 +1362,14 @@ class AppDb extends _$AppDb {
                 ))
                 .getSingleOrNull();
 
-        if (existing == null) {
-          // вставляем новую запись
-          await into(clientTemplateExerciseOverrides).insert(
-            ClientTemplateExerciseOverridesCompanion(
-              clientId: Value(clientId),
-              templateExerciseId: Value(templateExerciseId),
-              supersetGroup: Value(group),
-            ),
-          );
-        } else {
-          // обновляем существующую (по id)
-          await (update(
-            clientTemplateExerciseOverrides,
-          )..where((o) => o.id.equals(existing.id))).write(
-            ClientTemplateExerciseOverridesCompanion(
-              supersetGroup: Value(group),
-            ),
-          );
-        }
+        await into(clientTemplateExerciseOverrides).insertOnConflictUpdate(
+          ClientTemplateExerciseOverridesCompanion(
+            id: existing == null ? const Value.absent() : Value(existing.id),
+            clientId: Value(clientId),
+            templateExerciseId: Value(templateExerciseId),
+            supersetGroup: Value(group),
+          ),
+        );
       }
 
       final a = await _exAt(orderIndex);
