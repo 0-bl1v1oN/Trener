@@ -466,6 +466,44 @@ class AppDb extends _$AppDb {
     }
   }
 
+  Future<ClientProgramState?> getProgramStateForClient(String clientId) {
+    return (select(
+      clientProgramStates,
+    )..where((t) => t.clientId.equals(clientId))).getSingleOrNull();
+  }
+
+  Future<void> setClientProgramProgress({
+    required String clientId,
+    required int completedInPlan,
+    required int nextTemplateIdx,
+  }) async {
+    await ensureProgramStateForClient(clientId);
+
+    final st = await getProgramStateForClient(clientId);
+    if (st == null) return;
+
+    final c = await getClientById(clientId);
+    if (c == null) return;
+
+    final planSize = _parsePlanSize(c.plan);
+    if (planSize <= 0) return;
+
+    int mod9(int x) => ((x % 9) + 9) % 9;
+
+    final clampedCompleted = completedInPlan.clamp(0, planSize);
+    final normalizedTemplateIdx = mod9(nextTemplateIdx);
+    final normalizedOffset = mod9(normalizedTemplateIdx - st.cycleStartIndex);
+
+    await (update(
+      clientProgramStates,
+    )..where((t) => t.clientId.equals(clientId))).write(
+      ClientProgramStatesCompanion(
+        completedInPlan: Value(clampedCompleted),
+        nextOffset: Value(normalizedOffset),
+      ),
+    );
+  }
+
   Future<void> syncProgramStateFromClient(String clientId) async {
     final c = await getClientById(clientId);
     if (c == null) return;

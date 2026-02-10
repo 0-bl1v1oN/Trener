@@ -1,6 +1,7 @@
 import 'package:drift/drift.dart' show Value;
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
+import 'package:flutter/services.dart';
 
 import '../../app/app_db_scope.dart';
 import '../../db/app_db.dart';
@@ -74,10 +75,9 @@ class _ClientDetailScreenState extends State<ClientDetailScreen> {
     });
   }
 
-  Future<void> _save() async {
+  Future<bool> _saveClientData() async {
     final name = _nameController.text.trim();
-    if (name.isEmpty) return;
-
+    if (name.isEmpty) return false;
     await db.upsertClient(
       ClientsCompanion.insert(
         id: widget.clientId,
@@ -90,7 +90,92 @@ class _ClientDetailScreenState extends State<ClientDetailScreen> {
     );
 
     await db.syncProgramStateFromClient(widget.clientId);
+    return true;
+  }
 
+  Future<void> _configureProgramStart() async {
+    final saved = await _saveClientData();
+    if (!saved) return;
+
+    final st = await db.getProgramStateForClient(widget.clientId);
+    if (st == null) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Нет активного абонемента для настройки')),
+      );
+      return;
+    }
+
+    final completedCtrl = TextEditingController(
+      text: st.completedInPlan.toString(),
+    );
+    final nextCtrl = TextEditingController(
+      text: ((st.cycleStartIndex + st.nextOffset) % 9 + 1).toString(),
+    );
+
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Старт программы'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TextField(
+              controller: completedCtrl,
+              keyboardType: TextInputType.number,
+              inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+              decoration: InputDecoration(
+                labelText: 'Уже выполнено (0..${st.planSize})',
+                border: const OutlineInputBorder(),
+              ),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: nextCtrl,
+              keyboardType: TextInputType.number,
+              inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+              decoration: const InputDecoration(
+                labelText: 'Следующая тренировка (1..9)',
+                border: OutlineInputBorder(),
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Отмена'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Применить'),
+          ),
+        ],
+      ),
+    );
+
+    if (ok != true) return;
+
+    final completed =
+        int.tryParse(completedCtrl.text.trim()) ?? st.completedInPlan;
+    final nextHuman = int.tryParse(nextCtrl.text.trim()) ?? 1;
+    final nextTemplateIdx = ((nextHuman - 1) % 9 + 9) % 9;
+
+    await db.setClientProgramProgress(
+      clientId: widget.clientId,
+      completedInPlan: completed,
+      nextTemplateIdx: nextTemplateIdx,
+    );
+
+    if (!mounted) return;
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(const SnackBar(content: Text('Старт программы обновлён ✅')));
+  }
+
+  Future<void> _save() async {
+    final saved = await _saveClientData();
+    if (!saved) return;
     if (!mounted) return;
     Navigator.pop(context);
   }
@@ -182,6 +267,14 @@ class _ClientDetailScreenState extends State<ClientDetailScreen> {
                 child: Text(_fmtDate(_end)),
               ),
               const SizedBox(height: 16),
+              SizedBox(
+                width: double.infinity,
+                child: OutlinedButton.icon(
+                  onPressed: _configureProgramStart,
+                  icon: const Icon(Icons.tune),
+                  label: const Text('Настроить старт программы'),
+                ),
+              ),
               const SizedBox(height: 12),
               SizedBox(
                 width: double.infinity,
