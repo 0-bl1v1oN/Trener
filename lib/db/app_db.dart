@@ -980,6 +980,14 @@ class AppDb extends _$AppDb {
     required DateTime day,
     required int templateIdx,
   }) async {
+    await ensureProgramStateForClient(clientId);
+
+    final st = await (select(
+      clientProgramStates,
+    )..where((t) => t.clientId.equals(clientId))).getSingleOrNull();
+
+    if (st == null) return false;
+
     final ds = _dayStart(day);
     final de = _dayEnd(day);
 
@@ -988,6 +996,7 @@ class AppDb extends _$AppDb {
               ..where(
                 (t) =>
                     t.clientId.equals(clientId) &
+                    t.planInstance.equals(st.planInstance) &
                     t.templateIdx.equals(templateIdx) &
                     t.performedAt.isBiggerOrEqualValue(ds) &
                     t.performedAt.isSmallerThanValue(de),
@@ -1005,25 +1014,17 @@ class AppDb extends _$AppDb {
         workoutSessions,
       )..where((t) => t.id.equals(existing.id))).go();
 
-      final st = await (select(
+      final newCompleted = st.completedInPlan > 0 ? st.completedInPlan - 1 : 0;
+      final newNextOffset = (st.nextOffset - 1) % 9;
+
+      await (update(
         clientProgramStates,
-      )..where((t) => t.clientId.equals(clientId))).getSingleOrNull();
-
-      if (st != null) {
-        final newCompleted = st.completedInPlan > 0
-            ? st.completedInPlan - 1
-            : 0;
-        final newNextOffset = (st.nextOffset - 1) % 9;
-
-        await (update(
-          clientProgramStates,
-        )..where((t) => t.clientId.equals(clientId))).write(
-          ClientProgramStatesCompanion(
-            completedInPlan: Value(newCompleted),
-            nextOffset: Value(newNextOffset),
-          ),
-        );
-      }
+      )..where((t) => t.clientId.equals(clientId))).write(
+        ClientProgramStatesCompanion(
+          completedInPlan: Value(newCompleted),
+          nextOffset: Value(newNextOffset),
+        ),
+      );
 
       return false;
     }
@@ -1170,11 +1171,16 @@ class AppDb extends _$AppDb {
     final ds = _dayStart(day);
     final de = _dayEnd(day);
 
+    final st = await (select(
+      clientProgramStates,
+    )..where((x) => x.clientId.equals(clientId))).getSingle();
+
     final sess =
         await (select(workoutSessions)
               ..where(
                 (t) =>
                     t.clientId.equals(clientId) &
+                    t.planInstance.equals(st.planInstance) &
                     t.templateIdx.equals(templateIdx) & // ✅ вот это ключевое
                     t.performedAt.isBiggerOrEqualValue(ds) &
                     t.performedAt.isSmallerThanValue(de),
@@ -1189,10 +1195,6 @@ class AppDb extends _$AppDb {
               (x) => x.gender.equals(gender) & x.idx.equals(templateIdx),
             ))
             .getSingle();
-
-    final st = await (select(
-      clientProgramStates,
-    )..where((x) => x.clientId.equals(clientId))).getSingle();
 
     final info = WorkoutDayInfo(
       hasPlan: true,
@@ -1323,6 +1325,11 @@ class AppDb extends _$AppDb {
     await transaction(() async {
       final ds = _dayStart(day);
       final de = _dayEnd(day);
+      final st = await (select(
+        clientProgramStates,
+      )..where((t) => t.clientId.equals(clientId))).getSingleOrNull();
+
+      final activePlanInstance = st?.planInstance;
 
       // есть ли уже session на этот день?
       var sess =
@@ -1330,6 +1337,9 @@ class AppDb extends _$AppDb {
                 ..where(
                   (t) =>
                       t.clientId.equals(clientId) &
+                      (activePlanInstance == null
+                          ? const Constant(true)
+                          : t.planInstance.equals(activePlanInstance)) &
                       t.performedAt.isBiggerOrEqualValue(ds) &
                       t.performedAt.isSmallerThanValue(de),
                 )
@@ -1356,6 +1366,9 @@ class AppDb extends _$AppDb {
                   ..where(
                     (t) =>
                         t.clientId.equals(clientId) &
+                        (activePlanInstance == null
+                            ? const Constant(true)
+                            : t.planInstance.equals(activePlanInstance)) &
                         t.performedAt.isBiggerOrEqualValue(ds) &
                         t.performedAt.isSmallerThanValue(de),
                   )
@@ -1602,16 +1615,8 @@ class AppDb extends _$AppDb {
     int mod8(int x) => ((x % 8) + 8) % 8;
     final newStart = mod8(st.windowStart + delta);
 
-    await (update(
-      clientProgramStates,
-    )..where((t) => t.clientId.equals(clientId))).write(
-      ClientProgramStatesCompanion(
-        windowStart: Value(newStart),
-        planInstance: Value(st.planInstance + 1),
-        completedInPlan: const Value(0),
-        nextOffset: const Value(0),
-        cycleStartIndex: const Value(0),
-      ),
-    );
+    await (update(clientProgramStates)
+          ..where((t) => t.clientId.equals(clientId)))
+        .write(ClientProgramStatesCompanion(windowStart: Value(newStart)));
   }
 }
