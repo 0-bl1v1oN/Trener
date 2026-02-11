@@ -375,33 +375,46 @@ class _BottomBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
     return SafeArea(
       top: false,
       child: Padding(
         padding: const EdgeInsets.fromLTRB(12, 8, 12, 8),
-        child: Row(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
           children: [
             if (done) ...[
-              Expanded(
-                child: OutlinedButton(
+              SizedBox(
+                width: double.infinity,
+                height: 44,
+                child: OutlinedButton.icon(
                   onPressed: saving ? null : onCancel,
-                  child: const Text('Отменить тренировку'),
+                  icon: const Icon(Icons.undo),
+                  label: const Text('Отменить тренировку'),
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: colors.error,
+                    side: BorderSide(color: colors.error.withOpacity(0.6)),
+                  ),
                 ),
               ),
-              const SizedBox(width: 8),
+              const SizedBox(height: 8),
             ],
-            Expanded(
-              child: SizedBox(
-                height: 48,
-                child: ElevatedButton(
-                  onPressed: saving ? null : onSave,
-                  child: saving
-                      ? const SizedBox(
-                          width: 18,
-                          height: 18,
-                          child: CircularProgressIndicator(strokeWidth: 2),
-                        )
-                      : const Text('Сохранить и отметить выполнено'),
+            SizedBox(
+              width: double.infinity,
+              height: 48,
+              child: ElevatedButton.icon(
+                onPressed: saving ? null : onSave,
+                icon: saving
+                    ? const SizedBox(
+                        width: 18,
+                        height: 18,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : const Icon(Icons.check_circle_outline),
+                label: Text(
+                  done
+                      ? 'Сохранить изменения'
+                      : 'Сохранить и отметить выполнено',
                 ),
               ),
             ),
