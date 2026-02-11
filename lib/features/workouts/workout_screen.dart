@@ -105,6 +105,31 @@ class _WorkoutScreenState extends State<WorkoutScreen> {
     }
   }
 
+  Future<void> _cancelWorkout() async {
+    if (_saving) return;
+    setState(() => _saving = true);
+
+    try {
+      if (widget.templateIdx != null) {
+        await db.toggleWorkoutForClientOnDayWithTemplateIdx(
+          clientId: widget.clientId,
+          day: widget.day,
+          templateIdx: widget.templateIdx!,
+        );
+      } else {
+        await db.toggleWorkoutForClientOnDay(
+          clientId: widget.clientId,
+          day: widget.day,
+        );
+      }
+
+      if (!mounted) return;
+      setState(() {});
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final dayLabel = DateFormat('d MMMM y', 'ru_RU').format(widget.day);
@@ -191,7 +216,9 @@ class _WorkoutScreenState extends State<WorkoutScreen> {
               ),
               _BottomBar(
                 saving: _saving,
+                done: info.doneToday,
                 onSave: () => _save(results: buildResults()),
+                onCancel: _cancelWorkout,
               ),
             ],
           );
@@ -335,9 +362,16 @@ class _Header extends StatelessWidget {
 
 class _BottomBar extends StatelessWidget {
   final bool saving;
+  final bool done;
   final VoidCallback onSave;
+  final VoidCallback onCancel;
 
-  const _BottomBar({required this.saving, required this.onSave});
+  const _BottomBar({
+    required this.saving,
+    required this.done,
+    required this.onSave,
+    required this.onCancel,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -345,19 +379,33 @@ class _BottomBar extends StatelessWidget {
       top: false,
       child: Padding(
         padding: const EdgeInsets.fromLTRB(12, 8, 12, 8),
-        child: SizedBox(
-          width: double.infinity,
-          height: 48,
-          child: ElevatedButton(
-            onPressed: saving ? null : onSave,
-            child: saving
-                ? const SizedBox(
-                    width: 18,
-                    height: 18,
-                    child: CircularProgressIndicator(strokeWidth: 2),
-                  )
-                : const Text('Сохранить и отметить выполнено'),
-          ),
+        child: Row(
+          children: [
+            if (done) ...[
+              Expanded(
+                child: OutlinedButton(
+                  onPressed: saving ? null : onCancel,
+                  child: const Text('Отменить тренировку'),
+                ),
+              ),
+              const SizedBox(width: 8),
+            ],
+            Expanded(
+              child: SizedBox(
+                height: 48,
+                child: ElevatedButton(
+                  onPressed: saving ? null : onSave,
+                  child: saving
+                      ? const SizedBox(
+                          width: 18,
+                          height: 18,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Text('Сохранить и отметить выполнено'),
+                ),
+              ),
+            ),
+          ],
         ),
       ),
     );
