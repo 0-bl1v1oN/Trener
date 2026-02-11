@@ -494,14 +494,64 @@ class AppDb extends _$AppDb {
     final normalizedTemplateIdx = mod9(nextTemplateIdx);
     final normalizedOffset = mod9(normalizedTemplateIdx - st.cycleStartIndex);
 
-    await (update(
-      clientProgramStates,
-    )..where((t) => t.clientId.equals(clientId))).write(
-      ClientProgramStatesCompanion(
-        completedInPlan: Value(clampedCompleted),
-        nextOffset: Value(normalizedOffset),
-      ),
-    );
+    await transaction(() async {
+      await (update(
+        clientProgramStates,
+      )..where((t) => t.clientId.equals(clientId))).write(
+        ClientProgramStatesCompanion(
+          completedInPlan: Value(clampedCompleted),
+          nextOffset: Value(normalizedOffset),
+        ),
+      );
+
+      final existingSessions =
+          await (select(workoutSessions)..where(
+                (t) =>
+                    t.clientId.equals(clientId) &
+                    t.planInstance.equals(st.planInstance),
+              ))
+              .get();
+
+      if (existingSessions.isNotEmpty) {
+        final ids = existingSessions.map((s) => s.id).toList();
+        await (delete(
+          workoutExerciseResults,
+        )..where((r) => r.sessionId.isIn(ids))).go();
+      }
+
+      await (delete(workoutSessions)..where(
+            (t) =>
+                t.clientId.equals(clientId) &
+                t.planInstance.equals(st.planInstance),
+          ))
+          .go();
+
+      if (clampedCompleted <= 0) return;
+
+      final firstDoneTemplateIdx = mod9(
+        normalizedTemplateIdx - clampedCompleted,
+      );
+      final baseDay = DateTime.now();
+
+      for (var i = 0; i < clampedCompleted; i++) {
+        final templateIdx = mod9(firstDoneTemplateIdx + i);
+        final when = DateTime(
+          baseDay.year,
+          baseDay.month,
+          baseDay.day,
+        ).subtract(Duration(days: clampedCompleted - i));
+
+        await into(workoutSessions).insert(
+          WorkoutSessionsCompanion.insert(
+            clientId: clientId,
+            performedAt: when,
+            templateIdx: templateIdx,
+            gender: c.gender ?? 'М',
+            planInstance: st.planInstance,
+          ),
+        );
+      }
+    });
   }
 
   Future<void> syncProgramStateFromClient(String clientId) async {

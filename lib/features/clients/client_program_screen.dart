@@ -193,8 +193,8 @@ class _ClientProgramScreenState extends State<ClientProgramScreen> {
                         trailing: isDone
                             ? const Icon(Icons.chevron_right)
                             : FilledButton(
-                                onPressed: () {
-                                  Navigator.of(context).push(
+                                onPressed: () async {
+                                  await Navigator.of(context).push(
                                     MaterialPageRoute(
                                       builder: (_) => WorkoutScreen(
                                         clientId: widget.clientId,

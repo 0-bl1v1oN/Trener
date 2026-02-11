@@ -1332,13 +1332,15 @@ class _CalendarScreenState extends State<CalendarScreen>
                                   );
                                 },
                               ),
-                              onTap: () {
+                              onTap: () async {
                                 final dayStr = DateFormat(
                                   'yyyy-MM-dd',
                                 ).format(_selectedDay);
-                                context.push(
+                                await context.push(
                                   '/clients/${it.client.id}/program?day=$dayStr',
                                 );
+                                if (!mounted) return;
+                                setState(() {});
                               },
                               onLongPress: () => _openAppointmentActions(it),
                             ),
