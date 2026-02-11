@@ -31,6 +31,7 @@ class _CalendarScreenState extends State<CalendarScreen>
 
   // --- добавить вот это ---
   StreamSubscription<Map<DateTime, int>>? _countsSub;
+  StreamSubscription<List<WorkoutSession>>? _workoutSessionsSub;
   DateTime? _countsFrom;
   DateTime? _countsTo;
 
@@ -61,6 +62,11 @@ class _CalendarScreenState extends State<CalendarScreen>
 
       // стартуем подписку 1 раз
       _setCountsWindow(_focusedDay);
+
+      _workoutSessionsSub = db.select(db.workoutSessions).watch().listen((_) {
+        if (!mounted) return;
+        setState(() {});
+      });
     }
   }
 
@@ -72,6 +78,7 @@ class _CalendarScreenState extends State<CalendarScreen>
   @override
   void dispose() {
     _countsSub?.cancel();
+    _workoutSessionsSub?.cancel();
     _appointmentsController.dispose();
     super.dispose();
   }

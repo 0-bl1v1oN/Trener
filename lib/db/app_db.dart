@@ -706,9 +706,6 @@ class AppDb extends _$AppDb {
       clientProgramStates,
     )..where((t) => t.clientId.equals(clientId))).getSingle();
 
-    // Если абонемент исчерпан (4/8) — не списываем дальше
-    if (st.completedInPlan >= st.planSize && st.planSize != 12) return;
-
     final ds = _dayStart(when);
     final de = _dayEnd(when);
 
@@ -743,31 +740,14 @@ class AppDb extends _$AppDb {
     final newCompleted = st.completedInPlan + 1;
     final newNextOffset = (st.nextOffset + 1) % 9;
 
-    if (st.planSize == 12 && newCompleted >= 12) {
-      // 12-ка: сдвигаем старт на размер сплита (М=3, Ж=2) и начинаем новый planInstance
-      final shift = _groupShiftByGender(gender);
-      final newStart = (st.cycleStartIndex + shift) % 9;
-
-      await (update(
-        clientProgramStates,
-      )..where((t) => t.clientId.equals(clientId))).write(
-        ClientProgramStatesCompanion(
-          planInstance: Value(st.planInstance + 1),
-          completedInPlan: const Value(0),
-          nextOffset: const Value(0),
-          cycleStartIndex: Value(newStart),
-        ),
-      );
-    } else {
-      await (update(
-        clientProgramStates,
-      )..where((t) => t.clientId.equals(clientId))).write(
-        ClientProgramStatesCompanion(
-          completedInPlan: Value(newCompleted),
-          nextOffset: Value(newNextOffset),
-        ),
-      );
-    }
+    await (update(
+      clientProgramStates,
+    )..where((t) => t.clientId.equals(clientId))).write(
+      ClientProgramStatesCompanion(
+        completedInPlan: Value(newCompleted),
+        nextOffset: Value(newNextOffset),
+      ),
+    );
   }
 
   Future<void> completeWorkoutForClientWithTemplateIdx({
@@ -786,8 +766,6 @@ class AppDb extends _$AppDb {
     final st = await (select(
       clientProgramStates,
     )..where((t) => t.clientId.equals(clientId))).getSingle();
-
-    if (st.completedInPlan >= st.planSize && st.planSize != 12) return;
 
     final ds = _dayStart(when);
     final de = _dayEnd(when);
@@ -825,30 +803,14 @@ class AppDb extends _$AppDb {
     final newCompleted = st.completedInPlan + 1;
     final newNextOffset = (st.nextOffset + k + 1) % 9;
 
-    if (st.planSize == 12 && newCompleted >= 12) {
-      final shift = _groupShiftByGender(gender);
-      final newStart = (st.cycleStartIndex + shift) % 9;
-
-      await (update(
-        clientProgramStates,
-      )..where((t) => t.clientId.equals(clientId))).write(
-        ClientProgramStatesCompanion(
-          planInstance: Value(st.planInstance + 1),
-          completedInPlan: const Value(0),
-          nextOffset: const Value(0),
-          cycleStartIndex: Value(newStart),
-        ),
-      );
-    } else {
-      await (update(
-        clientProgramStates,
-      )..where((t) => t.clientId.equals(clientId))).write(
-        ClientProgramStatesCompanion(
-          completedInPlan: Value(newCompleted),
-          nextOffset: Value(newNextOffset),
-        ),
-      );
-    }
+    await (update(
+      clientProgramStates,
+    )..where((t) => t.clientId.equals(clientId))).write(
+      ClientProgramStatesCompanion(
+        completedInPlan: Value(newCompleted),
+        nextOffset: Value(newNextOffset),
+      ),
+    );
   }
 
   Future<void> _seedWorkoutTemplateExercises() async {
@@ -965,8 +927,6 @@ class AppDb extends _$AppDb {
     }
 
     // === 2) Если не выполнено — ВЫПОЛНЯЕМ
-    // лимит для 4/8
-    if (st.completedInPlan >= st.planSize && st.planSize != 12) return false;
 
     // отмечаем "середину дня"
     final when = DateTime(day.year, day.month, day.day, 12, 0);
