@@ -176,7 +176,7 @@ class _ClientProgramScreenState extends State<ClientProgramScreen> {
                     );
 
                     final subtitle = isDone
-                        ? '✅ Выполнено: ${dayFmt.format(slot.performedAt!)}'
+                        ? '✅ Выполнено'
                         : 'Слот ${slot.slotIndex}/${st.planSize} • Тренировка ${slot.templateIdx + 1}';
 
                     return Card(
@@ -218,6 +218,7 @@ class _ClientProgramScreenState extends State<ClientProgramScreen> {
                                 builder: (_) => WorkoutScreen(
                                   clientId: widget.clientId,
                                   day: day,
+                                  templateIdx: slot.templateIdx,
                                 ),
                               ),
                             );

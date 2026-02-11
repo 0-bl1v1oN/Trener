@@ -706,22 +706,6 @@ class AppDb extends _$AppDb {
       clientProgramStates,
     )..where((t) => t.clientId.equals(clientId))).getSingle();
 
-    final ds = _dayStart(when);
-    final de = _dayEnd(when);
-
-    final already =
-        await (select(workoutSessions)
-              ..where(
-                (t) =>
-                    t.clientId.equals(clientId) &
-                    t.performedAt.isBiggerOrEqualValue(ds) &
-                    t.performedAt.isSmallerThanValue(de),
-              )
-              ..limit(1))
-            .getSingleOrNull();
-
-    if (already != null) return;
-
     String gender = (c.gender ?? 'М');
     if (gender != 'М' && gender != 'Ж') gender = 'М';
 
@@ -766,21 +750,6 @@ class AppDb extends _$AppDb {
     final st = await (select(
       clientProgramStates,
     )..where((t) => t.clientId.equals(clientId))).getSingle();
-
-    final ds = _dayStart(when);
-    final de = _dayEnd(when);
-
-    final already =
-        await (select(workoutSessions)
-              ..where(
-                (t) =>
-                    t.clientId.equals(clientId) &
-                    t.performedAt.isBiggerOrEqualValue(ds) &
-                    t.performedAt.isSmallerThanValue(de),
-              )
-              ..limit(1))
-            .getSingleOrNull();
-    if (already != null) return;
 
     String gender = (c.gender ?? 'М');
     if (gender != 'М' && gender != 'Ж') gender = 'М';
@@ -1300,6 +1269,9 @@ class AppDb extends _$AppDb {
                       (activePlanInstance == null
                           ? const Constant(true)
                           : t.planInstance.equals(activePlanInstance)) &
+                      (templateIdx == null
+                          ? const Constant(true)
+                          : t.templateIdx.equals(templateIdx)) &
                       t.performedAt.isBiggerOrEqualValue(ds) &
                       t.performedAt.isSmallerThanValue(de),
                 )
@@ -1312,7 +1284,17 @@ class AppDb extends _$AppDb {
         final when = DateTime(day.year, day.month, day.day, 12, 0);
 
         if (templateIdx == null) {
-          await completeWorkoutForClient(clientId: clientId, when: when);
+          final now = DateTime.now();
+          final when = DateTime(
+            day.year,
+            day.month,
+            day.day,
+            12,
+            0,
+            0,
+            now.millisecond,
+            now.microsecond,
+          );
         } else {
           await completeWorkoutForClientWithTemplateIdx(
             clientId: clientId,
@@ -1329,6 +1311,9 @@ class AppDb extends _$AppDb {
                         (activePlanInstance == null
                             ? const Constant(true)
                             : t.planInstance.equals(activePlanInstance)) &
+                        (templateIdx == null
+                            ? const Constant(true)
+                            : t.templateIdx.equals(templateIdx)) &
                         t.performedAt.isBiggerOrEqualValue(ds) &
                         t.performedAt.isSmallerThanValue(de),
                   )
@@ -1338,11 +1323,6 @@ class AppDb extends _$AppDb {
       }
 
       if (sess == null) return;
-
-      if (templateIdx != null && sess.templateIdx != templateIdx) {
-        // На выбранный день уже есть другая тренировка — не пишем результаты в чужую сессию.
-        return;
-      }
 
       // upsert результатов
       for (final entry in resultsByTemplateExerciseId.entries) {
