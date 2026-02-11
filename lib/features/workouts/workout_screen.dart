@@ -98,10 +98,8 @@ class _WorkoutScreenState extends State<WorkoutScreen> {
       );
 
       if (!mounted) return;
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text('Сохранено ✅')));
-      setState(() {});
+      Navigator.of(context).pop(true);
+      return;
     } finally {
       if (mounted) setState(() => _saving = false);
     }
