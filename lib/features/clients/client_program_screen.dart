@@ -204,6 +204,8 @@ class _ClientProgramScreenState extends State<ClientProgramScreen> {
                                       ),
                                     ),
                                   );
+                                  if (!mounted) return;
+                                  await _reload();
                                 },
                                 child: const Text('Провести'),
                               ),
@@ -211,7 +213,7 @@ class _ClientProgramScreenState extends State<ClientProgramScreen> {
                           if (isDone) {
                             // Открываем фактическую тренировку по дате выполнения
                             final day = slot.performedAt!;
-                            Navigator.of(context).push(
+                            await Navigator.of(context).push(
                               MaterialPageRoute(
                                 builder: (_) => WorkoutScreen(
                                   clientId: widget.clientId,
@@ -219,6 +221,8 @@ class _ClientProgramScreenState extends State<ClientProgramScreen> {
                                 ),
                               ),
                             );
+                            if (!mounted) return;
+                            await _reload();
                           } else {
                             // Предпросмотр будущей тренировки (упражнения + последний вес/повторы)
                             await showModalBottomSheet(
