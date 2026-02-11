@@ -1383,6 +1383,18 @@ class AppDb extends _$AppDb {
     });
   }
 
+  Future<void> renameWorkoutTemplateExercise({
+    required int templateExerciseId,
+    required String newName,
+  }) async {
+    final normalized = newName.trim();
+    if (normalized.isEmpty) return;
+
+    await (update(workoutTemplateExercises)
+          ..where((e) => e.id.equals(templateExerciseId)))
+        .write(WorkoutTemplateExercisesCompanion(name: Value(normalized)));
+  }
+
   Future<ProgramOverviewVm> getProgramOverview(String clientId) async {
     final st = await (select(
       clientProgramStates,

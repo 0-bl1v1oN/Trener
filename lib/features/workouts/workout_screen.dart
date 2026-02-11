@@ -83,6 +83,54 @@ class _WorkoutScreenState extends State<WorkoutScreen> {
     return int.tryParse(t);
   }
 
+  Future<void> _renameExercise(WorkoutExerciseVm e) async {
+    final ctrl = TextEditingController(text: e.name);
+
+    final result = await showDialog<String>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Название упражнения'),
+        content: TextField(
+          controller: ctrl,
+          autofocus: true,
+          decoration: const InputDecoration(
+            labelText: 'Введите новое название',
+            border: OutlineInputBorder(),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Отмена'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, ctrl.text.trim()),
+            child: const Text('Сохранить'),
+          ),
+        ],
+      ),
+    );
+
+    if (result == null || result.trim().isEmpty) return;
+
+    await db.renameWorkoutTemplateExercise(
+      templateExerciseId: e.templateExerciseId,
+      newName: result,
+    );
+    if (!mounted) return;
+    setState(() {});
+  }
+
+  Future<void> _toggleSupersetForExercise(WorkoutExerciseVm e) async {
+    await db.toggleClientSupersetWithNext(
+      clientId: widget.clientId,
+      templateId: e.templateId,
+      orderIndex: e.orderIndex,
+    );
+    if (!mounted) return;
+    setState(() {});
+  }
+
   Future<void> _save({
     required Map<int, (double? kg, int? reps)> results,
   }) async {
@@ -239,14 +287,11 @@ class _WorkoutScreenState extends State<WorkoutScreen> {
       if (cur.supersetGroup != null &&
           i + 1 < ex.length &&
           ex[i + 1].supersetGroup == cur.supersetGroup) {
-        final a = ex[i];
-        final b = ex[i + 1];
-
         out.add(
           _SuperSetCard(
             title: 'Суперсет',
-            a: _exerciseRow(a),
-            b: _exerciseRow(b),
+            a: _exerciseRow(ex, i),
+            b: _exerciseRow(ex, i + 1),
           ),
         );
 
@@ -254,14 +299,21 @@ class _WorkoutScreenState extends State<WorkoutScreen> {
         continue;
       }
 
-      out.add(_ExerciseCard(child: _exerciseRow(cur)));
+      out.add(_ExerciseCard(child: _exerciseRow(ex, i)));
       i += 1;
     }
 
     return out;
   }
 
-  Widget _exerciseRow(WorkoutExerciseVm e) {
+  Widget _exerciseRow(List<WorkoutExerciseVm> ex, int index) {
+    final e = ex[index];
+    final hasNext = index + 1 < ex.length;
+    final linkedWithNext =
+        hasNext &&
+        e.supersetGroup != null &&
+        ex[index + 1].supersetGroup == e.supersetGroup;
+
     final kgC = _kgController(e.templateExerciseId, e.lastWeightKg);
     final repsC = _repsController(e.templateExerciseId, e.lastReps);
 
@@ -271,25 +323,37 @@ class _WorkoutScreenState extends State<WorkoutScreen> {
         Row(
           children: [
             Expanded(
-              child: Text(
-                e.name,
-                style: Theme.of(context).textTheme.titleMedium,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(e.name, style: Theme.of(context).textTheme.titleMedium),
+                  const SizedBox(height: 4),
+                  Wrap(
+                    spacing: 6,
+                    runSpacing: 6,
+                    children: [
+                      ActionChip(
+                        avatar: const Icon(Icons.edit, size: 16),
+                        label: const Text('Переименовать'),
+                        onPressed: () => _renameExercise(e),
+                      ),
+                      if (hasNext)
+                        ActionChip(
+                          avatar: Icon(
+                            linkedWithNext ? Icons.link_off : Icons.link,
+                            size: 16,
+                          ),
+                          label: Text(
+                            linkedWithNext
+                                ? 'Убрать суперсет'
+                                : 'Сделать суперсет',
+                          ),
+                          onPressed: () => _toggleSupersetForExercise(e),
+                        ),
+                    ],
+                  ),
+                ],
               ),
-            ),
-            IconButton(
-              tooltip: e.supersetGroup == null
-                  ? 'Сделать суперсет'
-                  : 'Убрать суперсет',
-              icon: Icon(e.supersetGroup == null ? Icons.link_off : Icons.link),
-              onPressed: () async {
-                await db.toggleClientSupersetWithNext(
-                  clientId: widget.clientId,
-                  templateId: e.templateId,
-                  orderIndex: e.orderIndex,
-                );
-                if (!mounted) return;
-                setState(() {});
-              },
             ),
           ],
         ),
@@ -433,8 +497,16 @@ class _ExerciseCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
     return Card(
-      child: Padding(padding: const EdgeInsets.all(12), child: child),
+      elevation: 0,
+      color: colors.surface,
+      margin: const EdgeInsets.only(bottom: 10),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(20),
+        side: BorderSide(color: colors.outlineVariant.withOpacity(0.6)),
+      ),
+      child: Padding(padding: const EdgeInsets.all(14), child: child),
     );
   }
 }
@@ -448,22 +520,54 @@ class _SuperSetCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
     return Card(
+      elevation: 0,
+      color: colors.primary.withOpacity(0.04),
+      margin: const EdgeInsets.only(bottom: 10),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(20),
+        side: BorderSide(color: colors.primary.withOpacity(0.25)),
+      ),
       child: Padding(
-        padding: const EdgeInsets.all(12),
+        padding: const EdgeInsets.all(14),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Row(
-              children: [
-                const Icon(Icons.link),
-                const SizedBox(width: 8),
-                Text(title, style: Theme.of(context).textTheme.titleMedium),
-              ],
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+              decoration: BoxDecoration(
+                color: colors.primary.withOpacity(0.12),
+                borderRadius: BorderRadius.circular(999),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(Icons.bolt, size: 16, color: colors.primary),
+                  const SizedBox(width: 6),
+                  Text(
+                    title,
+                    style: Theme.of(context).textTheme.labelLarge?.copyWith(
+                      color: colors.primary,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ],
+              ),
             ),
             const SizedBox(height: 10),
+            Text(
+              'Упражнение A',
+              style: Theme.of(context).textTheme.labelMedium,
+            ),
+            const SizedBox(height: 6),
             a,
             const Divider(height: 24),
+            Text(
+              'Упражнение B',
+              style: Theme.of(context).textTheme.labelMedium,
+            ),
+            const SizedBox(height: 6),
             b,
             const SizedBox(height: 6),
             Text(
