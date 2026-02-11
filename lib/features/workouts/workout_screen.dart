@@ -105,23 +105,6 @@ class _WorkoutScreenState extends State<WorkoutScreen> {
     }
   }
 
-  Future<void> _toggleDone() async {
-    if (widget.templateIdx != null) {
-      await db.toggleWorkoutForClientOnDayWithTemplateIdx(
-        clientId: widget.clientId,
-        day: widget.day,
-        templateIdx: widget.templateIdx!,
-      );
-    } else {
-      await db.toggleWorkoutForClientOnDay(
-        clientId: widget.clientId,
-        day: widget.day,
-      );
-    }
-    if (!mounted) return;
-    setState(() {});
-  }
-
   @override
   Widget build(BuildContext context) {
     final dayLabel = DateFormat('d MMMM y', 'ru_RU').format(widget.day);
@@ -161,7 +144,7 @@ class _WorkoutScreenState extends State<WorkoutScreen> {
             return const Center(child: Text('Нет данных'));
           }
 
-          final (info, sessionId, exercises) = snap.data!;
+          final (info, _, exercises) = snap.data!;
 
           if (!info.hasPlan) {
             return const Center(
@@ -169,7 +152,7 @@ class _WorkoutScreenState extends State<WorkoutScreen> {
             );
           }
 
-          final header = _Header(info: info, onToggleDone: _toggleDone);
+          final header = _Header(info: info);
 
           if (exercises.isEmpty) {
             return Column(
@@ -320,9 +303,7 @@ class _WorkoutScreenState extends State<WorkoutScreen> {
 
 class _Header extends StatelessWidget {
   final WorkoutDayInfo info;
-  final VoidCallback onToggleDone;
-
-  const _Header({required this.info, required this.onToggleDone});
+  const _Header({required this.info});
 
   @override
   Widget build(BuildContext context) {
@@ -345,14 +326,6 @@ class _Header extends StatelessWidget {
                 Text(title, style: Theme.of(context).textTheme.titleLarge),
               ],
             ),
-          ),
-          const SizedBox(width: 12),
-          IconButton(
-            tooltip: done ? 'Снять выполнение' : 'Отметить выполнено',
-            icon: Icon(
-              done ? Icons.check_circle : Icons.radio_button_unchecked,
-            ),
-            onPressed: onToggleDone,
           ),
         ],
       ),
