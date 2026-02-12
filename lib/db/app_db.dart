@@ -634,9 +634,33 @@ class AppDb extends _$AppDb {
     }
 
     final templates = _maleTemplateDefaults();
-    for (final t in templates) {
-      await into(workoutTemplates).insertOnConflictUpdate(t);
-    }
+    await transaction(() async {
+      final existingMale = await (select(
+        workoutTemplates,
+      )..where((t) => t.gender.equals('М'))).get();
+      final existingByIdx = {for (final t in existingMale) t.idx: t};
+
+      for (final t in templates) {
+        final idx = t.idx.value;
+        final existing = existingByIdx[idx];
+
+        if (existing == null) {
+          await into(workoutTemplates).insert(t);
+          continue;
+        }
+
+        await (update(
+          workoutTemplates,
+        )..where((x) => x.id.equals(existing.id))).write(
+          WorkoutTemplatesCompanion(
+            gender: Value(t.gender.value),
+            idx: Value(t.idx.value),
+            label: Value(t.label.value),
+            title: Value(t.title.value),
+          ),
+        );
+      }
+    });
 
     final maleRows = await (select(
       workoutTemplates,
