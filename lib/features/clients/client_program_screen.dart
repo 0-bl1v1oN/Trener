@@ -127,89 +127,96 @@ class _ClientProgramScreenState extends State<ClientProgramScreen> {
               ),
               const Divider(height: 1),
 
-              Expanded(
-                child: ListView.separated(
-                  padding: const EdgeInsets.all(12),
-                  itemCount: overview.slots.length,
-                  separatorBuilder: (_, __) => const SizedBox(height: 8),
-                  itemBuilder: (context, i) {
-                    final slot = overview.slots[i];
-                    final isDone = slot.isDone;
+              if (st.planSize <= 0)
+                const Expanded(
+                  child: Center(
+                    child: Text('У клиента нет активной программы/абонемента'),
+                  ),
+                )
+              else
+                Expanded(
+                  child: ListView.separated(
+                    padding: const EdgeInsets.all(12),
+                    itemCount: overview.slots.length,
+                    separatorBuilder: (_, __) => const SizedBox(height: 8),
+                    itemBuilder: (context, i) {
+                      final slot = overview.slots[i];
+                      final isDone = slot.isDone;
 
-                    final title = _templateTitleForIdx(
-                      slot.templateIdx,
-                      gender,
-                    );
+                      final title = _templateTitleForIdx(
+                        slot.templateIdx,
+                        gender,
+                      );
 
-                    final subtitle = isDone
-                        ? '✅ Выполнено'
-                        : 'Слот ${slot.slotIndex}/${st.planSize} • Тренировка ${slot.templateIdx + 1}';
+                      final subtitle = isDone
+                          ? '✅ Выполнено'
+                          : 'Слот ${slot.slotIndex}/${st.planSize} • Тренировка ${slot.templateIdx + 1}';
 
-                    return Card(
-                      child: ListTile(
-                        leading: Icon(
-                          isDone
-                              ? Icons.check_circle
-                              : Icons.radio_button_unchecked,
-                        ),
-                        title: Text(
-                          '$title • Тренировка ${slot.templateIdx + 1}',
-                        ),
-                        subtitle: Text(subtitle),
-                        trailing: isDone
-                            ? const Icon(Icons.chevron_right)
-                            : FilledButton(
-                                onPressed: () async {
-                                  await Navigator.of(context).push(
-                                    MaterialPageRoute(
-                                      builder: (_) => WorkoutScreen(
-                                        clientId: widget.clientId,
-                                        day: chosenDay,
-                                        templateIdx:
-                                            slot.templateIdx, // 🔥 главное
+                      return Card(
+                        child: ListTile(
+                          leading: Icon(
+                            isDone
+                                ? Icons.check_circle
+                                : Icons.radio_button_unchecked,
+                          ),
+                          title: Text(
+                            '$title • Тренировка ${slot.templateIdx + 1}',
+                          ),
+                          subtitle: Text(subtitle),
+                          trailing: isDone
+                              ? const Icon(Icons.chevron_right)
+                              : FilledButton(
+                                  onPressed: () async {
+                                    await Navigator.of(context).push(
+                                      MaterialPageRoute(
+                                        builder: (_) => WorkoutScreen(
+                                          clientId: widget.clientId,
+                                          day: chosenDay,
+                                          templateIdx:
+                                              slot.templateIdx, // 🔥 главное
+                                        ),
                                       ),
-                                    ),
-                                  );
-                                  if (!mounted) return;
-                                  await _reload();
-                                },
-                                child: const Text('Провести'),
-                              ),
-                        onTap: () async {
-                          if (isDone) {
-                            // Открываем фактическую тренировку по дате выполнения
-                            final day = slot.performedAt!;
-                            await Navigator.of(context).push(
-                              MaterialPageRoute(
-                                builder: (_) => WorkoutScreen(
-                                  clientId: widget.clientId,
-                                  day: day,
-                                  templateIdx: slot.templateIdx,
+                                    );
+                                    if (!mounted) return;
+                                    await _reload();
+                                  },
+                                  child: const Text('Провести'),
                                 ),
-                              ),
-                            );
-                            if (!mounted) return;
-                            await _reload();
-                          } else {
-                            // Предпросмотр будущей тренировки (упражнения + последний вес/повторы)
-                            await showModalBottomSheet(
-                              context: context,
-                              isScrollControlled: true,
-                              builder: (_) => WorkoutPreviewSheet(
-                                clientId: widget.clientId,
-                                day: chosenDay,
-                                templateIdx: slot.templateIdx,
-                                title:
-                                    '$title • Тренировка ${slot.templateIdx + 1}',
-                              ),
-                            );
-                          }
-                        },
-                      ),
-                    );
-                  },
+                          onTap: () async {
+                            if (isDone) {
+                              // Открываем фактическую тренировку по дате выполнения
+                              final day = slot.performedAt!;
+                              await Navigator.of(context).push(
+                                MaterialPageRoute(
+                                  builder: (_) => WorkoutScreen(
+                                    clientId: widget.clientId,
+                                    day: day,
+                                    templateIdx: slot.templateIdx,
+                                  ),
+                                ),
+                              );
+                              if (!mounted) return;
+                              await _reload();
+                            } else {
+                              // Предпросмотр будущей тренировки (упражнения + последний вес/повторы)
+                              await showModalBottomSheet(
+                                context: context,
+                                isScrollControlled: true,
+                                builder: (_) => WorkoutPreviewSheet(
+                                  clientId: widget.clientId,
+                                  day: chosenDay,
+                                  templateIdx: slot.templateIdx,
+                                  title:
+                                      '$title • Тренировка ${slot.templateIdx + 1}',
+                                ),
+                              );
+                            }
+                          },
+                        ),
+                      );
+                    },
+                  ),
                 ),
-              ),
             ],
           );
         },

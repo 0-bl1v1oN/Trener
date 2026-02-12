@@ -1494,9 +1494,26 @@ class AppDb extends _$AppDb {
   }
 
   Future<ProgramOverviewVm> getProgramOverview(String clientId) async {
+    await ensureProgramStateForClient(clientId);
+
     final st = await (select(
       clientProgramStates,
-    )..where((t) => t.clientId.equals(clientId))).getSingle();
+    )..where((t) => t.clientId.equals(clientId))).getSingleOrNull();
+
+    if (st == null || st.planSize <= 0) {
+      return ProgramOverviewVm(
+        st: ClientProgramState(
+          clientId: clientId,
+          planSize: 0,
+          planInstance: 0,
+          completedInPlan: 0,
+          cycleStartIndex: 0,
+          nextOffset: 0,
+          windowStart: 0,
+        ),
+        slots: const <ProgramSlotVm>[],
+      );
+    }
 
     final sessions =
         await (select(workoutSessions)
