@@ -48,12 +48,6 @@ class _ClientProgramScreenState extends State<ClientProgramScreen> {
     });
   }
 
-  Future<void> _shiftWindow(int delta) async {
-    final db = AppDbScope.of(context);
-    await db.shiftClientProgramWindow(clientId: widget.clientId, delta: delta);
-    await _reload();
-  }
-
   String _templateTitleForIdx(int idx, String gender) {
     // Быстрый “человеческий” заголовок без лишних запросов:
     // М: спина/грудь/ноги по кругу, Ж: верх/низ по кругу
@@ -128,34 +122,6 @@ class _ClientProgramScreenState extends State<ClientProgramScreen> {
                         ),
                       ],
                     ),
-
-                    if (st.planSize == 4) ...[
-                      const SizedBox(height: 8),
-                      Row(
-                        children: [
-                          OutlinedButton.icon(
-                            onPressed: () => _shiftWindow(-4),
-                            icon: const Icon(Icons.chevron_left),
-                            label: const Text('Пред. 4'),
-                          ),
-                          const SizedBox(width: 8),
-                          OutlinedButton.icon(
-                            onPressed: () => _shiftWindow(4),
-                            icon: const Icon(Icons.chevron_right),
-                            label: const Text('След. 4'),
-                          ),
-                          const SizedBox(width: 12),
-                          Expanded(
-                            child: Text(
-                              st.windowStart == 0
-                                  ? 'Окно: 1–4 из 8'
-                                  : 'Окно: 5–8 из 8',
-                              textAlign: TextAlign.right,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ],
                   ],
                 ),
               ),

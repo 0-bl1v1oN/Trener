@@ -407,21 +407,62 @@ class AppDb extends _$AppDb {
     final count = await (select(workoutTemplates).get()).then((v) => v.length);
     if (count > 0) return;
 
-    // Заглушки: позже заменишь title/label на свои реальные
-    final male = List.generate(9, (i) {
-      final label = (i % 3 == 0)
-          ? 'Спина'
-          : (i % 3 == 1)
-          ? 'Грудь'
-          : 'Ноги';
-      return WorkoutTemplatesCompanion.insert(
+    final male = <WorkoutTemplatesCompanion>[
+      WorkoutTemplatesCompanion.insert(
         gender: 'М',
-        idx: i,
-        label: label,
-        title: 'Мужская тренировка ${i + 1} ($label)',
-      );
-    });
-
+        idx: 0,
+        label: 'Спина',
+        title: 'День 1 • Спина (середина)',
+      ),
+      WorkoutTemplatesCompanion.insert(
+        gender: 'М',
+        idx: 1,
+        label: 'Грудь',
+        title: 'День 2 • Грудь (верх)',
+      ),
+      WorkoutTemplatesCompanion.insert(
+        gender: 'М',
+        idx: 2,
+        label: 'Ноги',
+        title: 'День 3 • Ноги',
+      ),
+      WorkoutTemplatesCompanion.insert(
+        gender: 'М',
+        idx: 3,
+        label: 'Спина',
+        title: 'День 4 • Спина (низ)',
+      ),
+      WorkoutTemplatesCompanion.insert(
+        gender: 'М',
+        idx: 4,
+        label: 'Грудь',
+        title: 'День 5 • Грудь (середина)',
+      ),
+      WorkoutTemplatesCompanion.insert(
+        gender: 'М',
+        idx: 5,
+        label: 'Ноги',
+        title: 'День 6 • Ноги',
+      ),
+      WorkoutTemplatesCompanion.insert(
+        gender: 'М',
+        idx: 6,
+        label: 'Спина',
+        title: 'День 7 • Спина (верх)',
+      ),
+      WorkoutTemplatesCompanion.insert(
+        gender: 'М',
+        idx: 7,
+        label: 'Грудь',
+        title: 'День 8 • Грудь (низ)',
+      ),
+      WorkoutTemplatesCompanion.insert(
+        gender: 'М',
+        idx: 8,
+        label: 'Ноги',
+        title: 'День 9 • Ноги (переход цикла)',
+      ),
+    ];
     final female = List.generate(9, (i) {
       final label = (i % 2 == 0) ? 'Верх' : 'Низ';
       return WorkoutTemplatesCompanion.insert(
@@ -706,49 +747,106 @@ class AppDb extends _$AppDb {
 
     final templates = await (select(workoutTemplates).get());
 
-    // Заглушка: 6 упражнений, из них 2+2 в суперсетах
-    // groupId: 1 и 2 — суперсеты по 2 упражнения
+    final maleByIdx = <int, List<(String name, int? group)>>{
+      0: [
+        ('Тяга верхнего блока параллельным хватом', null),
+        ('Тяга нижнего блока параллельным хватом', null),
+        ('Тяга штанги в наклоне верхним хватом', null),
+        ('Молотки сидя на скамье', null),
+        ('Разведение рук в тренажёре', 1),
+        ('Гиперэкстензия', 1),
+      ],
+      1: [
+        ('Жим в тренажёре на верх груди', null),
+        ('Жим штанги лёжа', null),
+        ('Пуловер с гантелью', null),
+        ('Жим гантелей сидя на скамье', null),
+        ('Разгибание рук', null),
+      ],
+      2: [
+        ('Жим ногами', null),
+        ('Приседания со штангой', null),
+        ('Выпады на месте', null),
+        ('Сгибание ног', 1),
+        ('Разгибание ног', 1),
+        ('Махи рук в стороны', 2),
+        ('Икры сидя / стоя (чередовать)', 2),
+      ],
+      3: [
+        ('Рычажная тяга обратным хватом', null),
+        ('Рычажная тяга параллельным хватом', null),
+        ('Тяга одной рукой стоя на коленях', null),
+        ('Строгий подъём на бицепс', null),
+        ('Разведение рук в тренажёре', 1),
+        ('Гиперэкстензия', 1),
+      ],
+      4: [
+        ('Жим штанги на верх груди', null),
+        ('Жим в хаммере', null),
+        ('Сведение рук стоя', null),
+        ('Жим штанги стоя', null),
+        ('Супермен', null),
+      ],
+      5: [
+        ('Жим ногами', null),
+        ('Приседания со штангой', null),
+        ('Выпады на месте', null),
+        ('Сгибание ног', 1),
+        ('Разгибание ног', 1),
+        ('Махи рук в стороны', 2),
+        ('Икры сидя / стоя (чередовать)', 2),
+      ],
+      6: [
+        ('Подтягивания в гравитоне', null),
+        ('Тяга нижнего блока параллельным хватом', null),
+        ('Т-образная тяга', null),
+        ('Подъём гантелей на бицепс с супинацией', null),
+        ('Разведение рук в тренажёре', 1),
+        ('Гиперэкстензия', 1),
+      ],
+      7: [
+        ('Брусья', null),
+        ('Жим гантелей лёжа на скамье', null),
+        ('Сведение рук лёжа на скамье', null),
+        ('Жим гантелей сидя на скамье', null),
+        ('Самурай', null),
+      ],
+      8: [
+        ('Жим ногами', null),
+        ('Приседания со штангой', null),
+        ('Выпады на месте', null),
+        ('Сгибание ног', 1),
+        ('Разгибание ног', 1),
+        ('Махи рук в стороны', 2),
+        ('Икры сидя / стоя (чередовать)', 2),
+      ],
+    };
+
+    // Для женских шаблонов пока оставляем безопасные заглушки.
     final rows = <WorkoutTemplateExercisesCompanion>[];
 
     for (final t in templates) {
-      rows.addAll([
-        WorkoutTemplateExercisesCompanion.insert(
-          templateId: t.id,
-          orderIndex: 0,
-          groupId: const Value(1),
-          name: 'Упражнение 1 (суперсет A)',
-        ),
-        WorkoutTemplateExercisesCompanion.insert(
-          templateId: t.id,
-          orderIndex: 1,
-          groupId: const Value(1),
-          name: 'Упражнение 2 (суперсет A)',
-        ),
-        WorkoutTemplateExercisesCompanion.insert(
-          templateId: t.id,
-          orderIndex: 2,
-          groupId: const Value.absent(),
-          name: 'Упражнение 3',
-        ),
-        WorkoutTemplateExercisesCompanion.insert(
-          templateId: t.id,
-          orderIndex: 3,
-          groupId: const Value(2),
-          name: 'Упражнение 4 (суперсет B)',
-        ),
-        WorkoutTemplateExercisesCompanion.insert(
-          templateId: t.id,
-          orderIndex: 4,
-          groupId: const Value(2),
-          name: 'Упражнение 5 (суперсет B)',
-        ),
-        WorkoutTemplateExercisesCompanion.insert(
-          templateId: t.id,
-          orderIndex: 5,
-          groupId: const Value.absent(),
-          name: 'Упражнение 6',
-        ),
-      ]);
+      final plan = (t.gender == 'М')
+          ? maleByIdx[t.idx]
+          : const <(String, int?)>[
+              ('Упражнение 1', null),
+              ('Упражнение 2', null),
+              ('Упражнение 3', null),
+              ('Упражнение 4', null),
+              ('Упражнение 5', null),
+            ];
+
+      for (var i = 0; i < (plan?.length ?? 0); i++) {
+        final item = plan![i];
+        rows.add(
+          WorkoutTemplateExercisesCompanion.insert(
+            templateId: t.id,
+            orderIndex: i,
+            groupId: item.$2 == null ? const Value.absent() : Value(item.$2!),
+            name: item.$1,
+          ),
+        );
+      }
     }
 
     await batch((b) => b.insertAll(workoutTemplateExercises, rows));
@@ -1400,41 +1498,7 @@ class AppDb extends _$AppDb {
       clientProgramStates,
     )..where((t) => t.clientId.equals(clientId))).getSingle();
 
-    // ✅ Абонемент 4: окно из 8 (1–4 или 5–8)
-    if (st.planSize == 4) {
-      final sessions =
-          await (select(workoutSessions)
-                ..where(
-                  (t) =>
-                      t.clientId.equals(clientId) &
-                      t.planInstance.equals(st.planInstance),
-                )
-                ..orderBy([(t) => OrderingTerm.asc(t.performedAt)]))
-              .get();
-
-      final map = {for (final s in sessions) s.templateIdx: s};
-
-      int mod8(int x) => ((x % 8) + 8) % 8;
-
-      final slots = <ProgramSlotVm>[];
-      for (var i = 0; i < 4; i++) {
-        final idx = mod8(st.windowStart + i);
-        final s = map[idx];
-        slots.add(
-          ProgramSlotVm(
-            slotIndex: i + 1,
-            templateIdx: idx,
-            performedAt: s?.performedAt,
-            sessionId: s?.id,
-          ),
-        );
-      }
-
-      return ProgramOverviewVm(st: st, slots: slots);
-    }
-
-    // ✅ 8/12: старое поведение
-    final done =
+    final sessions =
         await (select(workoutSessions)
               ..where(
                 (t) =>
@@ -1443,50 +1507,30 @@ class AppDb extends _$AppDb {
               )
               ..orderBy([(t) => OrderingTerm.asc(t.performedAt)]))
             .get();
+    final planSize = st.planSize;
+    final completed = st.completedInPlan;
+    final bundleStart = (completed ~/ planSize) * planSize;
+    final completedInBundle = completed - bundleStart;
 
     final slots = <ProgramSlotVm>[];
 
-    for (var i = 0; i < done.length; i++) {
-      final s = done[i];
+    for (var k = 0; k < planSize; k++) {
+      final absoluteIndex = bundleStart + k;
+      final idx = (st.cycleStartIndex + absoluteIndex) % 9;
+      final hasSession =
+          k < completedInBundle && absoluteIndex < sessions.length;
+      final s = hasSession ? sessions[absoluteIndex] : null;
+
       slots.add(
         ProgramSlotVm(
-          slotIndex: i + 1,
-          templateIdx: s.templateIdx,
-          performedAt: s.performedAt,
-          sessionId: s.id,
+          slotIndex: k + 1,
+          templateIdx: idx,
+          performedAt: s?.performedAt,
+          sessionId: s?.id,
         ),
       );
     }
 
-    final remaining = st.planSize - done.length;
-    int nextIdx = (st.cycleStartIndex + st.nextOffset) % 9;
-    for (var k = 0; k < remaining; k++) {
-      slots.add(
-        ProgramSlotVm(slotIndex: done.length + k + 1, templateIdx: nextIdx),
-      );
-      nextIdx = (nextIdx + 1) % 9;
-    }
-
     return ProgramOverviewVm(st: st, slots: slots);
-  }
-
-  Future<void> shiftClientProgramWindow({
-    required String clientId,
-    required int delta, // +4 или -4
-  }) async {
-    await ensureProgramStateForClient(clientId);
-
-    final st = await (select(
-      clientProgramStates,
-    )..where((t) => t.clientId.equals(clientId))).getSingle();
-
-    if (st.planSize != 4) return;
-
-    int mod8(int x) => ((x % 8) + 8) % 8;
-    final newStart = mod8(st.windowStart + delta);
-
-    await (update(clientProgramStates)
-          ..where((t) => t.clientId.equals(clientId)))
-        .write(ClientProgramStatesCompanion(windowStart: Value(newStart)));
   }
 }
