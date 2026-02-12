@@ -230,6 +230,8 @@ class ExerciseHistoryRowVm {
 class AppDb extends _$AppDb {
   AppDb() : super(driftDatabase(name: 'myfitness'));
 
+  bool _maleDefaultsPatched = false;
+
   @override
   int get schemaVersion => 6;
 
@@ -476,6 +478,197 @@ class AppDb extends _$AppDb {
     await batch((b) {
       b.insertAll(workoutTemplates, [...male, ...female]);
     });
+  }
+
+  List<WorkoutTemplatesCompanion> _maleTemplateDefaults() {
+    return <WorkoutTemplatesCompanion>[
+      WorkoutTemplatesCompanion.insert(
+        gender: 'М',
+        idx: 0,
+        label: 'Спина',
+        title: 'День 1 • Спина (середина)',
+      ),
+      WorkoutTemplatesCompanion.insert(
+        gender: 'М',
+        idx: 1,
+        label: 'Грудь',
+        title: 'День 2 • Грудь (верх)',
+      ),
+      WorkoutTemplatesCompanion.insert(
+        gender: 'М',
+        idx: 2,
+        label: 'Ноги',
+        title: 'День 3 • Ноги',
+      ),
+      WorkoutTemplatesCompanion.insert(
+        gender: 'М',
+        idx: 3,
+        label: 'Спина',
+        title: 'День 4 • Спина (низ)',
+      ),
+      WorkoutTemplatesCompanion.insert(
+        gender: 'М',
+        idx: 4,
+        label: 'Грудь',
+        title: 'День 5 • Грудь (середина)',
+      ),
+      WorkoutTemplatesCompanion.insert(
+        gender: 'М',
+        idx: 5,
+        label: 'Ноги',
+        title: 'День 6 • Ноги',
+      ),
+      WorkoutTemplatesCompanion.insert(
+        gender: 'М',
+        idx: 6,
+        label: 'Спина',
+        title: 'День 7 • Спина (верх)',
+      ),
+      WorkoutTemplatesCompanion.insert(
+        gender: 'М',
+        idx: 7,
+        label: 'Грудь',
+        title: 'День 8 • Грудь (низ)',
+      ),
+      WorkoutTemplatesCompanion.insert(
+        gender: 'М',
+        idx: 8,
+        label: 'Ноги',
+        title: 'День 9 • Ноги (переход цикла)',
+      ),
+    ];
+  }
+
+  Map<int, List<(String name, int? group)>> _maleExerciseDefaults() {
+    return <int, List<(String name, int? group)>>{
+      0: [
+        ('Тяга верхнего блока параллельным хватом', null),
+        ('Тяга нижнего блока параллельным хватом', null),
+        ('Тяга штанги в наклоне верхним хватом', null),
+        ('Молотки сидя на скамье', null),
+        ('Разведение рук в тренажёре', 1),
+        ('Гиперэкстензия', 1),
+      ],
+      1: [
+        ('Жим в тренажёре на верх груди', null),
+        ('Жим штанги лёжа', null),
+        ('Пуловер с гантелью', null),
+        ('Жим гантелей сидя на скамье', null),
+        ('Разгибание рук', null),
+      ],
+      2: [
+        ('Жим ногами', null),
+        ('Приседания со штангой', null),
+        ('Выпады на месте', null),
+        ('Сгибание ног', 1),
+        ('Разгибание ног', 1),
+        ('Махи рук в стороны', 2),
+        ('Икры сидя / стоя (чередовать)', 2),
+      ],
+      3: [
+        ('Рычажная тяга обратным хватом', null),
+        ('Рычажная тяга параллельным хватом', null),
+        ('Тяга одной рукой стоя на коленях', null),
+        ('Строгий подъём на бицепс', null),
+        ('Разведение рук в тренажёре', 1),
+        ('Гиперэкстензия', 1),
+      ],
+      4: [
+        ('Жим штанги на верх груди', null),
+        ('Жим в хаммере', null),
+        ('Сведение рук стоя', null),
+        ('Жим штанги стоя', null),
+        ('Супермен', null),
+      ],
+      5: [
+        ('Жим ногами', null),
+        ('Приседания со штангой', null),
+        ('Выпады на месте', null),
+        ('Сгибание ног', 1),
+        ('Разгибание ног', 1),
+        ('Махи рук в стороны', 2),
+        ('Икры сидя / стоя (чередовать)', 2),
+      ],
+      6: [
+        ('Подтягивания в гравитоне', null),
+        ('Тяга нижнего блока параллельным хватом', null),
+        ('Т-образная тяга', null),
+        ('Подъём гантелей на бицепс с супинацией', null),
+        ('Разведение рук в тренажёре', 1),
+        ('Гиперэкстензия', 1),
+      ],
+      7: [
+        ('Брусья', null),
+        ('Жим гантелей лёжа на скамье', null),
+        ('Сведение рук лёжа на скамье', null),
+        ('Жим гантелей сидя на скамье', null),
+        ('Самурай', null),
+      ],
+      8: [
+        ('Жим ногами', null),
+        ('Приседания со штангой', null),
+        ('Выпады на месте', null),
+        ('Сгибание ног', 1),
+        ('Разгибание ног', 1),
+        ('Махи рук в стороны', 2),
+        ('Икры сидя / стоя (чередовать)', 2),
+      ],
+    };
+  }
+
+  Future<void> _ensureMaleDefaultsPatched() async {
+    if (_maleDefaultsPatched) return;
+
+    final maleFirst =
+        await (select(workoutTemplates)
+              ..where((t) => t.gender.equals('М') & t.idx.equals(0))
+              ..limit(1))
+            .getSingleOrNull();
+
+    final needsPatch =
+        maleFirst == null || !maleFirst.title.startsWith('День 1 • Спина');
+
+    if (!needsPatch) {
+      _maleDefaultsPatched = true;
+      return;
+    }
+
+    final templates = _maleTemplateDefaults();
+    for (final t in templates) {
+      await into(workoutTemplates).insertOnConflictUpdate(t);
+    }
+
+    final maleRows = await (select(
+      workoutTemplates,
+    )..where((t) => t.gender.equals('М'))).get();
+
+    final maleByIdx = {for (final t in maleRows) t.idx: t};
+    final exerciseDefaults = _maleExerciseDefaults();
+
+    await transaction(() async {
+      for (final entry in maleByIdx.entries) {
+        final template = entry.value;
+        final list = exerciseDefaults[entry.key] ?? const <(String, int?)>[];
+
+        await (delete(
+          workoutTemplateExercises,
+        )..where((e) => e.templateId.equals(template.id))).go();
+
+        for (var i = 0; i < list.length; i++) {
+          final item = list[i];
+          await into(workoutTemplateExercises).insert(
+            WorkoutTemplateExercisesCompanion.insert(
+              templateId: template.id,
+              orderIndex: i,
+              groupId: item.$2 == null ? const Value.absent() : Value(item.$2!),
+              name: item.$1,
+            ),
+          );
+        }
+      }
+    });
+
+    _maleDefaultsPatched = true;
   }
 
   Future<void> ensureProgramStateForClient(String clientId) async {
@@ -747,80 +940,7 @@ class AppDb extends _$AppDb {
 
     final templates = await (select(workoutTemplates).get());
 
-    final maleByIdx = <int, List<(String name, int? group)>>{
-      0: [
-        ('Тяга верхнего блока параллельным хватом', null),
-        ('Тяга нижнего блока параллельным хватом', null),
-        ('Тяга штанги в наклоне верхним хватом', null),
-        ('Молотки сидя на скамье', null),
-        ('Разведение рук в тренажёре', 1),
-        ('Гиперэкстензия', 1),
-      ],
-      1: [
-        ('Жим в тренажёре на верх груди', null),
-        ('Жим штанги лёжа', null),
-        ('Пуловер с гантелью', null),
-        ('Жим гантелей сидя на скамье', null),
-        ('Разгибание рук', null),
-      ],
-      2: [
-        ('Жим ногами', null),
-        ('Приседания со штангой', null),
-        ('Выпады на месте', null),
-        ('Сгибание ног', 1),
-        ('Разгибание ног', 1),
-        ('Махи рук в стороны', 2),
-        ('Икры сидя / стоя (чередовать)', 2),
-      ],
-      3: [
-        ('Рычажная тяга обратным хватом', null),
-        ('Рычажная тяга параллельным хватом', null),
-        ('Тяга одной рукой стоя на коленях', null),
-        ('Строгий подъём на бицепс', null),
-        ('Разведение рук в тренажёре', 1),
-        ('Гиперэкстензия', 1),
-      ],
-      4: [
-        ('Жим штанги на верх груди', null),
-        ('Жим в хаммере', null),
-        ('Сведение рук стоя', null),
-        ('Жим штанги стоя', null),
-        ('Супермен', null),
-      ],
-      5: [
-        ('Жим ногами', null),
-        ('Приседания со штангой', null),
-        ('Выпады на месте', null),
-        ('Сгибание ног', 1),
-        ('Разгибание ног', 1),
-        ('Махи рук в стороны', 2),
-        ('Икры сидя / стоя (чередовать)', 2),
-      ],
-      6: [
-        ('Подтягивания в гравитоне', null),
-        ('Тяга нижнего блока параллельным хватом', null),
-        ('Т-образная тяга', null),
-        ('Подъём гантелей на бицепс с супинацией', null),
-        ('Разведение рук в тренажёре', 1),
-        ('Гиперэкстензия', 1),
-      ],
-      7: [
-        ('Брусья', null),
-        ('Жим гантелей лёжа на скамье', null),
-        ('Сведение рук лёжа на скамье', null),
-        ('Жим гантелей сидя на скамье', null),
-        ('Самурай', null),
-      ],
-      8: [
-        ('Жим ногами', null),
-        ('Приседания со штангой', null),
-        ('Выпады на месте', null),
-        ('Сгибание ног', 1),
-        ('Разгибание ног', 1),
-        ('Махи рук в стороны', 2),
-        ('Икры сидя / стоя (чередовать)', 2),
-      ],
-    };
+    final maleByIdx = _maleExerciseDefaults();
 
     // Для женских шаблонов пока оставляем безопасные заглушки.
     final rows = <WorkoutTemplateExercisesCompanion>[];
@@ -990,6 +1110,7 @@ class AppDb extends _$AppDb {
     required String clientId,
     required DateTime day,
   }) async {
+    await _ensureMaleDefaultsPatched();
     final info = await getWorkoutInfoForClientOnDay(
       clientId: clientId,
       day: day,
@@ -1093,6 +1214,7 @@ class AppDb extends _$AppDb {
     required DateTime day,
     required int templateIdx,
   }) async {
+    await _ensureMaleDefaultsPatched();
     final c = await getClientById(clientId);
     if (c == null) {
       return (
@@ -1194,6 +1316,7 @@ class AppDb extends _$AppDb {
     required String gender, // 'М' / 'Ж'
     required int templateIdx, // 0..8
   }) async {
+    await _ensureMaleDefaultsPatched();
     // template по (gender + idx)
     final t =
         await (select(workoutTemplates)..where(
@@ -1494,6 +1617,7 @@ class AppDb extends _$AppDb {
   }
 
   Future<ProgramOverviewVm> getProgramOverview(String clientId) async {
+    await _ensureMaleDefaultsPatched();
     await ensureProgramStateForClient(clientId);
 
     final st = await (select(
