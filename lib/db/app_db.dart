@@ -1680,7 +1680,8 @@ class AppDb extends _$AppDb {
     final slots = <ProgramSlotVm>[];
 
     for (var k = 0; k < planSize; k++) {
-      final absoluteIndex = bundleStart + k;
+      final absoluteIndex =
+          bundleStart + (st.planSize == 4 ? st.windowStart : 0) + k;
       final idx = (st.cycleStartIndex + absoluteIndex) % 9;
       final hasSession =
           k < completedInBundle && absoluteIndex < sessions.length;
@@ -1697,5 +1698,25 @@ class AppDb extends _$AppDb {
     }
 
     return ProgramOverviewVm(st: st, slots: slots);
+  }
+
+  Future<void> shiftClientProgramWindow({
+    required String clientId,
+    required int delta, // +4 или -4
+  }) async {
+    await ensureProgramStateForClient(clientId);
+
+    final st = await (select(
+      clientProgramStates,
+    )..where((t) => t.clientId.equals(clientId))).getSingleOrNull();
+
+    if (st == null || st.planSize != 4) return;
+
+    int mod8(int x) => ((x % 8) + 8) % 8;
+    final newStart = mod8(st.windowStart + delta);
+
+    await (update(clientProgramStates)
+          ..where((t) => t.clientId.equals(clientId)))
+        .write(ClientProgramStatesCompanion(windowStart: Value(newStart)));
   }
 }

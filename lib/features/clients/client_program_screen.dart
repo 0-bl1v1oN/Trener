@@ -48,6 +48,12 @@ class _ClientProgramScreenState extends State<ClientProgramScreen> {
     });
   }
 
+  Future<void> _shiftWindow(int delta) async {
+    final db = AppDbScope.of(context);
+    await db.shiftClientProgramWindow(clientId: widget.clientId, delta: delta);
+    await _reload();
+  }
+
   String _templateTitleForIdx(int idx, String gender) {
     // Быстрый “человеческий” заголовок без лишних запросов:
     // М: спина/грудь/ноги по кругу, Ж: верх/низ по кругу
@@ -122,6 +128,24 @@ class _ClientProgramScreenState extends State<ClientProgramScreen> {
                         ),
                       ],
                     ),
+                    if (st.planSize == 4) ...[
+                      const SizedBox(height: 8),
+                      Row(
+                        children: [
+                          OutlinedButton.icon(
+                            onPressed: () => _shiftWindow(-4),
+                            icon: const Icon(Icons.chevron_left),
+                            label: const Text('Пред. 4'),
+                          ),
+                          const SizedBox(width: 8),
+                          OutlinedButton.icon(
+                            onPressed: () => _shiftWindow(4),
+                            icon: const Icon(Icons.chevron_right),
+                            label: const Text('След. 4'),
+                          ),
+                        ],
+                      ),
+                    ],
                   ],
                 ),
               ),
@@ -150,7 +174,7 @@ class _ClientProgramScreenState extends State<ClientProgramScreen> {
 
                       final subtitle = isDone
                           ? '✅ Выполнено'
-                          : 'Слот ${slot.slotIndex}/${st.planSize} • Тренировка ${slot.templateIdx + 1}';
+                          : 'Слот ${slot.slotIndex}/${st.planSize} • Тренировка ${slot.slotIndex}';
 
                       return Card(
                         child: ListTile(
@@ -159,9 +183,7 @@ class _ClientProgramScreenState extends State<ClientProgramScreen> {
                                 ? Icons.check_circle
                                 : Icons.radio_button_unchecked,
                           ),
-                          title: Text(
-                            '$title • Тренировка ${slot.templateIdx + 1}',
-                          ),
+                          title: Text('$title • Тренировка ${slot.slotIndex}'),
                           subtitle: Text(subtitle),
                           trailing: isDone
                               ? const Icon(Icons.chevron_right)
@@ -207,7 +229,7 @@ class _ClientProgramScreenState extends State<ClientProgramScreen> {
                                   day: chosenDay,
                                   templateIdx: slot.templateIdx,
                                   title:
-                                      '$title • Тренировка ${slot.templateIdx + 1}',
+                                      '$title • Тренировка ${slot.slotIndex}',
                                 ),
                               );
                             }
