@@ -61,8 +61,17 @@ class _ClientProgramScreenState extends State<ClientProgramScreen> {
       const groups = ['Спина', 'Грудь', 'Ноги'];
       return groups[idx % 3];
     } else {
-      const groups = ['Верх', 'Низ'];
-      return groups[idx % 2];
+      const groups = [
+        'Спина',
+        'Ноги',
+        'Грудь',
+        'Ноги',
+        'Спина',
+        'Ноги',
+        'Грудь',
+        'Ноги',
+      ];
+      return groups[idx % 8];
     }
   }
 

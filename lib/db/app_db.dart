@@ -231,6 +231,7 @@ class AppDb extends _$AppDb {
   AppDb() : super(driftDatabase(name: 'myfitness'));
 
   bool _maleDefaultsPatched = false;
+  bool _femaleDefaultsPatched = false;
 
   @override
   int get schemaVersion => 6;
@@ -265,8 +266,6 @@ class AppDb extends _$AppDb {
 
       await _seedWorkoutTemplates();
       await _seedWorkoutTemplateExercises();
-
-      await _seedWorkoutTemplates();
     },
   );
 
@@ -402,6 +401,10 @@ class AppDb extends _$AppDb {
     return gender == 'Ж' ? 2 : 3;
   }
 
+  int _mod(int x, int n) => ((x % n) + n) % n;
+
+  int _cycleLenByGender(String gender) => gender == 'Ж' ? 8 : 9;
+
   DateTime _dayStart(DateTime d) => DateTime(d.year, d.month, d.day);
   DateTime _dayEnd(DateTime d) => _dayStart(d).add(const Duration(days: 1));
 
@@ -465,15 +468,8 @@ class AppDb extends _$AppDb {
         title: 'День 9 • Ноги (переход цикла)',
       ),
     ];
-    final female = List.generate(9, (i) {
-      final label = (i % 2 == 0) ? 'Верх' : 'Низ';
-      return WorkoutTemplatesCompanion.insert(
-        gender: 'Ж',
-        idx: i,
-        label: label,
-        title: 'Женская тренировка ${i + 1} ($label)',
-      );
-    });
+
+    final female = _femaleTemplateDefaults();
 
     await batch((b) {
       b.insertAll(workoutTemplates, [...male, ...female]);
@@ -535,6 +531,59 @@ class AppDb extends _$AppDb {
         idx: 8,
         label: 'Ноги',
         title: 'День 9 • Ноги (переход цикла)',
+      ),
+    ];
+  }
+
+  List<WorkoutTemplatesCompanion> _femaleTemplateDefaults() {
+    return <WorkoutTemplatesCompanion>[
+      WorkoutTemplatesCompanion.insert(
+        gender: 'Ж',
+        idx: 0,
+        label: 'Спина',
+        title: 'День 1 • Спина (низ)',
+      ),
+      WorkoutTemplatesCompanion.insert(
+        gender: 'Ж',
+        idx: 1,
+        label: 'Ноги',
+        title: 'День 2 • Ноги',
+      ),
+      WorkoutTemplatesCompanion.insert(
+        gender: 'Ж',
+        idx: 2,
+        label: 'Грудь',
+        title: 'День 3 • Грудь (верх)',
+      ),
+      WorkoutTemplatesCompanion.insert(
+        gender: 'Ж',
+        idx: 3,
+        label: 'Ноги',
+        title: 'День 4 • Ноги',
+      ),
+      WorkoutTemplatesCompanion.insert(
+        gender: 'Ж',
+        idx: 4,
+        label: 'Спина',
+        title: 'День 5 • Спина (верх)',
+      ),
+      WorkoutTemplatesCompanion.insert(
+        gender: 'Ж',
+        idx: 5,
+        label: 'Ноги',
+        title: 'День 6 • Ноги',
+      ),
+      WorkoutTemplatesCompanion.insert(
+        gender: 'Ж',
+        idx: 6,
+        label: 'Грудь',
+        title: 'День 7 • Грудь (середина)',
+      ),
+      WorkoutTemplatesCompanion.insert(
+        gender: 'Ж',
+        idx: 7,
+        label: 'Ноги',
+        title: 'День 8 • Ноги',
       ),
     ];
   }
@@ -616,6 +665,66 @@ class AppDb extends _$AppDb {
     };
   }
 
+  Map<int, List<(String name, int? group)>> _femaleExerciseDefaults() {
+    return <int, List<(String name, int? group)>>{
+      0: [
+        ('Тяга рычажного блока обратным хватом', null),
+        ('Тяга нижнего блока верхним хватом', null),
+        ('Тяга гантелей лёжа на скамье', null),
+        ('Сгибание на бицепс лёжа на скамье', null),
+        ('Поясница', null),
+      ],
+      1: [
+        ('Становая тяга', null),
+        ('Выпады на месте', null),
+        ('Кик-беки', null),
+        ('Разведение в тренажёре', null),
+      ],
+      2: [
+        ('Жим в тренажёре', null),
+        ('Жим штанги лёжа', null),
+        ('Пуловер', null),
+        ('Плечи сидя/стоя (чередовать)', null),
+        ('Разгибание рук (классика)', null),
+      ],
+      3: [
+        ('Выпады в кроссовере', null),
+        ('Приседания со степа', null),
+        ('Мёртвая тяга', null),
+        ('Сведение ног', null),
+      ],
+      4: [
+        ('Подтягивания', null),
+        ('Тяга нижнего блока параллельным хватом', null),
+        ('Пуловер', null),
+        ('Подъём рук с супинацией', null),
+        ('Поясница', 1),
+        ('Разведение рук', 1),
+      ],
+      5: [
+        ('Ягодичный мостик + резинка', null),
+        ('Болгарские выпады', null),
+        ('Мёртвая тяга', null),
+        ('Ягодичный суперсет', null),
+      ],
+      6: [
+        ('Жим штанги под углом', null),
+        ('Жим в хамере', null),
+        ('Бабочка', null),
+        ('Супермен', null),
+        ('Плечи', null),
+      ],
+      7: [
+        ('Жим ногами', null),
+        ('Разгибание ног', 1),
+        ('Стульчик', 1),
+        ('Сгибание лёжа', null),
+        ('Икры', 2),
+        ('Разведения рук', 2),
+      ],
+    };
+  }
+
   Future<void> _ensureMaleDefaultsPatched() async {
     if (_maleDefaultsPatched) return;
 
@@ -693,6 +802,121 @@ class AppDb extends _$AppDb {
     });
 
     _maleDefaultsPatched = true;
+  }
+
+  Future<void> _ensureFemaleDefaultsPatched() async {
+    if (_femaleDefaultsPatched) return;
+
+    final femaleFirst =
+        await (select(workoutTemplates)
+              ..where((t) => t.gender.equals('Ж') & t.idx.equals(0))
+              ..limit(1))
+            .getSingleOrNull();
+
+    final needsPatch =
+        femaleFirst == null || !femaleFirst.title.startsWith('День 1 • Спина');
+
+    if (!needsPatch) {
+      _femaleDefaultsPatched = true;
+      return;
+    }
+
+    final templates = _femaleTemplateDefaults();
+
+    await transaction(() async {
+      final existingRows = await (select(
+        workoutTemplates,
+      )..where((t) => t.gender.equals('Ж'))).get();
+      final existingByIdx = {for (final t in existingRows) t.idx: t};
+
+      for (final t in templates) {
+        final idx = t.idx.value;
+        final existing = existingByIdx[idx];
+
+        if (existing == null) {
+          await into(workoutTemplates).insert(t);
+          continue;
+        }
+
+        await (update(
+          workoutTemplates,
+        )..where((x) => x.id.equals(existing.id))).write(
+          WorkoutTemplatesCompanion(
+            gender: Value(t.gender.value),
+            idx: Value(t.idx.value),
+            label: Value(t.label.value),
+            title: Value(t.title.value),
+          ),
+        );
+      }
+
+      // удаляем лишние старые дни (например idx=8 из старой схемы)
+      for (final old in existingRows) {
+        if (old.idx < templates.length) continue;
+        await (delete(
+          workoutTemplateExercises,
+        )..where((e) => e.templateId.equals(old.id))).go();
+        await (delete(
+          workoutTemplates,
+        )..where((x) => x.id.equals(old.id))).go();
+      }
+    });
+
+    final rows = await (select(
+      workoutTemplates,
+    )..where((t) => t.gender.equals('Ж'))).get();
+    final byIdx = {for (final t in rows) t.idx: t};
+    final defaults = _femaleExerciseDefaults();
+
+    await transaction(() async {
+      for (final entry in byIdx.entries) {
+        final template = entry.value;
+        final list = defaults[entry.key] ?? const <(String, int?)>[];
+
+        await (delete(
+          workoutTemplateExercises,
+        )..where((e) => e.templateId.equals(template.id))).go();
+
+        for (var i = 0; i < list.length; i++) {
+          final item = list[i];
+          await into(workoutTemplateExercises).insert(
+            WorkoutTemplateExercisesCompanion.insert(
+              templateId: template.id,
+              orderIndex: i,
+              groupId: item.$2 == null ? const Value.absent() : Value(item.$2!),
+              name: item.$1,
+            ),
+          );
+        }
+      }
+    });
+
+    _femaleDefaultsPatched = true;
+  }
+
+  Future<void> _ensureTemplateDefaultsPatched() async {
+    await _ensureMaleDefaultsPatched();
+    await _ensureFemaleDefaultsPatched();
+  }
+
+  Future<List<WorkoutTemplate>> getWorkoutTemplatesByGender(
+    String gender,
+  ) async {
+    await _ensureTemplateDefaultsPatched();
+
+    return (select(workoutTemplates)
+          ..where((t) => t.gender.equals(gender))
+          ..orderBy([(t) => OrderingTerm.asc(t.idx)]))
+        .get();
+  }
+
+  Future<List<WorkoutTemplateExercise>> getTemplateExercisesByTemplateId(
+    int templateId,
+  ) {
+    return (select(workoutTemplateExercises)
+          ..where((e) => e.templateId.equals(templateId))
+          ..orderBy([(e) => OrderingTerm.asc(e.orderIndex)]))
+        .get();
   }
 
   Future<void> ensureProgramStateForClient(String clientId) async {
@@ -849,7 +1073,8 @@ class AppDb extends _$AppDb {
     }
 
     // Следующая по плану
-    final realIdx = (st.cycleStartIndex + st.nextOffset) % 9;
+    final cycleLen = _cycleLenByGender(gender);
+    final realIdx = _mod(st.cycleStartIndex + st.nextOffset, cycleLen);
     final t =
         await (select(workoutTemplates)
               ..where((x) => x.gender.equals(gender) & x.idx.equals(realIdx)))
@@ -884,8 +1109,9 @@ class AppDb extends _$AppDb {
 
     String gender = (c.gender ?? 'М');
     if (gender != 'М' && gender != 'Ж') gender = 'М';
+    final cycleLen = _cycleLenByGender(gender);
 
-    final realIdx = (st.cycleStartIndex + st.nextOffset) % 9;
+    final realIdx = _mod(st.cycleStartIndex + st.nextOffset, cycleLen);
 
     await into(workoutSessions).insert(
       WorkoutSessionsCompanion.insert(
@@ -898,7 +1124,7 @@ class AppDb extends _$AppDb {
     );
 
     final newCompleted = st.completedInPlan + 1;
-    final newNextOffset = (st.nextOffset + 1) % 9;
+    final newNextOffset = _mod(st.nextOffset + 1, cycleLen);
 
     await (update(
       clientProgramStates,
@@ -933,7 +1159,7 @@ class AppDb extends _$AppDb {
     final realIdx = (st.cycleStartIndex + st.nextOffset) % 9;
 
     // насколько “впереди” выбранный idx от текущего realIdx
-    final k = (templateIdx - realIdx) % 9;
+    final cycleLen = _cycleLenByGender(gender);
 
     await into(workoutSessions).insert(
       WorkoutSessionsCompanion.insert(
@@ -946,7 +1172,7 @@ class AppDb extends _$AppDb {
     );
 
     final newCompleted = st.completedInPlan + 1;
-    final newNextOffset = (st.nextOffset + k + 1) % 9;
+    final newNextOffset = _mod(st.nextOffset + k + 1, cycleLen);
 
     await (update(
       clientProgramStates,
@@ -965,20 +1191,13 @@ class AppDb extends _$AppDb {
     final templates = await (select(workoutTemplates).get());
 
     final maleByIdx = _maleExerciseDefaults();
+    final femaleByIdx = _femaleExerciseDefaults();
 
     // Для женских шаблонов пока оставляем безопасные заглушки.
     final rows = <WorkoutTemplateExercisesCompanion>[];
 
     for (final t in templates) {
-      final plan = (t.gender == 'М')
-          ? maleByIdx[t.idx]
-          : const <(String, int?)>[
-              ('Упражнение 1', null),
-              ('Упражнение 2', null),
-              ('Упражнение 3', null),
-              ('Упражнение 4', null),
-              ('Упражнение 5', null),
-            ];
+      final plan = (t.gender == 'М') ? maleByIdx[t.idx] : femaleByIdx[t.idx];
 
       for (var i = 0; i < (plan?.length ?? 0); i++) {
         final item = plan![i];
@@ -1012,6 +1231,10 @@ class AppDb extends _$AppDb {
       clientProgramStates,
     )..where((t) => t.clientId.equals(clientId))).getSingle();
 
+    String gender = (c.gender ?? 'М');
+    if (gender != 'М' && gender != 'Ж') gender = 'М';
+    final cycleLen = _cycleLenByGender(gender);
+
     final ds = _dayStart(day);
     final de = _dayEnd(day);
 
@@ -1041,7 +1264,7 @@ class AppDb extends _$AppDb {
 
       // 3) откатываем состояние
       final newCompleted = st.completedInPlan > 0 ? st.completedInPlan - 1 : 0;
-      final newNextOffset = (st.nextOffset - 1) % 9;
+      final newNextOffset = _mod(st.nextOffset - 1, cycleLen);
 
       await (update(
         clientProgramStates,
@@ -1069,6 +1292,8 @@ class AppDb extends _$AppDb {
     required DateTime day,
     required int templateIdx,
   }) async {
+    final c = await getClientById(clientId);
+    if (c == null) return false;
     await ensureProgramStateForClient(clientId);
 
     final st = await (select(
@@ -1076,6 +1301,10 @@ class AppDb extends _$AppDb {
     )..where((t) => t.clientId.equals(clientId))).getSingleOrNull();
 
     if (st == null) return false;
+
+    String gender = (c.gender ?? 'М');
+    if (gender != 'М' && gender != 'Ж') gender = 'М';
+    final cycleLen = _cycleLenByGender(gender);
 
     final ds = _dayStart(day);
     final de = _dayEnd(day);
@@ -1104,7 +1333,7 @@ class AppDb extends _$AppDb {
       )..where((t) => t.id.equals(existing.id))).go();
 
       final newCompleted = st.completedInPlan > 0 ? st.completedInPlan - 1 : 0;
-      final newNextOffset = (st.nextOffset - 1) % 9;
+      final newNextOffset = _mod(st.nextOffset - 1, cycleLen);
 
       await (update(
         clientProgramStates,
@@ -1134,7 +1363,7 @@ class AppDb extends _$AppDb {
     required String clientId,
     required DateTime day,
   }) async {
-    await _ensureMaleDefaultsPatched();
+    await _ensureTemplateDefaultsPatched();
     final info = await getWorkoutInfoForClientOnDay(
       clientId: clientId,
       day: day,
@@ -1160,6 +1389,7 @@ class AppDb extends _$AppDb {
     final c = await getClientById(clientId);
     String gender = (c?.gender ?? 'М');
     if (gender != 'М' && gender != 'Ж') gender = 'М';
+    final cycleLen = _cycleLenByGender(gender);
 
     // Определяем какой templateIdx показываем:
     // - если выполнено: берём из sess
@@ -1172,7 +1402,7 @@ class AppDb extends _$AppDb {
       final st = await (select(
         clientProgramStates,
       )..where((t) => t.clientId.equals(clientId))).getSingle();
-      templateIdx = (st.cycleStartIndex + st.nextOffset) % 9;
+      templateIdx = _mod(st.cycleStartIndex + st.nextOffset, cycleLen);
     }
 
     final t =
@@ -1238,7 +1468,7 @@ class AppDb extends _$AppDb {
     required DateTime day,
     required int templateIdx,
   }) async {
-    await _ensureMaleDefaultsPatched();
+    await _ensureTemplateDefaultsPatched();
     final c = await getClientById(clientId);
     if (c == null) {
       return (
@@ -1340,7 +1570,7 @@ class AppDb extends _$AppDb {
     required String gender, // 'М' / 'Ж'
     required int templateIdx, // 0..8
   }) async {
-    await _ensureMaleDefaultsPatched();
+    await _ensureTemplateDefaultsPatched();
     // template по (gender + idx)
     final t =
         await (select(workoutTemplates)..where(
@@ -1641,8 +1871,13 @@ class AppDb extends _$AppDb {
   }
 
   Future<ProgramOverviewVm> getProgramOverview(String clientId) async {
-    await _ensureMaleDefaultsPatched();
+    await _ensureTemplateDefaultsPatched();
     await ensureProgramStateForClient(clientId);
+
+    final c = await getClientById(clientId);
+    String gender = (c?.gender ?? 'М');
+    if (gender != 'М' && gender != 'Ж') gender = 'М';
+    final cycleLen = _cycleLenByGender(gender);
 
     final st = await (select(
       clientProgramStates,
@@ -1682,7 +1917,7 @@ class AppDb extends _$AppDb {
     for (var k = 0; k < planSize; k++) {
       final absoluteIndex =
           bundleStart + (st.planSize == 4 ? st.windowStart : 0) + k;
-      final idx = (st.cycleStartIndex + absoluteIndex) % 9;
+      final idx = _mod(st.cycleStartIndex + absoluteIndex, cycleLen);
       final hasSession =
           k < completedInBundle && absoluteIndex < sessions.length;
       final s = hasSession ? sessions[absoluteIndex] : null;

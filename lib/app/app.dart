@@ -7,6 +7,7 @@ import '../features/clients/clients_screen.dart';
 import '../features/clients/client_detail_screen.dart';
 import '../features/clients/client_program_screen.dart';
 import '../features/workouts/workout_screen.dart';
+import '../features/programs/defalut_programs_screen.dart'
 
 import '../theme_controller.dart';
 
@@ -101,6 +102,11 @@ final GoRouter _router = GoRouter(
             ),
           ],
         ),
+        GoRoute(
+          path: '/programs',
+          pageBuilder: (context, state) =>
+              const NoTransitionPage(child: DefaultProgramsScreen()),
+        ),
       ],
     ),
   ],
@@ -112,6 +118,7 @@ class AppShell extends StatelessWidget {
 
   int _locationToIndex(String location) {
     if (location.startsWith('/clients')) return 1;
+    if (location.startsWith('/programs')) return 2;
     return 0; // /calendar
   }
 
@@ -122,6 +129,9 @@ class AppShell extends StatelessWidget {
         break;
       case 1:
         context.go('/clients');
+        break;
+      case 2:
+        context.go('/programs');
         break;
     }
   }
@@ -142,6 +152,10 @@ class AppShell extends StatelessWidget {
             label: 'Календарь',
           ),
           NavigationDestination(icon: Icon(Icons.people), label: 'Клиенты'),
+          NavigationDestination(
+            icon: Icon(Icons.fitness_center),
+            label: 'Программа',
+          ),
         ],
       ),
     );
