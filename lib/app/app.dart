@@ -7,7 +7,7 @@ import '../features/clients/clients_screen.dart';
 import '../features/clients/client_detail_screen.dart';
 import '../features/clients/client_program_screen.dart';
 import '../features/workouts/workout_screen.dart';
-import '../features/programs/defalut_programs_screen.dart'
+import '../features/programs/defalut_programs_screen.dart';
 
 import '../theme_controller.dart';
 
