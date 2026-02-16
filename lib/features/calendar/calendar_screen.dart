@@ -1901,8 +1901,8 @@ class _CalendarScreenState extends State<CalendarScreen>
                                   context,
                                 ).colorScheme.onSurface.withOpacity(0.85),
                               ),
-                              defaultDecoration: BoxDecoration(
-                                borderRadius: BorderRadius.circular(12),
+                              defaultDecoration: const BoxDecoration(
+                                shape: BoxShape.circle,
                               ),
                               todayDecoration: BoxDecoration(
                                 color: Theme.of(
@@ -1917,14 +1917,16 @@ class _CalendarScreenState extends State<CalendarScreen>
                                   BoxShadow(
                                     color: Theme.of(
                                       context,
-                                    ).colorScheme.primary.withOpacity(0.35),
-                                    blurRadius: 12,
-                                    offset: const Offset(0, 4),
+                                    ).colorScheme.primary.withOpacity(0.28),
+                                    blurRadius: 10,
+                                    offset: const Offset(0, 3),
                                   ),
                                 ],
                               ),
-                              markerDecoration: const BoxDecoration(
-                                color: Colors.transparent,
+                              markersAlignment: Alignment.bottomCenter,
+                              markersMaxCount: 3,
+                              markerMargin: const EdgeInsets.symmetric(
+                                horizontal: 1.5,
                               ),
                             ),
 
@@ -2012,28 +2014,19 @@ class _CalendarScreenState extends State<CalendarScreen>
                                     alignment: Alignment.bottomCenter,
                                     child: Padding(
                                       padding: const EdgeInsets.only(bottom: 4),
-                                      child: Row(
-                                        mainAxisSize: MainAxisSize.min,
-                                        children: markers.take(3).map((color) {
-                                          return Container(
-                                            width: 6,
-                                            height: 6,
-                                            margin: const EdgeInsets.symmetric(
-                                              horizontal: 1.5,
+                                      child: Wrap(
+                                        spacing: 3,
+                                        children: [
+                                          for (final color in markers.take(3))
+                                            Container(
+                                              width: 6,
+                                              height: 6,
+                                              decoration: BoxDecoration(
+                                                color: color,
+                                                shape: BoxShape.circle,
+                                              ),
                                             ),
-                                            decoration: BoxDecoration(
-                                              color: color,
-                                              shape: BoxShape.circle,
-                                              boxShadow: [
-                                                BoxShadow(
-                                                  blurRadius: 6,
-                                                  spreadRadius: 0.5,
-                                                  color: color.withOpacity(0.7),
-                                                ),
-                                              ],
-                                            ),
-                                          );
-                                        }).toList(),
+                                        ],
                                       ),
                                     ),
                                   ),
