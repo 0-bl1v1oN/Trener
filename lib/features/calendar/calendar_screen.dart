@@ -256,9 +256,7 @@ class _CalendarScreenState extends State<CalendarScreen>
     if (_dragSum < _gestureThreshold) return false;
 
     // Вверх -> схлопываем
-    if (delta > 0 &&
-        n.metrics.pixels > 0 &&
-        _calendarFormat != CalendarFormat.week) {
+    if (delta > 0 && _calendarFormat != CalendarFormat.week) {
       _toggledThisDrag = true;
       _collapseToWeek();
       return false;
