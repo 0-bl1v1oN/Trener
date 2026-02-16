@@ -1156,10 +1156,11 @@ class AppDb extends _$AppDb {
     String gender = (c.gender ?? 'М');
     if (gender != 'М' && gender != 'Ж') gender = 'М';
 
-    final realIdx = (st.cycleStartIndex + st.nextOffset) % 9;
-
     // насколько “впереди” выбранный idx от текущего realIdx
     final cycleLen = _cycleLenByGender(gender);
+    final realIdx = _mod(st.cycleStartIndex + st.nextOffset, cycleLen);
+    final normalizedTemplateIdx = _mod(templateIdx, cycleLen);
+    final k = _mod(normalizedTemplateIdx - realIdx, cycleLen);
 
     await into(workoutSessions).insert(
       WorkoutSessionsCompanion.insert(
@@ -1167,7 +1168,7 @@ class AppDb extends _$AppDb {
         performedAt: when,
         planInstance: st.planInstance,
         gender: gender,
-        templateIdx: templateIdx, // ✅ выбранный
+        templateIdx: normalizedTemplateIdx, // ✅ выбранный
       ),
     );
 
