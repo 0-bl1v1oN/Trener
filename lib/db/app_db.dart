@@ -362,21 +362,30 @@ class AppDb extends _$AppDb {
     required DateTime to,
     bool? onlyTrial,
   }) {
-    final wherePlan = onlyTrial == null
-        ? ''
-        : onlyTrial
-        ? " AND COALESCE(c.${clients.plan.name}, '') = 'Пробный'"
-        : " AND COALESCE(c.${clients.plan.name}, '') != 'Пробный'";
+    final variables = <Variable<Object>>[
+      Variable<DateTime>(from),
+      Variable<DateTime>(to),
+    ];
+
+    var wherePlan = '';
+    if (onlyTrial == true) {
+      wherePlan = ' AND c.${clients.plan.name} = ?';
+      variables.add(const Variable<String>('Пробный'));
+    } else if (onlyTrial == false) {
+      wherePlan =
+          ' AND (c.${clients.plan.name} IS NULL OR c.${clients.plan.name} != ?)';
+      variables.add(const Variable<String>('Пробный'));
+    }
 
     final q = customSelect(
       'SELECT date(a.${appointments.startAt.name}) AS d, COUNT(*) AS c '
       'FROM ${appointments.actualTableName} a '
       'INNER JOIN ${clients.actualTableName} c '
       'ON c.${clients.id.name} = a.${appointments.clientId.name} '
-      'WHERE a.${appointments.startAt.name} >= ? AND a.${appointments.startAt.name} < ?'
+      'WHERE a.${appointments.startAt.name} >= ? AND a.${appointments.startAt.name} < ? '
       '$wherePlan '
       'GROUP BY d',
-      variables: [Variable<DateTime>(from), Variable<DateTime>(to)],
+      variables: variables,
       readsFrom: {appointments, clients},
     );
 

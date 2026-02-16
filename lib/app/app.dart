@@ -116,7 +116,12 @@ class AppShell extends StatelessWidget {
   const AppShell({super.key, required this.child});
   final Widget child;
 
-  int _locationToIndex(String location) {
+  int _locationToIndex(Uri uri) {
+    final location = uri.toString();
+    if (uri.path == '/calendar' &&
+        uri.queryParameters['openCategories'] == '1') {
+      return 3;
+    }
     if (location.startsWith('/clients')) return 1;
     if (location.startsWith('/programs')) return 2;
     return 0; // /calendar
@@ -133,13 +138,16 @@ class AppShell extends StatelessWidget {
       case 2:
         context.go('/programs');
         break;
+      case 3:
+        context.go('/calendar?openCategories=1');
+        break;
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    final location = GoRouterState.of(context).uri.toString();
-    final currentIndex = _locationToIndex(location);
+    final uri = GoRouterState.of(context).uri;
+    final currentIndex = _locationToIndex(uri);
 
     return Scaffold(
       body: child,
@@ -156,6 +164,7 @@ class AppShell extends StatelessWidget {
             icon: Icon(Icons.fitness_center),
             label: 'Программа',
           ),
+          NavigationDestination(icon: Icon(Icons.menu), label: 'Категории'),
         ],
       ),
     );

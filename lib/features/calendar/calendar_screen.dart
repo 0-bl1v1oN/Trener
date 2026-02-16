@@ -106,6 +106,7 @@ class _CalendarScreenState extends State<CalendarScreen>
 
   // защита от дерганья
   bool _collapseLock = false;
+  bool _openingCategoriesFromRoute = false;
 
   @override
   void didChangeDependencies() {
@@ -455,29 +456,6 @@ class _CalendarScreenState extends State<CalendarScreen>
     final idx = _categories.indexWhere((c) => c.id == id);
     if (idx == -1) return fallback;
     return _categories[idx].color;
-  }
-
-  Future<void> _openCalendarMenu() async {
-    await showModalBottomSheet(
-      context: context,
-      showDragHandle: true,
-      builder: (context) => SafeArea(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            ListTile(
-              leading: const Icon(Icons.category_outlined),
-              title: const Text('Категории'),
-              subtitle: const Text('Показ маркеров в календаре'),
-              onTap: () {
-                Navigator.pop(context);
-                _openCategoriesSheet();
-              },
-            ),
-          ],
-        ),
-      ),
-    );
   }
 
   Future<void> _openCategoriesSheet() async {
@@ -1809,9 +1787,31 @@ class _CalendarScreenState extends State<CalendarScreen>
     return created;
   }
 
+  void _maybeOpenCategoriesFromRoute() {
+    final uri = GoRouterState.of(context).uri;
+    final shouldOpen = uri.queryParameters['openCategories'] == '1';
+
+    if (!shouldOpen) {
+      _openingCategoriesFromRoute = false;
+      return;
+    }
+
+    if (_openingCategoriesFromRoute) return;
+    _openingCategoriesFromRoute = true;
+
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      if (!mounted) return;
+      await _openCategoriesSheet();
+      if (!mounted) return;
+      _openingCategoriesFromRoute = false;
+      context.go('/calendar');
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
     final selectedLabel = _fmtDate(_selectedDay);
+    _maybeOpenCategoriesFromRoute();
 
     return SafeArea(
       child: Scaffold(
@@ -1829,22 +1829,9 @@ class _CalendarScreenState extends State<CalendarScreen>
           ],
         ),
 
-        floatingActionButton: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.end,
-          children: [
-            FloatingActionButton.small(
-              heroTag: 'calendar_menu_fab',
-              onPressed: _openCalendarMenu,
-              child: const Icon(Icons.menu),
-            ),
-            const SizedBox(height: 12),
-            FloatingActionButton(
-              heroTag: 'calendar_add_fab',
-              onPressed: () => _openAddMenu(),
-              child: const Icon(Icons.add),
-            ),
-          ],
+        floatingActionButton: FloatingActionButton(
+          onPressed: () => _openAddMenu(),
+          child: const Icon(Icons.add),
         ),
         body: StreamBuilder<List<AppointmentWithClient>>(
           stream: db.watchAppointmentsForDay(_selectedDay),
@@ -1877,9 +1864,68 @@ class _CalendarScreenState extends State<CalendarScreen>
                             },
                             calendarFormat: _calendarFormat,
 
-                            headerStyle: const HeaderStyle(
+                            headerStyle: HeaderStyle(
                               formatButtonVisible: false,
                               titleCentered: true,
+                              titleTextStyle:
+                                  Theme.of(context).textTheme.titleLarge
+                                      ?.copyWith(fontWeight: FontWeight.w600) ??
+                                  const TextStyle(fontSize: 22),
+                              leftChevronIcon: const Icon(Icons.chevron_left),
+                              rightChevronIcon: const Icon(Icons.chevron_right),
+                            ),
+                            daysOfWeekStyle: DaysOfWeekStyle(
+                              weekdayStyle:
+                                  Theme.of(context).textTheme.labelLarge
+                                      ?.copyWith(fontWeight: FontWeight.w500) ??
+                                  const TextStyle(),
+                              weekendStyle:
+                                  Theme.of(
+                                    context,
+                                  ).textTheme.labelLarge?.copyWith(
+                                    fontWeight: FontWeight.w500,
+                                    color: Theme.of(
+                                      context,
+                                    ).colorScheme.onSurfaceVariant,
+                                  ) ??
+                                  const TextStyle(),
+                            ),
+                            calendarStyle: CalendarStyle(
+                              outsideTextStyle: TextStyle(
+                                color: Theme.of(
+                                  context,
+                                ).colorScheme.onSurface.withOpacity(0.35),
+                              ),
+                              weekendTextStyle: TextStyle(
+                                color: Theme.of(
+                                  context,
+                                ).colorScheme.onSurface.withOpacity(0.85),
+                              ),
+                              defaultDecoration: BoxDecoration(
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                              todayDecoration: BoxDecoration(
+                                color: Theme.of(
+                                  context,
+                                ).colorScheme.primary.withOpacity(0.18),
+                                shape: BoxShape.circle,
+                              ),
+                              selectedDecoration: BoxDecoration(
+                                color: Theme.of(context).colorScheme.primary,
+                                shape: BoxShape.circle,
+                                boxShadow: [
+                                  BoxShadow(
+                                    color: Theme.of(
+                                      context,
+                                    ).colorScheme.primary.withOpacity(0.35),
+                                    blurRadius: 12,
+                                    offset: const Offset(0, 4),
+                                  ),
+                                ],
+                              ),
+                              markerDecoration: const BoxDecoration(
+                                color: Colors.transparent,
+                              ),
                             ),
 
                             firstDay: DateTime.utc(2020, 1, 1),
