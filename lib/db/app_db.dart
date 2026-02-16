@@ -378,7 +378,7 @@ class AppDb extends _$AppDb {
     }
 
     final q = customSelect(
-      "SELECT date(datetime(a.${appointments.startAt.name} / 1000, 'unixepoch', 'localtime')) AS d, COUNT(*) AS c "
+      "SELECT date(datetime(CASE WHEN a.${appointments.startAt.name} > 20000000000 THEN a.${appointments.startAt.name} / 1000 ELSE a.${appointments.startAt.name} END, 'unixepoch', 'localtime')) AS d, COUNT(*) AS c "
       'FROM ${appointments.actualTableName} a '
       'INNER JOIN ${clients.actualTableName} c '
       'ON c.${clients.id.name} = a.${appointments.clientId.name} '
@@ -407,7 +407,7 @@ class AppDb extends _$AppDb {
     required DateTime to,
   }) {
     final q = customSelect(
-      "SELECT date(datetime(${clients.planEnd.name} / 1000, 'unixepoch', 'localtime')) AS d, COUNT(*) AS c "
+      "SELECT date(datetime(CASE WHEN ${clients.planEnd.name} > 20000000000 THEN ${clients.planEnd.name} / 1000 ELSE ${clients.planEnd.name} END, 'unixepoch', 'localtime')) AS d, COUNT(*) AS c "
       'FROM ${clients.actualTableName} '
       'WHERE ${clients.planEnd.name} IS NOT NULL '
       'AND ${clients.planEnd.name} >= ? AND ${clients.planEnd.name} < ? '
