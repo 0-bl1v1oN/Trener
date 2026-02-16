@@ -19,6 +19,38 @@ class CalendarScreen extends StatefulWidget {
   State<CalendarScreen> createState() => _CalendarScreenState();
 }
 
+class _CalendarCategory {
+  final String id;
+  final String name;
+  final Color color;
+  final bool isSystem;
+  final bool visible;
+
+  const _CalendarCategory({
+    required this.id,
+    required this.name,
+    required this.color,
+    this.isSystem = false,
+    this.visible = true,
+  });
+
+  _CalendarCategory copyWith({
+    String? id,
+    String? name,
+    Color? color,
+    bool? isSystem,
+    bool? visible,
+  }) {
+    return _CalendarCategory(
+      id: id ?? this.id,
+      name: name ?? this.name,
+      color: color ?? this.color,
+      isSystem: isSystem ?? this.isSystem,
+      visible: visible ?? this.visible,
+    );
+  }
+}
+
 class _CalendarScreenState extends State<CalendarScreen>
     with TickerProviderStateMixin {
   late final AppDb db;
@@ -27,10 +59,33 @@ class _CalendarScreenState extends State<CalendarScreen>
   DateTime _focusedDay = DateTime.now();
   DateTime _selectedDay = DateTime.now();
 
-  final Map<DateTime, int> _apptCountByDay = {}; // ключ = DateTime(y,m,d)
+  final Map<DateTime, int> _workApptCountByDay = {};
+  final Map<DateTime, int> _trialApptCountByDay = {};
+  final Map<DateTime, int> _planEndCountByDay = {};
 
-  // --- добавить вот это ---
-  StreamSubscription<Map<DateTime, int>>? _countsSub;
+  static const String _workCategoryId = 'work';
+  static const String _trialCategoryId = 'trial';
+
+  List<_CalendarCategory> _categories = const [
+    _CalendarCategory(
+      id: _workCategoryId,
+      name: 'Работа',
+      color: Color(0xFF4E6CC8),
+      isSystem: true,
+      visible: true,
+    ),
+    _CalendarCategory(
+      id: _trialCategoryId,
+      name: 'Пробный',
+      color: Color(0xFFFF9F43),
+      isSystem: true,
+      visible: true,
+    ),
+  ];
+
+  StreamSubscription<Map<DateTime, int>>? _workCountsSub;
+  StreamSubscription<Map<DateTime, int>>? _trialCountsSub;
+  StreamSubscription<Map<DateTime, int>>? _planEndCountsSub;
   StreamSubscription<List<WorkoutSession>>? _workoutSessionsSub;
   DateTime? _countsFrom;
   DateTime? _countsTo;
@@ -77,7 +132,9 @@ class _CalendarScreenState extends State<CalendarScreen>
 
   @override
   void dispose() {
-    _countsSub?.cancel();
+    _workCountsSub?.cancel();
+    _trialCountsSub?.cancel();
+    _planEndCountsSub?.cancel();
     _workoutSessionsSub?.cancel();
     _appointmentsController.dispose();
     super.dispose();
@@ -112,11 +169,37 @@ class _CalendarScreenState extends State<CalendarScreen>
     _countsFrom = from;
     _countsTo = to;
 
-    _countsSub?.cancel();
-    _countsSub = db.watchAppointmentCountsByDay(from: from, to: to).listen((m) {
-      if (!mounted) return;
+    _workCountsSub?.cancel();
+    _trialCountsSub?.cancel();
+    _planEndCountsSub?.cancel();
+
+    _workCountsSub = db
+        .watchAppointmentCountsByDay(from: from, to: to, onlyTrial: false)
+        .listen((m) {
+          if (!mounted) return;
+          setState(() {
+            _workApptCountByDay
+              ..clear()
+              ..addAll(m);
+          });
+        });
+
+    _trialCountsSub = db
+        .watchAppointmentCountsByDay(from: from, to: to, onlyTrial: true)
+        .listen((m) {
+          if (!mounted) return;
+          setState(() {
+            _trialApptCountByDay
+              ..clear()
+              ..addAll(m);
+          });
+        });
+
+    _planEndCountsSub = db.watchPlanEndCountsByDay(from: from, to: to).listen((
+      m,
+    ) {
       setState(() {
-        _apptCountByDay
+        _planEndCountByDay
           ..clear()
           ..addAll(m);
       });
@@ -359,6 +442,228 @@ class _CalendarScreenState extends State<CalendarScreen>
           ],
         ),
       ),
+    );
+  }
+
+  bool _isCategoryVisible(String id) {
+    final idx = _categories.indexWhere((c) => c.id == id);
+    if (idx == -1) return true;
+    return _categories[idx].visible;
+  }
+
+  Color _categoryColor(String id, Color fallback) {
+    final idx = _categories.indexWhere((c) => c.id == id);
+    if (idx == -1) return fallback;
+    return _categories[idx].color;
+  }
+
+  Future<void> _openCalendarMenu() async {
+    await showModalBottomSheet(
+      context: context,
+      showDragHandle: true,
+      builder: (context) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
+              leading: const Icon(Icons.category_outlined),
+              title: const Text('Категории'),
+              subtitle: const Text('Показ маркеров в календаре'),
+              onTap: () {
+                Navigator.pop(context);
+                _openCategoriesSheet();
+              },
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<void> _openCategoriesSheet() async {
+    await showModalBottomSheet(
+      context: context,
+      showDragHandle: true,
+      isScrollControlled: true,
+      builder: (context) {
+        return StatefulBuilder(
+          builder: (context, setLocalState) {
+            Future<void> createCategory() async {
+              final nameController = TextEditingController();
+              Color selectedColor = _categoryColor(
+                _workCategoryId,
+                Theme.of(context).colorScheme.primary,
+              );
+
+              final created = await showDialog<_CalendarCategory>(
+                context: context,
+                builder: (context) {
+                  return StatefulBuilder(
+                    builder: (context, setDialogState) {
+                      return AlertDialog(
+                        title: const Text('Создать категорию'),
+                        content: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            TextField(
+                              controller: nameController,
+                              maxLength: 50,
+                              decoration: const InputDecoration(
+                                hintText: 'Введите название',
+                                border: OutlineInputBorder(),
+                              ),
+                            ),
+                            const SizedBox(height: 12),
+                            Align(
+                              alignment: Alignment.centerLeft,
+                              child: Text(
+                                'Цвет',
+                                style: Theme.of(context).textTheme.titleSmall,
+                              ),
+                            ),
+                            const SizedBox(height: 8),
+                            Wrap(
+                              spacing: 10,
+                              children:
+                                  [
+                                    _categoryColor(
+                                      _workCategoryId,
+                                      const Color(0xFF4E6CC8),
+                                    ),
+                                    _categoryColor(
+                                      _trialCategoryId,
+                                      const Color(0xFFFF9F43),
+                                    ),
+                                  ].map((c) {
+                                    final selected =
+                                        c.value == selectedColor.value;
+                                    return GestureDetector(
+                                      onTap: () => setDialogState(
+                                        () => selectedColor = c,
+                                      ),
+                                      child: Container(
+                                        width: 34,
+                                        height: 34,
+                                        decoration: BoxDecoration(
+                                          color: c,
+                                          shape: BoxShape.circle,
+                                          border: Border.all(
+                                            color: selected
+                                                ? Theme.of(
+                                                    context,
+                                                  ).colorScheme.onSurface
+                                                : Colors.transparent,
+                                            width: 2,
+                                          ),
+                                        ),
+                                      ),
+                                    );
+                                  }).toList(),
+                            ),
+                          ],
+                        ),
+                        actions: [
+                          TextButton(
+                            onPressed: () => Navigator.pop(context),
+                            child: const Text('Отмена'),
+                          ),
+                          FilledButton(
+                            onPressed: () {
+                              final name = nameController.text.trim();
+                              if (name.isEmpty) return;
+                              Navigator.pop(
+                                context,
+                                _CalendarCategory(
+                                  id: DateTime.now().microsecondsSinceEpoch
+                                      .toString(),
+                                  name: name,
+                                  color: selectedColor,
+                                  isSystem: false,
+                                  visible: true,
+                                ),
+                              );
+                            },
+                            child: const Text('Сохранить'),
+                          ),
+                        ],
+                      );
+                    },
+                  );
+                },
+              );
+
+              if (created == null || !mounted) return;
+              setState(() => _categories = [..._categories, created]);
+              setLocalState(() {});
+            }
+
+            return SafeArea(
+              child: Padding(
+                padding: EdgeInsets.only(
+                  left: 16,
+                  right: 16,
+                  top: 8,
+                  bottom: 12 + MediaQuery.of(context).viewInsets.bottom,
+                ),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Категории',
+                      style: Theme.of(context).textTheme.titleLarge,
+                    ),
+                    const SizedBox(height: 6),
+                    Text(
+                      'Работа и Пробный используются автоматически по типу абонемента.',
+                      style: Theme.of(context).textTheme.bodySmall,
+                    ),
+                    const SizedBox(height: 12),
+                    ..._categories.asMap().entries.map((entry) {
+                      final i = entry.key;
+                      final c = entry.value;
+                      return SwitchListTile.adaptive(
+                        contentPadding: EdgeInsets.zero,
+                        value: c.visible,
+                        onChanged: (v) {
+                          final next = c.copyWith(visible: v);
+                          setState(() {
+                            _categories = [..._categories]..[i] = next;
+                          });
+                          setLocalState(() {});
+                        },
+                        title: Row(
+                          children: [
+                            Container(
+                              width: 10,
+                              height: 10,
+                              decoration: BoxDecoration(
+                                color: c.color,
+                                shape: BoxShape.circle,
+                              ),
+                            ),
+                            const SizedBox(width: 10),
+                            Expanded(child: Text(c.name)),
+                          ],
+                        ),
+                        subtitle: c.isSystem
+                            ? const Text('Системная категория')
+                            : null,
+                      );
+                    }),
+                    const SizedBox(height: 8),
+                    OutlinedButton.icon(
+                      onPressed: createCategory,
+                      icon: const Icon(Icons.add),
+                      label: const Text('Создать категорию'),
+                    ),
+                  ],
+                ),
+              ),
+            );
+          },
+        );
+      },
     );
   }
 
@@ -868,8 +1173,20 @@ class _CalendarScreenState extends State<CalendarScreen>
     String gender = 'Не указано';
     String plan = 'Пробный';
 
-    DateTime planStart = _selectedDay;
-    DateTime planEnd = planStart.add(const Duration(days: 28));
+    DateTime? planStart;
+    DateTime? planEnd;
+
+    void syncPlanDates(String selectedPlan) {
+      if (selectedPlan == 'Пробный') {
+        planStart = null;
+        planEnd = null;
+        return;
+      }
+      planStart ??= _selectedDay;
+      planEnd = planStart!.add(const Duration(days: 28));
+    }
+
+    syncPlanDates(plan);
 
     DateTime startDate = _selectedDay;
     final selectedWeekdays = <int>{_selectedDay.weekday};
@@ -887,7 +1204,7 @@ class _CalendarScreenState extends State<CalendarScreen>
             Future<void> pickPlanStart() async {
               final picked = await showDatePicker(
                 context: context,
-                initialDate: planStart,
+                initialDate: planStart ?? _selectedDay,
                 firstDate: DateTime(2020, 1, 1),
                 lastDate: DateTime(2035, 12, 31),
                 locale: const Locale('ru', 'RU'),
@@ -895,7 +1212,7 @@ class _CalendarScreenState extends State<CalendarScreen>
               if (picked == null) return;
               setLocalState(() {
                 planStart = DateTime(picked.year, picked.month, picked.day);
-                planEnd = planStart.add(const Duration(days: 28));
+                planEnd = planStart!.add(const Duration(days: 28));
               });
             }
 
@@ -1125,41 +1442,45 @@ class _CalendarScreenState extends State<CalendarScreen>
                                       child: Text('12'),
                                     ),
                                   ],
-                                  onChanged: (v) =>
-                                      setLocalState(() => plan = v ?? plan),
+                                  onChanged: (v) => setLocalState(() {
+                                    plan = v ?? plan;
+                                    syncPlanDates(plan);
+                                  }),
                                 ),
                               ),
                             ),
-                            const SizedBox(height: 12),
-                            Row(
-                              children: [
-                                Expanded(
-                                  child: pickerField(
-                                    title: 'Начало абонемента',
-                                    value: DateFormat(
-                                      'dd.MM.yyyy',
-                                      'ru_RU',
-                                    ).format(planStart),
-                                    onTap: pickPlanStart,
-                                  ),
-                                ),
-                                const SizedBox(width: 10),
-                                Expanded(
-                                  child: formCard(
-                                    title: 'Конец абонемента (+28 дней)',
-                                    child: Text(
-                                      DateFormat(
+                            if (plan != 'Пробный') ...[
+                              const SizedBox(height: 12),
+                              Row(
+                                children: [
+                                  Expanded(
+                                    child: pickerField(
+                                      title: 'Начало абонемента',
+                                      value: DateFormat(
                                         'dd.MM.yyyy',
                                         'ru_RU',
-                                      ).format(planEnd),
-                                      style: Theme.of(
-                                        context,
-                                      ).textTheme.titleMedium,
+                                      ).format(planStart!),
+                                      onTap: pickPlanStart,
                                     ),
                                   ),
-                                ),
-                              ],
-                            ),
+                                  const SizedBox(width: 10),
+                                  Expanded(
+                                    child: formCard(
+                                      title: 'Конец абонемента (+28 дней)',
+                                      child: Text(
+                                        DateFormat(
+                                          'dd.MM.yyyy',
+                                          'ru_RU',
+                                        ).format(planEnd!),
+                                        style: Theme.of(
+                                          context,
+                                        ).textTheme.titleMedium,
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ],
                             const SizedBox(height: 16),
                             Row(
                               children: [
@@ -1306,8 +1627,8 @@ class _CalendarScreenState extends State<CalendarScreen>
         name: name,
         gender: Value(gender),
         plan: Value(plan),
-        planStart: Value(planStart),
-        planEnd: Value(planEnd),
+        planStart: planStart == null ? const Value.absent() : Value(planStart),
+        planEnd: planEnd == null ? const Value.absent() : Value(planEnd),
       ),
     );
 
@@ -1508,9 +1829,22 @@ class _CalendarScreenState extends State<CalendarScreen>
           ],
         ),
 
-        floatingActionButton: FloatingActionButton(
-          onPressed: () => _openAddMenu(),
-          child: const Icon(Icons.add),
+        floatingActionButton: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.end,
+          children: [
+            FloatingActionButton.small(
+              heroTag: 'calendar_menu_fab',
+              onPressed: _openCalendarMenu,
+              child: const Icon(Icons.menu),
+            ),
+            const SizedBox(height: 12),
+            FloatingActionButton(
+              heroTag: 'calendar_add_fab',
+              onPressed: () => _openAddMenu(),
+              child: const Icon(Icons.add),
+            ),
+          ],
         ),
         body: StreamBuilder<List<AppointmentWithClient>>(
           stream: db.watchAppointmentsForDay(_selectedDay),
@@ -1578,20 +1912,54 @@ class _CalendarScreenState extends State<CalendarScreen>
                                 day.month,
                                 day.day,
                               );
-                              final c = _apptCountByDay[key] ?? 0;
-                              return List.filled(c, 1);
+                              final visibleWork =
+                                  _isCategoryVisible(_workCategoryId)
+                                  ? (_workApptCountByDay[key] ?? 0)
+                                  : 0;
+                              final visibleTrial =
+                                  _isCategoryVisible(_trialCategoryId)
+                                  ? (_trialApptCountByDay[key] ?? 0)
+                                  : 0;
+                              final planEnd = _planEndCountByDay[key] ?? 0;
+                              final total =
+                                  visibleWork + visibleTrial + planEnd;
+                              return List.filled(total, 1);
                             },
 
                             calendarBuilders: CalendarBuilders(
                               markerBuilder: (context, day, events) {
-                                if (events.isEmpty) return null;
+                                final key = DateTime(
+                                  day.year,
+                                  day.month,
+                                  day.day,
+                                );
+                                final markers = <Color>[];
 
-                                final dots = events.length > 3
-                                    ? 3
-                                    : events.length;
-                                final primary = Theme.of(
-                                  context,
-                                ).colorScheme.primary;
+                                if (_isCategoryVisible(_workCategoryId) &&
+                                    (_workApptCountByDay[key] ?? 0) > 0) {
+                                  markers.add(
+                                    _categoryColor(
+                                      _workCategoryId,
+                                      Theme.of(context).colorScheme.primary,
+                                    ),
+                                  );
+                                }
+
+                                if (_isCategoryVisible(_trialCategoryId) &&
+                                    (_trialApptCountByDay[key] ?? 0) > 0) {
+                                  markers.add(
+                                    _categoryColor(
+                                      _trialCategoryId,
+                                      const Color(0xFFFF9F43),
+                                    ),
+                                  );
+                                }
+
+                                if ((_planEndCountByDay[key] ?? 0) > 0) {
+                                  markers.add(Colors.redAccent);
+                                }
+
+                                if (markers.isEmpty) return null;
 
                                 return IgnorePointer(
                                   child: Align(
@@ -1600,7 +1968,7 @@ class _CalendarScreenState extends State<CalendarScreen>
                                       padding: const EdgeInsets.only(bottom: 4),
                                       child: Row(
                                         mainAxisSize: MainAxisSize.min,
-                                        children: List.generate(dots, (_) {
+                                        children: markers.take(3).map((color) {
                                           return Container(
                                             width: 6,
                                             height: 6,
@@ -1608,18 +1976,18 @@ class _CalendarScreenState extends State<CalendarScreen>
                                               horizontal: 1.5,
                                             ),
                                             decoration: BoxDecoration(
-                                              color: primary,
+                                              color: color,
                                               shape: BoxShape.circle,
                                               boxShadow: [
                                                 BoxShadow(
                                                   blurRadius: 6,
                                                   spreadRadius: 0.5,
-                                                  color: primary,
+                                                  color: color.withOpacity(0.7),
                                                 ),
                                               ],
                                             ),
                                           );
-                                        }),
+                                        }).toList(),
                                       ),
                                     ),
                                   ),

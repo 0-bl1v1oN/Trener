@@ -360,14 +360,24 @@ class AppDb extends _$AppDb {
   Stream<Map<DateTime, int>> watchAppointmentCountsByDay({
     required DateTime from,
     required DateTime to,
+    bool? onlyTrial,
   }) {
+    final wherePlan = onlyTrial == null
+        ? ''
+        : onlyTrial
+        ? " AND COALESCE(c.${clients.plan.name}, '') = 'Пробный'"
+        : " AND COALESCE(c.${clients.plan.name}, '') != 'Пробный'";
+
     final q = customSelect(
-      'SELECT date(${appointments.startAt.name}) AS d, COUNT(*) AS c '
-      'FROM ${appointments.actualTableName} '
-      'WHERE ${appointments.startAt.name} >= ? AND ${appointments.startAt.name} < ? '
+      'SELECT date(a.${appointments.startAt.name}) AS d, COUNT(*) AS c '
+      'FROM ${appointments.actualTableName} a '
+      'INNER JOIN ${clients.actualTableName} c '
+      'ON c.${clients.id.name} = a.${appointments.clientId.name} '
+      'WHERE a.${appointments.startAt.name} >= ? AND a.${appointments.startAt.name} < ?'
+      '$wherePlan '
       'GROUP BY d',
       variables: [Variable<DateTime>(from), Variable<DateTime>(to)],
-      readsFrom: {appointments},
+      readsFrom: {appointments, clients},
     );
 
     return q.watch().map((rows) {
@@ -378,6 +388,33 @@ class AppDb extends _$AppDb {
         final dt = DateTime.parse(dayStr);
         final key = DateTime(dt.year, dt.month, dt.day);
         map[key] = cnt;
+      }
+      return map;
+    });
+  }
+
+  Stream<Map<DateTime, int>> watchPlanEndCountsByDay({
+    required DateTime from,
+    required DateTime to,
+  }) {
+    final q = customSelect(
+      'SELECT date(${clients.planEnd.name}) AS d, COUNT(*) AS c '
+      'FROM ${clients.actualTableName} '
+      'WHERE ${clients.planEnd.name} IS NOT NULL '
+      'AND ${clients.planEnd.name} >= ? AND ${clients.planEnd.name} < ? '
+      "AND COALESCE(${clients.plan.name}, '') != 'Пробный' "
+      'GROUP BY d',
+      variables: [Variable<DateTime>(from), Variable<DateTime>(to)],
+      readsFrom: {clients},
+    );
+
+    return q.watch().map((rows) {
+      final map = <DateTime, int>{};
+      for (final r in rows) {
+        final dayStr = r.read<String>('d');
+        final cnt = r.read<int>('c');
+        final dt = DateTime.parse(dayStr);
+        map[DateTime(dt.year, dt.month, dt.day)] = cnt;
       }
       return map;
     });
