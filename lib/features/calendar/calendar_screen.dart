@@ -473,8 +473,11 @@ class _CalendarScreenState extends State<CalendarScreen>
                         title,
                         style: Theme.of(context).textTheme.labelMedium,
                       ),
-                    const SizedBox(height: 4),
-                      Text(value, style: Theme.of(context).textTheme.titleMedium),
+                      const SizedBox(height: 4),
+                      Text(
+                        value,
+                        style: Theme.of(context).textTheme.titleMedium,
+                      ),
                     ],
                   ),
                 ),
@@ -510,22 +513,24 @@ class _CalendarScreenState extends State<CalendarScreen>
                                   width: 36,
                                   height: 36,
                                   decoration: BoxDecoration(
-                                    color: Theme.of(context)
-                                        .colorScheme
-                                        .primaryContainer,
+                                    color: Theme.of(
+                                      context,
+                                    ).colorScheme.primaryContainer,
                                     borderRadius: BorderRadius.circular(12),
                                   ),
                                   child: Icon(
                                     Icons.person_add_alt_1,
-                                    color: Theme.of(context)
-                                        .colorScheme
-                                        .onPrimaryContainer,
+                                    color: Theme.of(
+                                      context,
+                                    ).colorScheme.onPrimaryContainer,
                                   ),
                                 ),
                                 const SizedBox(width: 12),
                                 Text(
                                   'Записать клиента',
-                                  style: Theme.of(context).textTheme.headlineSmall,
+                                  style: Theme.of(
+                                    context,
+                                  ).textTheme.headlineSmall,
                                 ),
                               ],
                             ),
@@ -537,9 +542,10 @@ class _CalendarScreenState extends State<CalendarScreen>
                                 border: OutlineInputBorder(),
                                 filled: true,
                               ),
-                              onChanged: (v) => setLocalState(() => clientQuery = v),
+                              onChanged: (v) =>
+                                  setLocalState(() => clientQuery = v),
                             ),
-                         const SizedBox(height: 12),
+                            const SizedBox(height: 12),
                             DropdownButtonFormField<String>(
                               value: filteredClients.isEmpty
                                   ? null
@@ -558,9 +564,9 @@ class _CalendarScreenState extends State<CalendarScreen>
                               onChanged: filteredClients.isEmpty
                                   ? null
                                   : (v) => setLocalState(
-                                        () => selectedClientId =
-                                            v ?? selectedClientId,
-                                      ),
+                                      () => selectedClientId =
+                                          v ?? selectedClientId,
+                                    ),
                               decoration: const InputDecoration(
                                 labelText: 'Клиент',
                                 border: OutlineInputBorder(),
@@ -604,9 +610,9 @@ class _CalendarScreenState extends State<CalendarScreen>
                               decoration: BoxDecoration(
                                 borderRadius: BorderRadius.circular(14),
                                 border: Border.all(
-                                  color: Theme.of(context)
-                                      .colorScheme
-                                      .outlineVariant,
+                                  color: Theme.of(
+                                    context,
+                                  ).colorScheme.outlineVariant,
                                 ),
                               ),
                               child: SwitchListTile.adaptive(
@@ -623,9 +629,9 @@ class _CalendarScreenState extends State<CalendarScreen>
                                 value: useSchedule,
                                 onChanged: (v) =>
                                     setLocalState(() => useSchedule = v),
+                              ),
                             ),
-                          ),
-                        if (useSchedule) ...[
+                            if (useSchedule) ...[
                               const SizedBox(height: 12),
                               Text(
                                 'Дни недели',
@@ -684,7 +690,8 @@ class _CalendarScreenState extends State<CalendarScreen>
                               mainAxisAlignment: MainAxisAlignment.end,
                               children: [
                                 TextButton(
-                                  onPressed: () => Navigator.pop(context, false),
+                                  onPressed: () =>
+                                      Navigator.pop(context, false),
                                   child: const Text('Отмена'),
                                 ),
                                 const SizedBox(width: 10),
@@ -698,8 +705,9 @@ class _CalendarScreenState extends State<CalendarScreen>
                             ),
                           ],
                         ),
+                      ),
                     ),
-                    ),
+                  ),
                 ),
               ),
             );
@@ -726,7 +734,10 @@ class _CalendarScreenState extends State<CalendarScreen>
         time.hour,
         time.minute,
       );
-      await db.addAppointmentIfNotExists(clientId: selectedClientId, startAt: startAt);
+      await db.addAppointmentIfNotExists(
+        clientId: selectedClientId,
+        startAt: startAt,
+      );
     }
 
     _lastTime = time;
