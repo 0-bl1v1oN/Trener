@@ -484,6 +484,34 @@ class _CalendarScreenState extends State<CalendarScreen>
               );
             }
 
+            Widget formCard({
+              required String title,
+              required Widget child,
+              EdgeInsetsGeometry padding = const EdgeInsets.symmetric(
+                horizontal: 12,
+                vertical: 8,
+              ),
+            }) {
+              return Container(
+                padding: padding,
+                decoration: BoxDecoration(
+                  border: Border.all(
+                    color: Theme.of(context).colorScheme.outlineVariant,
+                  ),
+                  borderRadius: BorderRadius.circular(14),
+                  color: Theme.of(context).colorScheme.surface,
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(title, style: Theme.of(context).textTheme.labelMedium),
+                    const SizedBox(height: 4),
+                    child,
+                  ],
+                ),
+              );
+            }
+
             return AnimatedPadding(
               duration: const Duration(milliseconds: 180),
               curve: Curves.easeOut,
@@ -535,42 +563,51 @@ class _CalendarScreenState extends State<CalendarScreen>
                               ],
                             ),
                             const SizedBox(height: 16),
-                            TextField(
-                              decoration: const InputDecoration(
-                                hintText: 'Поиск по имени',
-                                prefixIcon: Icon(Icons.search),
-                                border: OutlineInputBorder(),
-                                filled: true,
+                            formCard(
+                              title: 'Поиск',
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 8,
+                                vertical: 6,
                               ),
-                              onChanged: (v) =>
-                                  setLocalState(() => clientQuery = v),
+                              child: TextField(
+                                decoration: const InputDecoration(
+                                  hintText: 'Поиск по имени',
+                                  prefixIcon: Icon(Icons.search),
+                                  border: InputBorder.none,
+                                  isDense: true,
+                                ),
+                                onChanged: (v) =>
+                                    setLocalState(() => clientQuery = v),
+                              ),
                             ),
                             const SizedBox(height: 12),
-                            DropdownButtonFormField<String>(
-                              value: filteredClients.isEmpty
-                                  ? null
-                                  : selectedClientId,
-                              items: filteredClients
-                                  .map(
-                                    (c) => DropdownMenuItem(
-                                      value: c.id,
-                                      child: Text(
-                                        c.name,
-                                        overflow: TextOverflow.ellipsis,
-                                      ),
-                                    ),
-                                  )
-                                  .toList(),
-                              onChanged: filteredClients.isEmpty
-                                  ? null
-                                  : (v) => setLocalState(
-                                      () => selectedClientId =
-                                          v ?? selectedClientId,
-                                    ),
-                              decoration: const InputDecoration(
-                                labelText: 'Клиент',
-                                border: OutlineInputBorder(),
-                                filled: true,
+                            formCard(
+                              title: 'Клиент',
+                              child: DropdownButtonHideUnderline(
+                                child: DropdownButton<String>(
+                                  isExpanded: true,
+                                  value: filteredClients.isEmpty
+                                      ? null
+                                      : selectedClientId,
+                                  hint: const Text('Выберите клиента'),
+                                  items: filteredClients
+                                      .map(
+                                        (c) => DropdownMenuItem(
+                                          value: c.id,
+                                          child: Text(
+                                            c.name,
+                                            overflow: TextOverflow.ellipsis,
+                                          ),
+                                        ),
+                                      )
+                                      .toList(),
+                                  onChanged: filteredClients.isEmpty
+                                      ? null
+                                      : (v) => setLocalState(
+                                          () => selectedClientId =
+                                              v ?? selectedClientId,
+                                        ),
+                                ),
                               ),
                             ),
                             if (filteredClients.isEmpty)
@@ -653,7 +690,7 @@ class _CalendarScreenState extends State<CalendarScreen>
                               ),
                               const SizedBox(height: 12),
                               DropdownButtonFormField<int>(
-                                value: weeks,
+                                initialValue: weeks,
                                 items: const [
                                   DropdownMenuItem(
                                     value: 1,
@@ -892,8 +929,9 @@ class _CalendarScreenState extends State<CalendarScreen>
                 } else {
                   selectedWeekdays.add(wd);
                 }
-                if (selectedWeekdays.isEmpty)
+                if (selectedWeekdays.isEmpty) {
                   selectedWeekdays.add(startDate.weekday);
+                }
               });
             }
 
@@ -903,176 +941,352 @@ class _CalendarScreenState extends State<CalendarScreen>
               onSelected: (_) => toggleWeekday(wd),
             );
 
-            return AlertDialog(
-              title: const Text('Новый клиент'),
-              content: SingleChildScrollView(
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    TextField(
-                      controller: nameController,
-                      decoration: const InputDecoration(
-                        labelText: 'Имя',
-                        border: OutlineInputBorder(),
-                      ),
-                      autofocus: true,
+            Widget pickerField({
+              required String title,
+              required String value,
+              required VoidCallback onTap,
+            }) {
+              return InkWell(
+                onTap: onTap,
+                borderRadius: BorderRadius.circular(14),
+                child: Ink(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 12,
+                  ),
+                  decoration: BoxDecoration(
+                    border: Border.all(
+                      color: Theme.of(context).colorScheme.outlineVariant,
                     ),
-                    const SizedBox(height: 12),
-
-                    DropdownButtonFormField<String>(
-                      value: gender,
-                      items: const [
-                        DropdownMenuItem(
-                          value: 'Не указано',
-                          child: Text('Не указано'),
-                        ),
-                        DropdownMenuItem(value: 'М', child: Text('М')),
-                        DropdownMenuItem(value: 'Ж', child: Text('Ж')),
-                      ],
-                      onChanged: (v) =>
-                          setLocalState(() => gender = v ?? 'Не указано'),
-                      decoration: const InputDecoration(
-                        labelText: 'Пол',
-                        border: OutlineInputBorder(),
+                    borderRadius: BorderRadius.circular(14),
+                    color: Theme.of(context).colorScheme.surface,
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        title,
+                        style: Theme.of(context).textTheme.labelMedium,
                       ),
-                    ),
-                    const SizedBox(height: 12),
-
-                    DropdownButtonFormField<String>(
-                      value: plan,
-                      items: const [
-                        DropdownMenuItem(
-                          value: 'Пробный',
-                          child: Text('Пробный'),
-                        ),
-                        DropdownMenuItem(value: '4', child: Text('4')),
-                        DropdownMenuItem(value: '8', child: Text('8')),
-                        DropdownMenuItem(value: '12', child: Text('12')),
-                      ],
-                      onChanged: (v) =>
-                          setLocalState(() => plan = v ?? 'Пробный'),
-                      decoration: const InputDecoration(
-                        labelText: 'Абонемент',
-                        border: OutlineInputBorder(),
-                      ),
-                    ),
-                    const SizedBox(height: 12),
-
-                    InkWell(
-                      onTap: pickPlanStart,
-                      child: InputDecorator(
-                        decoration: const InputDecoration(
-                          labelText: 'Начало абонемента',
-                          border: OutlineInputBorder(),
-                        ),
-                        child: Text(
-                          DateFormat('dd.MM.yyyy', 'ru_RU').format(planStart),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 12),
-
-                    InputDecorator(
-                      decoration: const InputDecoration(
-                        labelText: 'Конец абонемента (+28 дней)',
-                        border: OutlineInputBorder(),
-                      ),
-                      child: Text(
-                        DateFormat('dd.MM.yyyy', 'ru_RU').format(planEnd),
-                      ),
-                    ),
-
-                    const SizedBox(height: 16),
-                    const Divider(),
-                    const SizedBox(height: 8),
-
-                    InkWell(
-                      onTap: pickStartDate,
-                      child: InputDecorator(
-                        decoration: const InputDecoration(
-                          labelText: 'Старт расписания (дата)',
-                          border: OutlineInputBorder(),
-                        ),
-                        child: Text(
-                          DateFormat('dd.MM.yyyy', 'ru_RU').format(startDate),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 12),
-
-                    InkWell(
-                      onTap: pickTime,
-                      child: InputDecorator(
-                        decoration: const InputDecoration(
-                          labelText: 'Время',
-                          border: OutlineInputBorder(),
-                        ),
-                        child: Text(
-                          '${time.hour.toString().padLeft(2, '0')}:${time.minute.toString().padLeft(2, '0')}',
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 12),
-                    SwitchListTile(
-                      contentPadding: EdgeInsets.zero,
-                      title: const Text('Использовать расписание'),
-                      subtitle: const Text(
-                        'Если выключено — создастся одна запись',
-                      ),
-                      value: useSchedule,
-                      onChanged: (v) => setLocalState(() => useSchedule = v),
-                    ),
-                    const SizedBox(height: 12),
-
-                    if (useSchedule) ...[
-                      const Align(
-                        alignment: Alignment.centerLeft,
-                        child: Text('Дни недели'),
-                      ),
-                      const SizedBox(height: 6),
-                      Wrap(
-                        spacing: 8,
-                        runSpacing: 8,
-                        children: [
-                          chip('Пн', 1),
-                          chip('Вт', 2),
-                          chip('Ср', 3),
-                          chip('Чт', 4),
-                          chip('Пт', 5),
-                          chip('Сб', 6),
-                          chip('Вс', 7),
-                        ],
-                      ),
-                      const SizedBox(height: 12),
-                      DropdownButtonFormField<int>(
-                        value: weeks,
-                        items: const [
-                          DropdownMenuItem(value: 1, child: Text('1 неделя')),
-                          DropdownMenuItem(value: 2, child: Text('2 недели')),
-                          DropdownMenuItem(value: 4, child: Text('4 недели')),
-                          DropdownMenuItem(value: 8, child: Text('8 недель')),
-                          DropdownMenuItem(value: 12, child: Text('12 недель')),
-                        ],
-                        onChanged: (v) => setLocalState(() => weeks = v ?? 4),
-                        decoration: const InputDecoration(
-                          labelText: 'Период',
-                          border: OutlineInputBorder(),
-                        ),
+                      const SizedBox(height: 4),
+                      Text(
+                        value,
+                        style: Theme.of(context).textTheme.titleMedium,
                       ),
                     ],
+                  ),
+                ),
+              );
+            }
+
+            Widget formCard({
+              required String title,
+              required Widget child,
+              EdgeInsetsGeometry padding = const EdgeInsets.symmetric(
+                horizontal: 12,
+                vertical: 8,
+              ),
+            }) {
+              return Container(
+                padding: padding,
+                decoration: BoxDecoration(
+                  border: Border.all(
+                    color: Theme.of(context).colorScheme.outlineVariant,
+                  ),
+                  borderRadius: BorderRadius.circular(14),
+                  color: Theme.of(context).colorScheme.surface,
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(title, style: Theme.of(context).textTheme.labelMedium),
+                    const SizedBox(height: 4),
+                    child,
                   ],
                 ),
+              );
+            }
+
+            return AnimatedPadding(
+              duration: const Duration(milliseconds: 180),
+              curve: Curves.easeOut,
+              padding: EdgeInsets.only(
+                left: 16,
+                right: 16,
+                top: 16,
+                bottom: 16 + MediaQuery.of(context).viewInsets.bottom,
               ),
-              actions: [
-                TextButton(
-                  onPressed: () => Navigator.pop(context, false),
-                  child: const Text('Отмена'),
+              child: Center(
+                child: Material(
+                  color: Theme.of(context).colorScheme.surface,
+                  borderRadius: BorderRadius.circular(30),
+                  clipBehavior: Clip.antiAlias,
+                  child: ConstrainedBox(
+                    constraints: const BoxConstraints(maxWidth: 460),
+                    child: SingleChildScrollView(
+                      child: Padding(
+                        padding: const EdgeInsets.fromLTRB(20, 20, 20, 16),
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Row(
+                              children: [
+                                Container(
+                                  width: 36,
+                                  height: 36,
+                                  decoration: BoxDecoration(
+                                    color: Theme.of(
+                                      context,
+                                    ).colorScheme.primaryContainer,
+                                    borderRadius: BorderRadius.circular(12),
+                                  ),
+                                  child: Icon(
+                                    Icons.person_add,
+                                    color: Theme.of(
+                                      context,
+                                    ).colorScheme.onPrimaryContainer,
+                                  ),
+                                ),
+                                const SizedBox(width: 12),
+                                Text(
+                                  'Новый клиент',
+                                  style: Theme.of(
+                                    context,
+                                  ).textTheme.headlineSmall,
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 16),
+                            formCard(
+                              title: 'Имя',
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 8,
+                                vertical: 6,
+                              ),
+                              child: TextField(
+                                controller: nameController,
+                                decoration: const InputDecoration(
+                                  hintText: 'Введите имя клиента',
+                                  border: InputBorder.none,
+                                  isDense: true,
+                                ),
+                                autofocus: true,
+                              ),
+                            ),
+                            const SizedBox(height: 12),
+                            formCard(
+                              title: 'Пол',
+                              child: DropdownButtonHideUnderline(
+                                child: DropdownButton<String>(
+                                  isExpanded: true,
+                                  value: gender,
+                                  items: const [
+                                    DropdownMenuItem(
+                                      value: 'Не указано',
+                                      child: Text('Не указано'),
+                                    ),
+                                    DropdownMenuItem(
+                                      value: 'М',
+                                      child: Text('М'),
+                                    ),
+                                    DropdownMenuItem(
+                                      value: 'Ж',
+                                      child: Text('Ж'),
+                                    ),
+                                  ],
+                                  onChanged: (v) =>
+                                      setLocalState(() => gender = v ?? gender),
+                                ),
+                              ),
+                            ),
+                            const SizedBox(height: 12),
+                            formCard(
+                              title: 'Абонемент',
+                              child: DropdownButtonHideUnderline(
+                                child: DropdownButton<String>(
+                                  isExpanded: true,
+                                  value: plan,
+                                  items: const [
+                                    DropdownMenuItem(
+                                      value: 'Пробный',
+                                      child: Text('Пробный'),
+                                    ),
+                                    DropdownMenuItem(
+                                      value: '4',
+                                      child: Text('4'),
+                                    ),
+                                    DropdownMenuItem(
+                                      value: '8',
+                                      child: Text('8'),
+                                    ),
+                                    DropdownMenuItem(
+                                      value: '12',
+                                      child: Text('12'),
+                                    ),
+                                  ],
+                                  onChanged: (v) =>
+                                      setLocalState(() => plan = v ?? plan),
+                                ),
+                              ),
+                            ),
+                            const SizedBox(height: 12),
+                            Row(
+                              children: [
+                                Expanded(
+                                  child: pickerField(
+                                    title: 'Начало абонемента',
+                                    value: DateFormat(
+                                      'dd.MM.yyyy',
+                                      'ru_RU',
+                                    ).format(planStart),
+                                    onTap: pickPlanStart,
+                                  ),
+                                ),
+                                const SizedBox(width: 10),
+                                Expanded(
+                                  child: formCard(
+                                    title: 'Конец абонемента (+28 дней)',
+                                    child: Text(
+                                      DateFormat(
+                                        'dd.MM.yyyy',
+                                        'ru_RU',
+                                      ).format(planEnd),
+                                      style: Theme.of(
+                                        context,
+                                      ).textTheme.titleMedium,
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 16),
+                            Row(
+                              children: [
+                                Expanded(
+                                  child: pickerField(
+                                    title: 'Дата',
+                                    value: DateFormat(
+                                      'dd.MM.yyyy',
+                                      'ru_RU',
+                                    ).format(startDate),
+                                    onTap: pickStartDate,
+                                  ),
+                                ),
+                                const SizedBox(width: 10),
+                                Expanded(
+                                  child: pickerField(
+                                    title: 'Время',
+                                    value:
+                                        '${time.hour.toString().padLeft(2, '0')}:${time.minute.toString().padLeft(2, '0')}',
+                                    onTap: pickTime,
+                                  ),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 12),
+                            Container(
+                              decoration: BoxDecoration(
+                                borderRadius: BorderRadius.circular(14),
+                                border: Border.all(
+                                  color: Theme.of(
+                                    context,
+                                  ).colorScheme.outlineVariant,
+                                ),
+                              ),
+                              child: SwitchListTile.adaptive(
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(14),
+                                ),
+                                contentPadding: const EdgeInsets.symmetric(
+                                  horizontal: 12,
+                                ),
+                                title: const Text('Использовать расписание'),
+                                subtitle: const Text(
+                                  'Если выключено — создастся одна запись',
+                                ),
+                                value: useSchedule,
+                                onChanged: (v) =>
+                                    setLocalState(() => useSchedule = v),
+                              ),
+                            ),
+                            if (useSchedule) ...[
+                              const SizedBox(height: 12),
+                              Text(
+                                'Дни недели',
+                                style: Theme.of(context).textTheme.titleSmall,
+                              ),
+                              const SizedBox(height: 8),
+                              Wrap(
+                                spacing: 8,
+                                runSpacing: 8,
+                                children: [
+                                  chip('Пн', 1),
+                                  chip('Вт', 2),
+                                  chip('Ср', 3),
+                                  chip('Чт', 4),
+                                  chip('Пт', 5),
+                                  chip('Сб', 6),
+                                  chip('Вс', 7),
+                                ],
+                              ),
+                              const SizedBox(height: 12),
+                              DropdownButtonFormField<int>(
+                                initialValue: weeks,
+                                items: const [
+                                  DropdownMenuItem(
+                                    value: 1,
+                                    child: Text('1 неделя'),
+                                  ),
+                                  DropdownMenuItem(
+                                    value: 2,
+                                    child: Text('2 недели'),
+                                  ),
+                                  DropdownMenuItem(
+                                    value: 4,
+                                    child: Text('4 недели'),
+                                  ),
+                                  DropdownMenuItem(
+                                    value: 8,
+                                    child: Text('8 недель'),
+                                  ),
+                                  DropdownMenuItem(
+                                    value: 12,
+                                    child: Text('12 недель'),
+                                  ),
+                                ],
+                                onChanged: (v) =>
+                                    setLocalState(() => weeks = v ?? 4),
+                                decoration: const InputDecoration(
+                                  labelText: 'Период',
+                                  border: OutlineInputBorder(),
+                                  filled: true,
+                                ),
+                              ),
+                            ],
+                            const SizedBox(height: 16),
+                            Row(
+                              mainAxisAlignment: MainAxisAlignment.end,
+                              children: [
+                                TextButton(
+                                  onPressed: () =>
+                                      Navigator.pop(context, false),
+                                  child: const Text('Отмена'),
+                                ),
+                                const SizedBox(width: 10),
+                                FilledButton(
+                                  onPressed: () => Navigator.pop(context, true),
+                                  child: const Text('Создать'),
+                                ),
+                              ],
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
                 ),
-                FilledButton(
-                  onPressed: () => Navigator.pop(context, true),
-                  child: const Text('Создать'),
-                ),
-              ],
+              ),
             );
           },
         );
