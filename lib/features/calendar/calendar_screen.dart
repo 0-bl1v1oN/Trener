@@ -210,7 +210,12 @@ class _CalendarScreenState extends State<CalendarScreen>
 
   void _collapseToWeek() {
     if (_calendarFormat == CalendarFormat.week) return;
-    setState(() => _calendarFormat = CalendarFormat.week);
+    setState(() {
+      _calendarFormat = CalendarFormat.week;
+      // При схлопывании всегда привязываемся к выбранному дню,
+      // иначе после листания месяцев может открыться "чужая" неделя.
+      _focusedDay = _selectedDay;
+    });
     _setCountsWindow(_focusedDay);
     _armScrollLock();
   }
