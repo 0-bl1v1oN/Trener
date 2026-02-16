@@ -364,6 +364,9 @@ class _CalendarScreenState extends State<CalendarScreen>
 
   Future<void> _addExistingClientAppointment({TimeOfDay? prefillTime}) async {
     final clients = await db.getAllClients();
+    clients.sort(
+      (a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()),
+    );
     if (!mounted) return;
 
     if (clients.isEmpty) {
@@ -375,20 +378,19 @@ class _CalendarScreenState extends State<CalendarScreen>
 
     String selectedClientId = clients.first.id;
 
-    // старт по умолчанию = выбранный день в календаре
     DateTime startDate = _selectedDay;
 
-    // время
     TimeOfDay time =
         prefillTime ?? _lastTime ?? const TimeOfDay(hour: 10, minute: 0);
 
-    // дни недели: по умолчанию = день выбранной даты
     final selectedWeekdays = <int>{_selectedDay.weekday};
-    bool useSchedule = true;
+    bool useSchedule = false;
     int weeks = 4;
+    String clientQuery = '';
 
     final ok = await showDialog<bool>(
       context: context,
+      barrierDismissible: true,
       builder: (context) {
         return StatefulBuilder(
           builder: (context, setLocalState) {
@@ -422,8 +424,9 @@ class _CalendarScreenState extends State<CalendarScreen>
                 } else {
                   selectedWeekdays.add(wd);
                 }
-                if (selectedWeekdays.isEmpty)
+                if (selectedWeekdays.isEmpty) {
                   selectedWeekdays.add(startDate.weekday);
+                }
               });
             }
 
@@ -433,119 +436,272 @@ class _CalendarScreenState extends State<CalendarScreen>
               onSelected: (_) => toggleWeekday(wd),
             );
 
-            return AlertDialog(
-              title: const Text('Записать клиента'),
-              content: SingleChildScrollView(
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    DropdownButtonFormField<String>(
-                      value: selectedClientId,
-                      items: clients
-                          .map(
-                            (c) => DropdownMenuItem(
-                              value: c.id,
-                              child: Text(c.name),
-                            ),
-                          )
-                          .toList(),
-                      onChanged: (v) => setLocalState(
-                        () => selectedClientId = v ?? selectedClientId,
-                      ),
-                      decoration: const InputDecoration(
-                        labelText: 'Клиент',
-                        border: OutlineInputBorder(),
-                      ),
-                    ),
-                    const SizedBox(height: 12),
-                    InkWell(
-                      onTap: pickStartDate,
-                      child: InputDecorator(
-                        decoration: const InputDecoration(
-                          labelText: 'Старт (дата)',
-                          border: OutlineInputBorder(),
-                        ),
-                        child: Text(
-                          DateFormat('dd.MM.yyyy', 'ru_RU').format(startDate),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 12),
+            final query = clientQuery.trim().toLowerCase();
+            final filteredClients = clients
+                .where((c) => c.name.toLowerCase().contains(query))
+                .toList();
 
-                    InkWell(
-                      onTap: pickTime,
-                      child: InputDecorator(
-                        decoration: const InputDecoration(
-                          labelText: 'Время',
-                          border: OutlineInputBorder(),
-                        ),
-                        child: Text(
-                          '${time.hour.toString().padLeft(2, '0')}:${time.minute.toString().padLeft(2, '0')}',
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 12),
+            if (filteredClients.isNotEmpty &&
+                !filteredClients.any((c) => c.id == selectedClientId)) {
+              selectedClientId = filteredClients.first.id;
+            }
 
-                    SwitchListTile(
-                      contentPadding: EdgeInsets.zero,
-                      title: const Text('Использовать расписание'),
-                      subtitle: const Text(
-                        'Если выключено — создастся одна запись',
-                      ),
-                      value: useSchedule,
-                      onChanged: (v) => setLocalState(() => useSchedule = v),
+            Widget pickerField({
+              required String title,
+              required String value,
+              required VoidCallback onTap,
+            }) {
+              return InkWell(
+                onTap: onTap,
+                borderRadius: BorderRadius.circular(14),
+                child: Ink(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 12,
+                  ),
+                  decoration: BoxDecoration(
+                    border: Border.all(
+                      color: Theme.of(context).colorScheme.outlineVariant,
                     ),
-                    const SizedBox(height: 12),
-
-                    if (useSchedule) ...[
-                      const Align(
-                        alignment: Alignment.centerLeft,
-                        child: Text('Дни недели'),
+                    borderRadius: BorderRadius.circular(14),
+                    color: Theme.of(context).colorScheme.surface,
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        title,
+                        style: Theme.of(context).textTheme.labelMedium,
                       ),
-                      const SizedBox(height: 6),
-                      Wrap(
-                        spacing: 8,
-                        runSpacing: 8,
-                        children: [
-                          chip('Пн', 1),
-                          chip('Вт', 2),
-                          chip('Ср', 3),
-                          chip('Чт', 4),
-                          chip('Пт', 5),
-                          chip('Сб', 6),
-                          chip('Вс', 7),
-                        ],
-                      ),
-                      const SizedBox(height: 12),
-                      DropdownButtonFormField<int>(
-                        value: weeks,
-                        items: const [
-                          DropdownMenuItem(value: 1, child: Text('1 неделя')),
-                          DropdownMenuItem(value: 2, child: Text('2 недели')),
-                          DropdownMenuItem(value: 4, child: Text('4 недели')),
-                          DropdownMenuItem(value: 8, child: Text('8 недель')),
-                          DropdownMenuItem(value: 12, child: Text('12 недель')),
-                        ],
-                        onChanged: (v) => setLocalState(() => weeks = v ?? 4),
-                        decoration: const InputDecoration(
-                          labelText: 'Период',
-                          border: OutlineInputBorder(),
-                        ),
-                      ),
+                    const SizedBox(height: 4),
+                      Text(value, style: Theme.of(context).textTheme.titleMedium),
                     ],
-                  ],
+                  ),
+                ),
+              );
+            }
+
+            return AnimatedPadding(
+              duration: const Duration(milliseconds: 180),
+              curve: Curves.easeOut,
+              padding: EdgeInsets.only(
+                left: 16,
+                right: 16,
+                top: 16,
+                bottom: 16 + MediaQuery.of(context).viewInsets.bottom,
+              ),
+              child: Center(
+                child: Material(
+                  color: Theme.of(context).colorScheme.surface,
+                  borderRadius: BorderRadius.circular(30),
+                  clipBehavior: Clip.antiAlias,
+                  child: ConstrainedBox(
+                    constraints: const BoxConstraints(maxWidth: 460),
+                    child: SingleChildScrollView(
+                      child: Padding(
+                        padding: const EdgeInsets.fromLTRB(20, 20, 20, 16),
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Row(
+                              children: [
+                                Container(
+                                  width: 36,
+                                  height: 36,
+                                  decoration: BoxDecoration(
+                                    color: Theme.of(context)
+                                        .colorScheme
+                                        .primaryContainer,
+                                    borderRadius: BorderRadius.circular(12),
+                                  ),
+                                  child: Icon(
+                                    Icons.person_add_alt_1,
+                                    color: Theme.of(context)
+                                        .colorScheme
+                                        .onPrimaryContainer,
+                                  ),
+                                ),
+                                const SizedBox(width: 12),
+                                Text(
+                                  'Записать клиента',
+                                  style: Theme.of(context).textTheme.headlineSmall,
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 16),
+                            TextField(
+                              decoration: const InputDecoration(
+                                hintText: 'Поиск по имени',
+                                prefixIcon: Icon(Icons.search),
+                                border: OutlineInputBorder(),
+                                filled: true,
+                              ),
+                              onChanged: (v) => setLocalState(() => clientQuery = v),
+                            ),
+                         const SizedBox(height: 12),
+                            DropdownButtonFormField<String>(
+                              value: filteredClients.isEmpty
+                                  ? null
+                                  : selectedClientId,
+                              items: filteredClients
+                                  .map(
+                                    (c) => DropdownMenuItem(
+                                      value: c.id,
+                                      child: Text(
+                                        c.name,
+                                        overflow: TextOverflow.ellipsis,
+                                      ),
+                                    ),
+                                  )
+                                  .toList(),
+                              onChanged: filteredClients.isEmpty
+                                  ? null
+                                  : (v) => setLocalState(
+                                        () => selectedClientId =
+                                            v ?? selectedClientId,
+                                      ),
+                              decoration: const InputDecoration(
+                                labelText: 'Клиент',
+                                border: OutlineInputBorder(),
+                                filled: true,
+                              ),
+                            ),
+                            if (filteredClients.isEmpty)
+                              const Padding(
+                                padding: EdgeInsets.only(top: 8),
+                                child: Text(
+                                  'Клиенты не найдены',
+                                  style: TextStyle(color: Colors.redAccent),
+                                ),
+                              ),
+                            const SizedBox(height: 12),
+                            Row(
+                              children: [
+                                Expanded(
+                                  child: pickerField(
+                                    title: 'Дата',
+                                    value: DateFormat(
+                                      'dd.MM.yyyy',
+                                      'ru_RU',
+                                    ).format(startDate),
+                                    onTap: pickStartDate,
+                                  ),
+                                ),
+                                const SizedBox(width: 10),
+                                Expanded(
+                                  child: pickerField(
+                                    title: 'Время',
+                                    value:
+                                        '${time.hour.toString().padLeft(2, '0')}:${time.minute.toString().padLeft(2, '0')}',
+                                    onTap: pickTime,
+                                  ),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 12),
+                            Container(
+                              decoration: BoxDecoration(
+                                borderRadius: BorderRadius.circular(14),
+                                border: Border.all(
+                                  color: Theme.of(context)
+                                      .colorScheme
+                                      .outlineVariant,
+                                ),
+                              ),
+                              child: SwitchListTile.adaptive(
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(14),
+                                ),
+                                contentPadding: const EdgeInsets.symmetric(
+                                  horizontal: 12,
+                                ),
+                                title: const Text('Использовать расписание'),
+                                subtitle: const Text(
+                                  'Если выключено — создастся одна запись',
+                                ),
+                                value: useSchedule,
+                                onChanged: (v) =>
+                                    setLocalState(() => useSchedule = v),
+                            ),
+                          ),
+                        if (useSchedule) ...[
+                              const SizedBox(height: 12),
+                              Text(
+                                'Дни недели',
+                                style: Theme.of(context).textTheme.titleSmall,
+                              ),
+                              const SizedBox(height: 8),
+                              Wrap(
+                                spacing: 8,
+                                runSpacing: 8,
+                                children: [
+                                  chip('Пн', 1),
+                                  chip('Вт', 2),
+                                  chip('Ср', 3),
+                                  chip('Чт', 4),
+                                  chip('Пт', 5),
+                                  chip('Сб', 6),
+                                  chip('Вс', 7),
+                                ],
+                              ),
+                              const SizedBox(height: 12),
+                              DropdownButtonFormField<int>(
+                                value: weeks,
+                                items: const [
+                                  DropdownMenuItem(
+                                    value: 1,
+                                    child: Text('1 неделя'),
+                                  ),
+                                  DropdownMenuItem(
+                                    value: 2,
+                                    child: Text('2 недели'),
+                                  ),
+                                  DropdownMenuItem(
+                                    value: 4,
+                                    child: Text('4 недели'),
+                                  ),
+                                  DropdownMenuItem(
+                                    value: 8,
+                                    child: Text('8 недель'),
+                                  ),
+                                  DropdownMenuItem(
+                                    value: 12,
+                                    child: Text('12 недель'),
+                                  ),
+                                ],
+                                onChanged: (v) =>
+                                    setLocalState(() => weeks = v ?? 4),
+                                decoration: const InputDecoration(
+                                  labelText: 'Период',
+                                  border: OutlineInputBorder(),
+                                  filled: true,
+                                ),
+                              ),
+                            ],
+                            const SizedBox(height: 16),
+                            Row(
+                              mainAxisAlignment: MainAxisAlignment.end,
+                              children: [
+                                TextButton(
+                                  onPressed: () => Navigator.pop(context, false),
+                                  child: const Text('Отмена'),
+                                ),
+                                const SizedBox(width: 10),
+                                FilledButton(
+                                  onPressed: filteredClients.isEmpty
+                                      ? null
+                                      : () => Navigator.pop(context, true),
+                                  child: const Text('Создать'),
+                                ),
+                              ],
+                            ),
+                          ],
+                        ),
+                    ),
+                    ),
                 ),
               ),
-              actions: [
-                TextButton(
-                  onPressed: () => Navigator.pop(context, false),
-                  child: const Text('Отмена'),
-                ),
-                FilledButton(
-                  onPressed: () => Navigator.pop(context, true),
-                  child: const Text('Создать'),
-                ),
-              ],
             );
           },
         );
@@ -570,10 +726,7 @@ class _CalendarScreenState extends State<CalendarScreen>
         time.hour,
         time.minute,
       );
-      await db.addAppointmentIfNotExists(
-        clientId: selectedClientId,
-        startAt: startAt,
-      );
+      await db.addAppointmentIfNotExists(clientId: selectedClientId, startAt: startAt);
     }
 
     _lastTime = time;
@@ -676,7 +829,7 @@ class _CalendarScreenState extends State<CalendarScreen>
     TimeOfDay time =
         prefillTime ?? _lastTime ?? const TimeOfDay(hour: 10, minute: 0);
     int weeks = 4;
-    bool useSchedule = true;
+    bool useSchedule = false;
 
     final ok = await showDialog<bool>(
       context: context,
