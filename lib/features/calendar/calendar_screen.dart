@@ -86,7 +86,6 @@ class _CalendarScreenState extends State<CalendarScreen>
   StreamSubscription<Map<DateTime, int>>? _workCountsSub;
   StreamSubscription<Map<DateTime, int>>? _trialCountsSub;
   StreamSubscription<Map<DateTime, int>>? _planEndCountsSub;
-  StreamSubscription<List<WorkoutSession>>? _workoutSessionsSub;
   DateTime? _countsFrom;
   DateTime? _countsTo;
 
@@ -98,7 +97,7 @@ class _CalendarScreenState extends State<CalendarScreen>
   double _dragSum = 0;
   bool _toggledThisDrag = false;
 
-  static const double _gestureThreshold = 14; // пиксели "намеренного" свайпа
+  static const double _gestureThreshold = 26; // пиксели "намеренного" свайпа
 
   // формат календаря
   // формат, который реально отрисовывает TableCalendar
@@ -118,11 +117,6 @@ class _CalendarScreenState extends State<CalendarScreen>
 
       // стартуем подписку 1 раз
       _setCountsWindow(_focusedDay);
-
-      _workoutSessionsSub = db.select(db.workoutSessions).watch().listen((_) {
-        if (!mounted) return;
-        setState(() {});
-      });
     }
   }
 
@@ -136,7 +130,6 @@ class _CalendarScreenState extends State<CalendarScreen>
     _workCountsSub?.cancel();
     _trialCountsSub?.cancel();
     _planEndCountsSub?.cancel();
-    _workoutSessionsSub?.cancel();
     _appointmentsController.dispose();
     super.dispose();
   }
@@ -230,6 +223,7 @@ class _CalendarScreenState extends State<CalendarScreen>
   }
 
   bool _onListScroll(ScrollNotification n) {
+    if (n.depth != 0 || n.metrics.axis != Axis.vertical) return false;
     if (_collapseLock) return false;
 
     // фиксируем: пользователь тащит пальцем (а не инерция)
@@ -262,7 +256,9 @@ class _CalendarScreenState extends State<CalendarScreen>
     if (_dragSum < _gestureThreshold) return false;
 
     // Вверх -> схлопываем
-    if (delta > 0 && _calendarFormat != CalendarFormat.week) {
+    if (delta > 0 &&
+        n.metrics.pixels > 8 &&
+        _calendarFormat != CalendarFormat.week) {
       _toggledThisDrag = true;
       _collapseToWeek();
       return false;
@@ -1854,8 +1850,16 @@ class _CalendarScreenState extends State<CalendarScreen>
                         child: Material(
                           type: MaterialType.transparency,
                           child: TableCalendar(
-                            // важно: явно разрешаем жесты календаря
-                            availableGestures: AvailableGestures.all,
+                            // вертикальный жест календаря отключен: формат
+                            // переключаем только прокруткой списка,
+                            // чтобы горизонтальный свайп месяца не схлопывал вид
+                            availableGestures:
+                                AvailableGestures.horizontalSwipe,
+
+                            pageAnimationCurve: Curves.easeOutCubic,
+                            pageAnimationDuration: const Duration(
+                              milliseconds: 280,
+                            ),
 
                             locale: 'ru_RU',
                             availableCalendarFormats: const {
