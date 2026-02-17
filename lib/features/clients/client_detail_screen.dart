@@ -116,6 +116,24 @@ class _ClientDetailScreenState extends State<ClientDetailScreen> {
     Navigator.pop(context);
   }
 
+  InputDecoration _fieldDecoration(
+    String label,
+    ColorScheme colors, {
+    IconData? icon,
+  }) {
+    return InputDecoration(
+      labelText: label,
+      prefixIcon: icon == null ? null : Icon(icon, size: 18),
+      filled: true,
+      fillColor: colors.surfaceContainerHighest.withOpacity(0.35),
+      border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+      enabledBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(12),
+        borderSide: BorderSide(color: colors.outlineVariant.withOpacity(0.75)),
+      ),
+    );
+  }
+
   @override
   void dispose() {
     _nameController.dispose();
@@ -146,50 +164,67 @@ class _ClientDetailScreenState extends State<ClientDetailScreen> {
         body: SingleChildScrollView(
           padding: const EdgeInsets.all(16),
           child: Column(
-            children: [
-              TextField(
-                controller: _nameController,
-                decoration: const InputDecoration(
-                  labelText: 'Имя',
-                  border: OutlineInputBorder(),
+            Card(
+                elevation: 0,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(16),
+                  side: BorderSide(color: colors.outlineVariant.withOpacity(0.7)),
                 ),
-              ),
-              const SizedBox(height: 12),
-
-              DropdownButtonFormField<String>(
-                value: _gender,
-                items: const [
-                  DropdownMenuItem(
-                    value: 'Не указано',
-                    child: Text('Не указано'),
+              child: Padding(
+                  padding: const EdgeInsets.all(12),
+                  child: Column(
+                    children: [
+                      TextField(
+                        controller: _nameController,
+                        decoration: _fieldDecoration(
+                          'Имя',
+                          colors,
+                          icon: Icons.person_outline,
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      DropdownButtonFormField<String>(
+                        value: _gender,
+                        items: const [
+                          DropdownMenuItem(
+                            value: 'Не указано',
+                            child: Text('Не указано'),
+                          ),
+                          DropdownMenuItem(value: 'М', child: Text('М')),
+                          DropdownMenuItem(value: 'Ж', child: Text('Ж')),
+                        ],
+                        onChanged: (v) =>
+                            setState(() => _gender = v ?? 'Не указано'),
+                        decoration: _fieldDecoration(
+                          'Пол',
+                          colors,
+                          icon: Icons.wc,
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      DropdownButtonFormField<String>(
+                        value: _plan,
+                        items: const [
+                          DropdownMenuItem(
+                            value: 'Пробный',
+                            child: Text('Пробный'),
+                          ),
+                          DropdownMenuItem(value: '4', child: Text('4')),
+                          DropdownMenuItem(value: '8', child: Text('8')),
+                          DropdownMenuItem(value: '12', child: Text('12')),
+                        ],
+                        onChanged: (v) => setState(() => _plan = v ?? 'Пробный'),
+                        decoration: _fieldDecoration(
+                          'Абонемент',
+                          colors,
+                          icon: Icons.confirmation_num_outlined,
+                        ),
+                      ),
+                    ],
                   ),
-                  DropdownMenuItem(value: 'М', child: Text('М')),
-                  DropdownMenuItem(value: 'Ж', child: Text('Ж')),
-                ],
-                onChanged: (v) => setState(() => _gender = v ?? 'Не указано'),
-                decoration: const InputDecoration(
-                  labelText: 'Пол',
-                  border: OutlineInputBorder(),
                 ),
               ),
               const SizedBox(height: 12),
-
-              DropdownButtonFormField<String>(
-                value: _plan,
-                items: const [
-                  DropdownMenuItem(value: 'Пробный', child: Text('Пробный')),
-                  DropdownMenuItem(value: '4', child: Text('4')),
-                  DropdownMenuItem(value: '8', child: Text('8')),
-                  DropdownMenuItem(value: '12', child: Text('12')),
-                ],
-                onChanged: (v) => setState(() => _plan = v ?? 'Пробный'),
-                decoration: const InputDecoration(
-                  labelText: 'Абонемент',
-                  border: OutlineInputBorder(),
-                ),
-              ),
-              const SizedBox(height: 12),
-
               Card(
                 elevation: 0,
                 shape: RoundedRectangleBorder(
@@ -206,18 +241,20 @@ class _ClientDetailScreenState extends State<ClientDetailScreen> {
                         onTap: _pickStartDate,
                         borderRadius: BorderRadius.circular(12),
                         child: InputDecorator(
-                          decoration: const InputDecoration(
-                            labelText: 'Начало абонемента',
-                            border: OutlineInputBorder(),
+                          decoration: _fieldDecoration(
+                            'Начало абонемента',
+                            colors,
+                            icon: Icons.event,
                           ),
                           child: Text(_fmtDate(_start)),
                         ),
                       ),
                       const SizedBox(height: 12),
                       InputDecorator(
-                        decoration: const InputDecoration(
-                          labelText: 'Конец абонемента (+28 дней)',
-                          border: OutlineInputBorder(),
+                        decoration: _fieldDecoration(
+                          'Конец абонемента (+28 дней)',
+                          colors,
+                          icon: Icons.event_available,
                         ),
                         child: Text(_fmtDate(_end)),
                       ),
@@ -256,7 +293,6 @@ class _ClientDetailScreenState extends State<ClientDetailScreen> {
                 ),
               ),
               const SizedBox(height: 16),
-
               SizedBox(
                 width: double.infinity,
                 child: FilledButton.icon(
