@@ -215,6 +215,71 @@ class ExerciseHistoryRowVm {
   ExerciseHistoryRowVm({required this.performedAt, this.weightKg, this.reps});
 }
 
+class PlanPricesVm {
+  final int plan4;
+  final int plan8;
+  final int plan12;
+
+  const PlanPricesVm({
+    required this.plan4,
+    required this.plan8,
+    required this.plan12,
+  });
+
+  int amountForPlan(String? plan) {
+    return switch (plan) {
+      '4' => plan4,
+      '8' => plan8,
+      '12' => plan12,
+      _ => 0,
+    };
+  }
+}
+
+class IncomeEntryVm {
+  final String clientName;
+  final String plan;
+  final DateTime date;
+  final int amount;
+
+  const IncomeEntryVm({
+    required this.clientName,
+    required this.plan,
+    required this.date,
+    required this.amount,
+  });
+}
+
+class ExpenseEntryVm {
+  final int id;
+  final DateTime date;
+  final int amount;
+  final String category;
+  final String? note;
+
+  const ExpenseEntryVm({
+    required this.id,
+    required this.date,
+    required this.amount,
+    required this.category,
+    this.note,
+  });
+}
+
+class IncomeMonthSummaryVm {
+  final DateTime monthStart;
+  final int income;
+  final int expenses;
+
+  const IncomeMonthSummaryVm({
+    required this.monthStart,
+    required this.income,
+    required this.expenses,
+  });
+
+  int get net => income - expenses;
+}
+
 @DriftDatabase(
   tables: [
     Clients,
@@ -2125,5 +2190,211 @@ class AppDb extends _$AppDb {
     await (update(clientProgramStates)
           ..where((t) => t.clientId.equals(clientId)))
         .write(ClientProgramStatesCompanion(cycleStartIndex: Value(newStart)));
+  }
+
+  Future<void> ensureIncomeTables() async {
+    await customStatement('''
+      CREATE TABLE IF NOT EXISTS app_plan_prices (
+        id INTEGER PRIMARY KEY CHECK (id = 1),
+        plan4 INTEGER NOT NULL,
+        plan8 INTEGER NOT NULL,
+        plan12 INTEGER NOT NULL
+      )
+    ''');
+
+    await customStatement('''
+      INSERT OR IGNORE INTO app_plan_prices (id, plan4, plan8, plan12)
+      VALUES (1, 1800, 2900, 3500)
+    ''');
+
+    await customStatement('''
+      CREATE TABLE IF NOT EXISTS app_expenses (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        happened_at TEXT NOT NULL,
+        amount INTEGER NOT NULL CHECK(amount >= 0),
+        category TEXT NOT NULL DEFAULT 'Расход',
+        note TEXT
+      )
+    ''');
+  }
+
+  Future<PlanPricesVm> getPlanPrices() async {
+    await ensureIncomeTables();
+
+    final row = await customSelect(
+      'SELECT plan4, plan8, plan12 FROM app_plan_prices WHERE id = 1',
+    ).getSingle();
+
+    return PlanPricesVm(
+      plan4: (row.data['plan4'] as int?) ?? 1800,
+      plan8: (row.data['plan8'] as int?) ?? 2900,
+      plan12: (row.data['plan12'] as int?) ?? 3500,
+    );
+  }
+
+  Future<void> savePlanPrices(PlanPricesVm prices) async {
+    await ensureIncomeTables();
+
+    await customStatement(
+      'UPDATE app_plan_prices SET plan4 = ?, plan8 = ?, plan12 = ? WHERE id = 1',
+      [prices.plan4, prices.plan8, prices.plan12],
+    );
+  }
+
+  (DateTime start, DateTime end) _monthBounds(DateTime month) {
+    final start = DateTime(month.year, month.month, 1);
+    final end = DateTime(month.year, month.month + 1, 1);
+    return (start, end);
+  }
+
+  Future<List<IncomeEntryVm>> getIncomeEntriesForMonth(DateTime month) async {
+    await ensureIncomeTables();
+    final prices = await getPlanPrices();
+    final bounds = _monthBounds(month);
+
+    final rows = await customSelect(
+      '''
+      SELECT name, plan, plan_start
+      FROM clients
+      WHERE plan IN ('4', '8', '12')
+        AND plan_start >= ?
+        AND plan_start < ?
+      ORDER BY plan_start DESC
+      ''',
+      variables: [
+        Variable.withDateTime(bounds.$1),
+        Variable.withDateTime(bounds.$2),
+      ],
+      readsFrom: {clients},
+    ).get();
+
+    return rows
+        .map((r) {
+          final plan = (r.data['plan'] as String?) ?? '';
+          return IncomeEntryVm(
+            clientName: (r.data['name'] as String?) ?? 'Клиент',
+            plan: plan,
+            date: r.read<DateTime>('plan_start'),
+            amount: prices.amountForPlan(plan),
+          );
+        })
+        .toList(growable: false);
+  }
+
+  Future<List<ExpenseEntryVm>> getExpenseEntriesForMonth(DateTime month) async {
+    await ensureIncomeTables();
+    final bounds = _monthBounds(month);
+
+    final rows = await customSelect(
+      '''
+      SELECT id, happened_at, amount, category, note
+      FROM app_expenses
+      WHERE happened_at >= ?
+        AND happened_at < ?
+      ORDER BY happened_at DESC, id DESC
+      ''',
+      variables: [
+        Variable.withDateTime(bounds.$1),
+        Variable.withDateTime(bounds.$2),
+      ],
+    ).get();
+
+    return rows
+        .map(
+          (r) => ExpenseEntryVm(
+            id: (r.data['id'] as int?) ?? 0,
+            date: r.read<DateTime>('happened_at'),
+            amount: (r.data['amount'] as int?) ?? 0,
+            category: (r.data['category'] as String?) ?? 'Расход',
+            note: r.data['note'] as String?,
+          ),
+        )
+        .toList(growable: false);
+  }
+
+  Future<void> addExpense({
+    required DateTime date,
+    required int amount,
+    required String category,
+    String? note,
+  }) async {
+    await ensureIncomeTables();
+    await customStatement(
+      'INSERT INTO app_expenses (happened_at, amount, category, note) VALUES (?, ?, ?, ?)',
+      [
+        date,
+        amount,
+        category.trim().isEmpty ? 'Расход' : category.trim(),
+        note?.trim().isEmpty == true ? null : note?.trim(),
+      ],
+    );
+  }
+
+  Future<void> deleteExpense(int id) async {
+    await ensureIncomeTables();
+    await customStatement('DELETE FROM app_expenses WHERE id = ?', [id]);
+  }
+
+  Future<List<IncomeMonthSummaryVm>> getIncomeArchive({int limit = 12}) async {
+    await ensureIncomeTables();
+    final prices = await getPlanPrices();
+
+    final rows = await customSelect(
+      '''
+      SELECT month_key,
+             SUM(income_amount) AS income,
+             SUM(expense_amount) AS expenses
+      FROM (
+        SELECT strftime('%Y-%m', plan_start) AS month_key,
+               CASE plan
+                 WHEN '4' THEN ?
+                 WHEN '8' THEN ?
+                 WHEN '12' THEN ?
+                 ELSE 0
+               END AS income_amount,
+               0 AS expense_amount
+        FROM clients
+        WHERE plan IN ('4', '8', '12')
+          AND plan_start IS NOT NULL
+
+        UNION ALL
+
+        SELECT strftime('%Y-%m', happened_at) AS month_key,
+               0 AS income_amount,
+               amount AS expense_amount
+        FROM app_expenses
+      ) t
+      WHERE month_key IS NOT NULL
+      GROUP BY month_key
+      ORDER BY month_key DESC
+      LIMIT ?
+      ''',
+      variables: [
+        Variable.withInt(prices.plan4),
+        Variable.withInt(prices.plan8),
+        Variable.withInt(prices.plan12),
+        Variable.withInt(limit),
+      ],
+      readsFrom: {clients},
+    ).get();
+
+    return rows
+        .map((r) {
+          final monthKey = (r.data['month_key'] as String?) ?? '';
+          final parts = monthKey.split('-');
+          final year = parts.isNotEmpty
+              ? int.tryParse(parts[0]) ?? DateTime.now().year
+              : DateTime.now().year;
+          final month = parts.length > 1
+              ? int.tryParse(parts[1]) ?? DateTime.now().month
+              : DateTime.now().month;
+
+          return IncomeMonthSummaryVm(
+            monthStart: DateTime(year, month, 1),
+            income: (r.data['income'] as int?) ?? 0,
+            expenses: (r.data['expenses'] as int?) ?? 0,
+          );
+        })
+        .toList(growable: false);
   }
 }

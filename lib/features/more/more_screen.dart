@@ -25,7 +25,7 @@ class MoreScreen extends StatelessWidget {
             _MenuTile(
               icon: Icons.payments_outlined,
               title: 'Доход',
-              subtitle: 'Анализ доходов и расходов (заглушка)',
+              subtitle: 'Доходы, расходы, архив и прайс абонементов',
               iconColor: colors.tertiary,
               onTap: () => context.push('/income'),
             ),
