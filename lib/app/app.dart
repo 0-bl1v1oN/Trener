@@ -138,31 +138,31 @@ class AppShell extends StatelessWidget {
     final location = uri.toString();
     if (uri.path == '/calendar' &&
         uri.queryParameters['openCategories'] == '1') {
-      return 3;
+      return 0;
     }
-    if (location.startsWith('/clients')) return 1;
-    if (location.startsWith('/programs')) return 2;
     if (location.startsWith('/more') ||
         location.startsWith('/income') ||
         location.startsWith('/records')) {
-      return 3;
+      return 0;
     }
-    return 0; // /calendar
+    if (location.startsWith('/clients')) return 2;
+    if (location.startsWith('/programs')) return 3;
+    return 1; // /calendar
   }
 
   void _onTap(BuildContext context, int index) {
     switch (index) {
       case 0:
-        context.go('/calendar');
+        context.go('/more');
         break;
       case 1:
-        context.go('/clients');
+        context.go('/calendar');
         break;
       case 2:
-        context.go('/programs');
+        context.go('/clients');
         break;
       case 3:
-        context.go('/more');
+        context.go('/programs');
         break;
     }
   }
@@ -179,6 +179,10 @@ class AppShell extends StatelessWidget {
         onDestinationSelected: (i) => _onTap(context, i),
         destinations: const [
           NavigationDestination(
+            icon: Icon(Icons.menu_rounded, size: 30),
+            label: '',
+          ),
+          NavigationDestination(
             icon: Icon(Icons.calendar_month),
             label: 'Календарь',
           ),
@@ -187,7 +191,6 @@ class AppShell extends StatelessWidget {
             icon: Icon(Icons.fitness_center),
             label: 'Программа',
           ),
-          NavigationDestination(icon: Icon(Icons.menu), label: ''),
         ],
       ),
     );
