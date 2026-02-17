@@ -164,13 +164,16 @@ class _ClientDetailScreenState extends State<ClientDetailScreen> {
         body: SingleChildScrollView(
           padding: const EdgeInsets.all(16),
           child: Column(
-            Card(
+            children: [
+              Card(
                 elevation: 0,
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(16),
-                  side: BorderSide(color: colors.outlineVariant.withOpacity(0.7)),
+                  side: BorderSide(
+                    color: colors.outlineVariant.withOpacity(0.7),
+                  ),
                 ),
-              child: Padding(
+                child: Padding(
                   padding: const EdgeInsets.all(12),
                   child: Column(
                     children: [
@@ -213,7 +216,8 @@ class _ClientDetailScreenState extends State<ClientDetailScreen> {
                           DropdownMenuItem(value: '8', child: Text('8')),
                           DropdownMenuItem(value: '12', child: Text('12')),
                         ],
-                        onChanged: (v) => setState(() => _plan = v ?? 'Пробный'),
+                        onChanged: (v) =>
+                            setState(() => _plan = v ?? 'Пробный'),
                         decoration: _fieldDecoration(
                           'Абонемент',
                           colors,
