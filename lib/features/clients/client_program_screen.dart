@@ -54,6 +54,12 @@ class _ClientProgramScreenState extends State<ClientProgramScreen> {
     await _reload();
   }
 
+  Future<void> _shiftDays(int delta) async {
+    final db = AppDbScope.of(context);
+    await db.shiftClientProgramDays(clientId: widget.clientId, delta: delta);
+    await _reload();
+  }
+
   String _templateTitleForIdx(int idx, String gender) {
     // Быстрый “человеческий” заголовок без лишних запросов:
     // М: спина/грудь/ноги по кругу, Ж: верх/низ по кругу
@@ -137,6 +143,22 @@ class _ClientProgramScreenState extends State<ClientProgramScreen> {
                         ),
                       ],
                     ),
+                    const SizedBox(height: 8),
+                    Row(
+                      children: [
+                        OutlinedButton.icon(
+                          onPressed: () => _shiftDays(-1),
+                          icon: const Icon(Icons.keyboard_double_arrow_left),
+                          label: const Text('День -1'),
+                        ),
+                        const SizedBox(width: 8),
+                        OutlinedButton.icon(
+                          onPressed: () => _shiftDays(1),
+                          icon: const Icon(Icons.keyboard_double_arrow_right),
+                          label: const Text('День +1'),
+                        ),
+                      ],
+                    ),
                     if (st.planSize == 4) ...[
                       const SizedBox(height: 8),
                       Row(
@@ -181,9 +203,7 @@ class _ClientProgramScreenState extends State<ClientProgramScreen> {
                         gender,
                       );
 
-                      final subtitle = isDone
-                          ? '✅ Выполнено'
-                          : 'Слот ${slot.slotIndex}/${st.planSize} • Тренировка ${slot.slotIndex}';
+                      final subtitle = isDone ? '✅ Выполнено' : 'Запланировано';
 
                       return Card(
                         child: ListTile(
@@ -192,7 +212,7 @@ class _ClientProgramScreenState extends State<ClientProgramScreen> {
                                 ? Icons.check_circle
                                 : Icons.radio_button_unchecked,
                           ),
-                          title: Text('$title • Тренировка ${slot.slotIndex}'),
+                          title: Text('День ${slot.slotIndex} • $title'),
                           subtitle: Text(subtitle),
                           trailing: isDone
                               ? const Icon(Icons.chevron_right)
@@ -237,8 +257,7 @@ class _ClientProgramScreenState extends State<ClientProgramScreen> {
                                   clientId: widget.clientId,
                                   day: chosenDay,
                                   templateIdx: slot.templateIdx,
-                                  title:
-                                      '$title • Тренировка ${slot.slotIndex}',
+                                  title: 'День ${slot.slotIndex} • $title',
                                 ),
                               );
                             }

@@ -1972,7 +1972,7 @@ class AppDb extends _$AppDb {
       slots.add(
         ProgramSlotVm(
           slotIndex: k + 1,
-          templateIdx: idx,
+          templateIdx: s?.templateIdx ?? idx,
           performedAt: s?.performedAt,
           sessionId: s?.id,
         ),
@@ -2000,5 +2000,29 @@ class AppDb extends _$AppDb {
     await (update(clientProgramStates)
           ..where((t) => t.clientId.equals(clientId)))
         .write(ClientProgramStatesCompanion(windowStart: Value(newStart)));
+  }
+
+  Future<void> shiftClientProgramDays({
+    required String clientId,
+    required int delta,
+  }) async {
+    await ensureProgramStateForClient(clientId);
+
+    final st = await (select(
+      clientProgramStates,
+    )..where((t) => t.clientId.equals(clientId))).getSingleOrNull();
+
+    if (st == null) return;
+
+    final c = await getClientById(clientId);
+    String gender = (c?.gender ?? 'М');
+    if (gender != 'М' && gender != 'Ж') gender = 'М';
+
+    final cycleLen = _cycleLenByGender(gender);
+    final newStart = _mod(st.cycleStartIndex + delta, cycleLen);
+
+    await (update(clientProgramStates)
+          ..where((t) => t.clientId.equals(clientId)))
+        .write(ClientProgramStatesCompanion(cycleStartIndex: Value(newStart)));
   }
 }
