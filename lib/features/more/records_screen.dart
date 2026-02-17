@@ -1,0 +1,51 @@
+import 'package:flutter/material.dart';
+
+class RecordsScreen extends StatelessWidget {
+  const RecordsScreen({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+
+    return SafeArea(
+      child: Scaffold(
+        appBar: AppBar(title: const Text('Рекорды')),
+        body: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Card(
+            elevation: 0,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(18),
+              side: BorderSide(color: colors.outlineVariant.withOpacity(0.7)),
+            ),
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Скоро здесь будет журнал рекордов',
+                    style: Theme.of(context).textTheme.titleMedium,
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    'Раздел-заглушка: можно будет сохранять лучшие веса и повторы по клиентам, чтобы не перегружать основной экран тренировок.',
+                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                      color: colors.onSurfaceVariant,
+                    ),
+                  ),
+                  const Spacer(),
+                  FilledButton.icon(
+                    onPressed: () {},
+                    icon: const Icon(Icons.note_add_outlined),
+                    label: const Text('Добавить тестовую запись'),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}

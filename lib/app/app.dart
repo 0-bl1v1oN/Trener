@@ -8,6 +8,9 @@ import '../features/clients/client_detail_screen.dart';
 import '../features/clients/client_program_screen.dart';
 import '../features/workouts/workout_screen.dart';
 import '../features/programs/defalut_programs_screen.dart';
+import '../features/more/more_screen.dart';
+import '../features/more/income_screen.dart';
+import '../features/more/records_screen.dart';
 
 import '../theme_controller.dart';
 
@@ -107,7 +110,22 @@ final GoRouter _router = GoRouter(
           pageBuilder: (context, state) =>
               const NoTransitionPage(child: DefaultProgramsScreen()),
         ),
+        GoRoute(
+          path: '/more',
+          pageBuilder: (context, state) =>
+              const NoTransitionPage(child: MoreScreen()),
+        ),
       ],
+    ),
+    GoRoute(
+      parentNavigatorKey: _rootNavKey,
+      path: '/income',
+      builder: (context, state) => const IncomeScreen(),
+    ),
+    GoRoute(
+      parentNavigatorKey: _rootNavKey,
+      path: '/records',
+      builder: (context, state) => const RecordsScreen(),
     ),
   ],
 );
@@ -124,6 +142,11 @@ class AppShell extends StatelessWidget {
     }
     if (location.startsWith('/clients')) return 1;
     if (location.startsWith('/programs')) return 2;
+    if (location.startsWith('/more') ||
+        location.startsWith('/income') ||
+        location.startsWith('/records')) {
+      return 3;
+    }
     return 0; // /calendar
   }
 
@@ -139,7 +162,7 @@ class AppShell extends StatelessWidget {
         context.go('/programs');
         break;
       case 3:
-        context.go('/calendar?openCategories=1');
+        context.go('/more');
         break;
     }
   }
@@ -164,7 +187,7 @@ class AppShell extends StatelessWidget {
             icon: Icon(Icons.fitness_center),
             label: 'Программа',
           ),
-          NavigationDestination(icon: Icon(Icons.menu), label: 'Категории'),
+          NavigationDestination(icon: Icon(Icons.menu), label: ''),
         ],
       ),
     );
