@@ -216,7 +216,7 @@ class _IncomeScreenState extends State<IncomeScreen> {
               onPressed: _load,
               icon: const Icon(Icons.refresh),
             ),
-            ,
+          ],
         ),
         floatingActionButton: FloatingActionButton.extended(
           onPressed: _openAddExpense,
@@ -242,7 +242,10 @@ class _IncomeScreenState extends State<IncomeScreen> {
                       net: _money.format(_monthNet),
                     ),
                     const SizedBox(height: 14),
-                    _BarsCard(archive: _archive.take(6).toList(), formatter: _money),
+                    _BarsCard(
+                      archive: _archive.take(6).toList(),
+                      formatter: _money,
+                    ),
                     const SizedBox(height: 14),
                     _SectionCard(
                       title: 'Поступления за месяц',
@@ -254,11 +257,15 @@ class _IncomeScreenState extends State<IncomeScreen> {
                                   .map(
                                     (e) => ListTile(
                                       contentPadding: EdgeInsets.zero,
-                                      title: Text('${e.clientName} • абонемент ${e.plan}'),
+                                      title: Text(
+                                        '${e.clientName} • абонемент ${e.plan}',
+                                      ),
                                       subtitle: Text(_dateFmt.format(e.date)),
                                       trailing: Text(
                                         _money.format(e.amount),
-                                        style: const TextStyle(fontWeight: FontWeight.w700),
+                                        style: const TextStyle(
+                                          fontWeight: FontWeight.w700,
+                                        ),
                                       ),
                                     ),
                                   )
@@ -279,7 +286,9 @@ class _IncomeScreenState extends State<IncomeScreen> {
                                       background: Container(
                                         color: colors.errorContainer,
                                         alignment: Alignment.centerRight,
-                                        padding: const EdgeInsets.only(right: 12),
+                                        padding: const EdgeInsets.only(
+                                          right: 12,
+                                        ),
                                         child: const Icon(Icons.delete_outline),
                                       ),
                                       direction: DismissDirection.endToStart,
@@ -295,7 +304,9 @@ class _IncomeScreenState extends State<IncomeScreen> {
                                         ),
                                         trailing: Text(
                                           _money.format(e.amount),
-                                          style: const TextStyle(fontWeight: FontWeight.w700),
+                                          style: const TextStyle(
+                                            fontWeight: FontWeight.w700,
+                                          ),
                                         ),
                                       ),
                                     ),
@@ -303,7 +314,7 @@ class _IncomeScreenState extends State<IncomeScreen> {
                                   .toList(),
                             ),
                     ),
-                  const SizedBox(height: 12),
+                    const SizedBox(height: 12),
                     _SectionCard(
                       title: 'Архив по месяцам',
                       icon: Icons.history,
@@ -315,7 +326,10 @@ class _IncomeScreenState extends State<IncomeScreen> {
                                     (m) => ListTile(
                                       contentPadding: EdgeInsets.zero,
                                       title: Text(
-                                        DateFormat('LLLL yyyy', 'ru_RU').format(m.monthStart),
+                                        DateFormat(
+                                          'LLLL yyyy',
+                                          'ru_RU',
+                                        ).format(m.monthStart),
                                       ),
                                       subtitle: Text(
                                         'Доход: ${_money.format(m.income)} • Расход: ${_money.format(m.expenses)}',
@@ -324,7 +338,9 @@ class _IncomeScreenState extends State<IncomeScreen> {
                                         _money.format(m.net),
                                         style: TextStyle(
                                           fontWeight: FontWeight.w700,
-                                          color: m.net >= 0 ? colors.primary : colors.error,
+                                          color: m.net >= 0
+                                              ? colors.primary
+                                              : colors.error,
                                         ),
                                       ),
                                     ),
@@ -335,13 +351,17 @@ class _IncomeScreenState extends State<IncomeScreen> {
                   ],
                 ),
               ),
-            ),
+      ),
     );
   }
 }
 
 class _MonthHeader extends StatelessWidget {
-  const _MonthHeader({required this.title, required this.onPrev, required this.onNext});
+  const _MonthHeader({
+    required this.title,
+    required this.onPrev,
+    required this.onNext,
+  });
 
   final String title;
   final VoidCallback onPrev;
@@ -366,7 +386,11 @@ class _MonthHeader extends StatelessWidget {
 }
 
 class _SummaryCards extends StatelessWidget {
-  const _SummaryCards({required this.income, required this.expenses, required this.net});
+  const _SummaryCards({
+    required this.income,
+    required this.expenses,
+    required this.net,
+  });
 
   final String income;
   final String expenses;
@@ -376,18 +400,40 @@ class _SummaryCards extends StatelessWidget {
   Widget build(BuildContext context) {
     return Row(
       children: [
-        Expanded(child: _SmallCard(title: 'Доход', value: income, icon: Icons.trending_up)),
+        Expanded(
+          child: _SmallCard(
+            title: 'Доход',
+            value: income,
+            icon: Icons.trending_up,
+          ),
+        ),
         const SizedBox(width: 8),
-        Expanded(child: _SmallCard(title: 'Расход', value: expenses, icon: Icons.trending_down)),
+        Expanded(
+          child: _SmallCard(
+            title: 'Расход',
+            value: expenses,
+            icon: Icons.trending_down,
+          ),
+        ),
         const SizedBox(width: 8),
-        Expanded(child: _SmallCard(title: 'Итог', value: net, icon: Icons.account_balance_wallet_outlined)),
+        Expanded(
+          child: _SmallCard(
+            title: 'Итог',
+            value: net,
+            icon: Icons.account_balance_wallet_outlined,
+          ),
+        ),
       ],
     );
   }
 }
 
 class _SmallCard extends StatelessWidget {
-  const _SmallCard({required this.title, required this.value, required this.icon});
+  const _SmallCard({
+    required this.title,
+    required this.value,
+    required this.icon,
+  });
 
   final String title;
   final String value;
@@ -431,7 +477,10 @@ class _BarsCard extends StatelessWidget {
     if (archive.isEmpty) return const SizedBox.shrink();
 
     final list = archive.reversed.toList();
-    final maxValue = list.fold<int>(1, (m, e) => e.net.abs() > m ? e.net.abs() : m);
+    final maxValue = list.fold<int>(
+      1,
+      (m, e) => e.net.abs() > m ? e.net.abs() : m,
+    );
 
     return Card(
       elevation: 0,
@@ -444,7 +493,10 @@ class _BarsCard extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text('Динамика (чистый результат)', style: Theme.of(context).textTheme.titleMedium),
+            Text(
+              'Динамика (чистый результат)',
+              style: Theme.of(context).textTheme.titleMedium,
+            ),
             const SizedBox(height: 12),
             SizedBox(
               height: 120,
@@ -468,12 +520,20 @@ class _BarsCard extends StatelessWidget {
                               Container(
                                 height: 70 * (e.net.abs() / maxValue),
                                 decoration: BoxDecoration(
-                                  color: e.net >= 0 ? colors.primary : colors.error,
+                                  color: e.net >= 0
+                                      ? colors.primary
+                                      : colors.error,
                                   borderRadius: BorderRadius.circular(8),
                                 ),
                               ),
                               const SizedBox(height: 4),
-                              Text(DateFormat('MM/yy', 'ru_RU').format(e.monthStart), style: Theme.of(context).textTheme.labelSmall),
+                              Text(
+                                DateFormat(
+                                  'MM/yy',
+                                  'ru_RU',
+                                ).format(e.monthStart),
+                                style: Theme.of(context).textTheme.labelSmall,
+                              ),
                             ],
                           ),
                         ),
@@ -490,7 +550,11 @@ class _BarsCard extends StatelessWidget {
 }
 
 class _SectionCard extends StatelessWidget {
-  const _SectionCard({required this.title, required this.icon, required this.child});
+  const _SectionCard({
+    required this.title,
+    required this.icon,
+    required this.child,
+  });
 
   final String title;
   final IconData icon;
