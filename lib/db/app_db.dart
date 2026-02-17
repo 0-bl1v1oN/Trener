@@ -232,6 +232,8 @@ class AppDb extends _$AppDb {
 
   bool _maleDefaultsPatched = false;
   bool _femaleDefaultsPatched = false;
+  bool _trialDefaultsPatched = false;
+  Future<void>? _templateDefaultsPatchFuture;
 
   @override
   int get schemaVersion => 6;
@@ -975,6 +977,7 @@ class AppDb extends _$AppDb {
   }
 
   Future<void> _ensureTrialDefaultsPatched() async {
+    if (_trialDefaultsPatched) return;
     final existing =
         await (select(workoutTemplates)
               ..where((t) => t.gender.equals('П') & t.idx.equals(0))
@@ -1019,12 +1022,31 @@ class AppDb extends _$AppDb {
         ),
       );
     }
+
+    _trialDefaultsPatched = true;
   }
 
   Future<void> _ensureTemplateDefaultsPatched() async {
-    await _ensureMaleDefaultsPatched();
-    await _ensureFemaleDefaultsPatched();
-    await _ensureTrialDefaultsPatched();
+    final inFlight = _templateDefaultsPatchFuture;
+    if (inFlight != null) {
+      await inFlight;
+      return;
+    }
+
+    final run = () async {
+      await _ensureMaleDefaultsPatched();
+      await _ensureFemaleDefaultsPatched();
+      await _ensureTrialDefaultsPatched();
+    }();
+
+    _templateDefaultsPatchFuture = run;
+    try {
+      await run;
+    } finally {
+      if (identical(_templateDefaultsPatchFuture, run)) {
+        _templateDefaultsPatchFuture = null;
+      }
+    }
   }
 
   Future<List<WorkoutTemplate>> getWorkoutTemplatesByGender(
