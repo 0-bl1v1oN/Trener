@@ -34,11 +34,10 @@ class _ClientProgramScreenState extends State<ClientProgramScreen> {
   Future<_ProgramData> _load(AppDb db) async {
     final client = await db.getClientById(widget.clientId);
     final overview = await db.getProgramOverview(widget.clientId);
-    final gender = (client?.gender ?? 'М');
-    return _ProgramData(
-      gender: (gender == 'Ж') ? 'Ж' : 'М',
-      overview: overview,
-    );
+    final gender = client?.plan == 'Пробный'
+        ? 'П'
+        : ((client?.gender == 'Ж') ? 'Ж' : 'М');
+    return _ProgramData(gender: gender, overview: overview);
   }
 
   Future<void> _reload() async {
@@ -66,7 +65,7 @@ class _ClientProgramScreenState extends State<ClientProgramScreen> {
     if (gender == 'М') {
       const groups = ['Спина', 'Грудь', 'Ноги'];
       return groups[idx % 3];
-    } else {
+    } else if (gender == 'Ж') {
       const groups = [
         'Спина',
         'Ноги',
@@ -79,6 +78,7 @@ class _ClientProgramScreenState extends State<ClientProgramScreen> {
       ];
       return groups[idx % 8];
     }
+    return 'Пробная';
   }
 
   @override
@@ -408,7 +408,7 @@ class _WorkoutPreviewSheetState extends State<WorkoutPreviewSheet> {
 }
 
 class _ProgramData {
-  final String gender; // 'М' / 'Ж'
+  final String gender; // 'М' / 'Ж' / 'П'
   final ProgramOverviewVm overview;
 
   _ProgramData({required this.gender, required this.overview});

@@ -449,7 +449,17 @@ class AppDb extends _$AppDb {
 
   int _mod(int x, int n) => ((x % n) + n) % n;
 
-  int _cycleLenByGender(String gender) => gender == 'Ж' ? 8 : 9;
+  String _programTrackByClient(Client c) {
+    if (c.plan == 'Пробный') return 'П';
+    final g = c.gender ?? 'М';
+    if (g == 'М' || g == 'Ж') return g;
+    return 'М';
+  }
+
+  int _cycleLenByGender(String gender) {
+    if (gender == 'П') return 1;
+    return gender == 'Ж' ? 8 : 9;
+  }
 
   DateTime _dayStart(DateTime d) => DateTime(d.year, d.month, d.day);
   DateTime _dayEnd(DateTime d) => _dayStart(d).add(const Duration(days: 1));
@@ -516,9 +526,10 @@ class AppDb extends _$AppDb {
     ];
 
     final female = _femaleTemplateDefaults();
+    final trial = _trialTemplateDefaults();
 
     await batch((b) {
-      b.insertAll(workoutTemplates, [...male, ...female]);
+      b.insertAll(workoutTemplates, [...male, ...female, ...trial]);
     });
   }
 
@@ -632,6 +643,29 @@ class AppDb extends _$AppDb {
         title: 'День 8 • Ноги',
       ),
     ];
+  }
+
+  List<WorkoutTemplatesCompanion> _trialTemplateDefaults() {
+    return <WorkoutTemplatesCompanion>[
+      WorkoutTemplatesCompanion.insert(
+        gender: 'П',
+        idx: 0,
+        label: 'Пробная',
+        title: 'Пробная тренировка',
+      ),
+    ];
+  }
+
+  Map<int, List<(String name, int? group)>> _trialExerciseDefaults() {
+    return <int, List<(String name, int? group)>>{
+      0: [
+        ('Тяга верхнего блока параллельным хватом', null),
+        ('Тяга нижнего блока самолётным хватом', null),
+        ('Жим в хамере', null),
+        ('Жим ногами', null),
+        ('Выпады на месте', null),
+      ],
+    };
   }
 
   Map<int, List<(String name, int? group)>> _maleExerciseDefaults() {
@@ -940,9 +974,57 @@ class AppDb extends _$AppDb {
     _femaleDefaultsPatched = true;
   }
 
+  Future<void> _ensureTrialDefaultsPatched() async {
+    final existing =
+        await (select(workoutTemplates)
+              ..where((t) => t.gender.equals('П') & t.idx.equals(0))
+              ..limit(1))
+            .getSingleOrNull();
+
+    final tpl = _trialTemplateDefaults().first;
+    if (existing == null) {
+      await into(workoutTemplates).insert(tpl);
+    } else {
+      await (update(
+        workoutTemplates,
+      )..where((x) => x.id.equals(existing.id))).write(
+        WorkoutTemplatesCompanion(
+          gender: Value(tpl.gender.value),
+          idx: Value(tpl.idx.value),
+          label: Value(tpl.label.value),
+          title: Value(tpl.title.value),
+        ),
+      );
+    }
+
+    final row =
+        await (select(workoutTemplates)
+              ..where((t) => t.gender.equals('П') & t.idx.equals(0))
+              ..limit(1))
+            .getSingle();
+
+    await (delete(
+      workoutTemplateExercises,
+    )..where((e) => e.templateId.equals(row.id))).go();
+
+    final plan = _trialExerciseDefaults()[0] ?? const <(String, int?)>[];
+    for (var i = 0; i < plan.length; i++) {
+      final item = plan[i];
+      await into(workoutTemplateExercises).insert(
+        WorkoutTemplateExercisesCompanion.insert(
+          templateId: row.id,
+          orderIndex: i,
+          name: item.$1,
+          groupId: item.$2 == null ? const Value.absent() : Value(item.$2!),
+        ),
+      );
+    }
+  }
+
   Future<void> _ensureTemplateDefaultsPatched() async {
     await _ensureMaleDefaultsPatched();
     await _ensureFemaleDefaultsPatched();
+    await _ensureTrialDefaultsPatched();
   }
 
   Future<List<WorkoutTemplate>> getWorkoutTemplatesByGender(
@@ -1048,6 +1130,7 @@ class AppDb extends _$AppDb {
     required String clientId,
     required DateTime day,
   }) async {
+    await _ensureTemplateDefaultsPatched();
     final c = await getClientById(clientId);
     if (c == null) {
       return WorkoutDayInfo(
@@ -1095,8 +1178,7 @@ class AppDb extends _$AppDb {
               ..limit(1))
             .getSingleOrNull();
 
-    String gender = (c.gender ?? 'М');
-    if (gender != 'М' && gender != 'Ж') gender = 'М';
+    final gender = _programTrackByClient(c);
 
     if (done != null) {
       final t =
@@ -1153,8 +1235,7 @@ class AppDb extends _$AppDb {
       clientProgramStates,
     )..where((t) => t.clientId.equals(clientId))).getSingle();
 
-    String gender = (c.gender ?? 'М');
-    if (gender != 'М' && gender != 'Ж') gender = 'М';
+    final gender = _programTrackByClient(c);
     final cycleLen = _cycleLenByGender(gender);
 
     final realIdx = _mod(st.cycleStartIndex + st.nextOffset, cycleLen);
@@ -1199,8 +1280,7 @@ class AppDb extends _$AppDb {
       clientProgramStates,
     )..where((t) => t.clientId.equals(clientId))).getSingle();
 
-    String gender = (c.gender ?? 'М');
-    if (gender != 'М' && gender != 'Ж') gender = 'М';
+    final gender = _programTrackByClient(c);
 
     // насколько “впереди” выбранный idx от текущего realIdx
     final cycleLen = _cycleLenByGender(gender);
@@ -1239,12 +1319,17 @@ class AppDb extends _$AppDb {
 
     final maleByIdx = _maleExerciseDefaults();
     final femaleByIdx = _femaleExerciseDefaults();
+    final trialByIdx = _trialExerciseDefaults();
 
-    // Для женских шаблонов пока оставляем безопасные заглушки.
     final rows = <WorkoutTemplateExercisesCompanion>[];
 
     for (final t in templates) {
-      final plan = (t.gender == 'М') ? maleByIdx[t.idx] : femaleByIdx[t.idx];
+      final plan = switch (t.gender) {
+        'М' => maleByIdx[t.idx],
+        'Ж' => femaleByIdx[t.idx],
+        'П' => trialByIdx[t.idx],
+        _ => null,
+      };
 
       for (var i = 0; i < (plan?.length ?? 0); i++) {
         final item = plan![i];
@@ -1278,8 +1363,7 @@ class AppDb extends _$AppDb {
       clientProgramStates,
     )..where((t) => t.clientId.equals(clientId))).getSingle();
 
-    String gender = (c.gender ?? 'М');
-    if (gender != 'М' && gender != 'Ж') gender = 'М';
+    final gender = _programTrackByClient(c);
     final cycleLen = _cycleLenByGender(gender);
 
     final ds = _dayStart(day);
@@ -1349,8 +1433,7 @@ class AppDb extends _$AppDb {
 
     if (st == null) return false;
 
-    String gender = (c.gender ?? 'М');
-    if (gender != 'М' && gender != 'Ж') gender = 'М';
+    final gender = _programTrackByClient(c);
     final cycleLen = _cycleLenByGender(gender);
 
     final ds = _dayStart(day);
@@ -1434,8 +1517,7 @@ class AppDb extends _$AppDb {
             .getSingleOrNull();
 
     final c = await getClientById(clientId);
-    String gender = (c?.gender ?? 'М');
-    if (gender != 'М' && gender != 'Ж') gender = 'М';
+    String gender = c == null ? 'М' : _programTrackByClient(c);
     final cycleLen = _cycleLenByGender(gender);
 
     // Определяем какой templateIdx показываем:
@@ -1533,8 +1615,7 @@ class AppDb extends _$AppDb {
       );
     }
 
-    String gender = (c.gender ?? 'М');
-    if (gender != 'М' && gender != 'Ж') gender = 'М';
+    final gender = _programTrackByClient(c);
 
     final ds = _dayStart(day);
     final de = _dayEnd(day);
@@ -1922,8 +2003,7 @@ class AppDb extends _$AppDb {
     await ensureProgramStateForClient(clientId);
 
     final c = await getClientById(clientId);
-    String gender = (c?.gender ?? 'М');
-    if (gender != 'М' && gender != 'Ж') gender = 'М';
+    String gender = c == null ? 'М' : _programTrackByClient(c);
     final cycleLen = _cycleLenByGender(gender);
 
     final st = await (select(
@@ -2015,8 +2095,7 @@ class AppDb extends _$AppDb {
     if (st == null) return;
 
     final c = await getClientById(clientId);
-    String gender = (c?.gender ?? 'М');
-    if (gender != 'М' && gender != 'Ж') gender = 'М';
+    final gender = c == null ? 'М' : _programTrackByClient(c);
 
     final cycleLen = _cycleLenByGender(gender);
     final newStart = _mod(st.cycleStartIndex + delta, cycleLen);
