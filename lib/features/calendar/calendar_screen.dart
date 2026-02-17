@@ -1632,127 +1632,162 @@ class _CalendarScreenState extends State<CalendarScreen>
   }
 
   Future<void> _openAppointmentActions(AppointmentWithClient item) async {
+    final colors = Theme.of(context).colorScheme;
+
+    Widget actionTile({
+      required IconData icon,
+      required String title,
+      String? subtitle,
+      required VoidCallback onTap,
+      Color? iconColor,
+    }) {
+      return ListTile(
+        contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 2),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+        leading: Container(
+          width: 34,
+          height: 34,
+          decoration: BoxDecoration(
+            color: (iconColor ?? colors.primary).withOpacity(0.14),
+            shape: BoxShape.circle,
+          ),
+          child: Icon(icon, color: iconColor ?? colors.primary),
+        ),
+        title: Text(title),
+        subtitle: subtitle == null ? null : Text(subtitle),
+        onTap: onTap,
+      );
+    }
+
     await showModalBottomSheet(
       context: context,
       showDragHandle: true,
+      backgroundColor: colors.surface,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
       builder: (context) => SafeArea(
-        child: Wrap(
-          children: [
-            ListTile(
-              leading: const Icon(Icons.person),
-              title: const Text('Открыть клиента'),
-              subtitle: Text(item.client.name),
-              onTap: () {
-                Navigator.pop(context);
-                context.push('/clients/${item.client.id}');
-              },
-            ),
-            ListTile(
-              leading: const Icon(Icons.edit),
-              title: const Text('Редактировать время'),
-              subtitle: Text(_fmtTime(item.appointment.startAt)),
-              onTap: () async {
-                Navigator.pop(context);
-                final initial = TimeOfDay.fromDateTime(
-                  item.appointment.startAt,
-                );
-                final picked = await _pickTime(initial);
-                if (picked == null) return;
-
-                final newStart = _combine(_selectedDay, picked);
-                await db.updateAppointmentTime(
-                  id: item.appointment.id,
-                  newStartAt: newStart,
-                );
-
-                _lastTime = picked;
-              },
-            ),
-            ListTile(
-              leading: const Icon(Icons.calendar_month),
-              title: const Text('Перенести на дату'),
-              subtitle: Text(
-                'Сейчас: ${DateFormat('dd.MM.yyyy HH:mm', 'ru_RU').format(item.appointment.startAt)}',
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(10, 0, 10, 10),
+          child: Wrap(
+            children: [
+              actionTile(
+                icon: Icons.person,
+                title: 'Открыть клиента',
+                subtitle: item.client.name,
+                onTap: () {
+                  Navigator.pop(context);
+                  context.push('/clients/${item.client.id}');
+                },
               ),
-              onTap: () async {
-                Navigator.pop(context);
+              actionTile(
+                icon: Icons.edit,
+                title: 'Редактировать время',
+                subtitle: _fmtTime(item.appointment.startAt),
+                onTap: () async {
+                  Navigator.pop(context);
+                  final initial = TimeOfDay.fromDateTime(
+                    item.appointment.startAt,
+                  );
+                  final picked = await _pickTime(initial);
+                  if (picked == null) return;
 
-                final current = item.appointment.startAt;
+                  final newStart = _combine(_selectedDay, picked);
+                  await db.updateAppointmentTime(
+                    id: item.appointment.id,
+                    newStartAt: newStart,
+                  );
 
-                final pickedDate = await showDatePicker(
-                  context: context,
-                  initialDate: DateTime(
-                    current.year,
-                    current.month,
-                    current.day,
-                  ),
-                  firstDate: DateTime(2020, 1, 1),
-                  lastDate: DateTime(2035, 12, 31),
-                  locale: const Locale('ru', 'RU'),
-                );
-                if (pickedDate == null) return;
-
-                final pickedTime = await _pickTime(
-                  TimeOfDay.fromDateTime(current),
-                );
-                if (pickedTime == null) return;
-
-                final newStart = DateTime(
-                  pickedDate.year,
-                  pickedDate.month,
-                  pickedDate.day,
-                  pickedTime.hour,
-                  pickedTime.minute,
-                );
-
-                await db.updateAppointmentTime(
-                  id: item.appointment.id,
-                  newStartAt: newStart,
-                );
-                _lastTime = pickedTime;
-              },
-            ),
-            ListTile(
-              leading: const Icon(Icons.delete_outline),
-              title: const Text('Удалить запись'),
-              onTap: () async {
-                Navigator.pop(context);
-                await db.deleteAppointmentById(item.appointment.id);
-              },
-            ),
-            ListTile(
-              leading: const Icon(Icons.check_circle_outline),
-              title: const Text('Отметить тренировку выполненной'),
-              subtitle: Text(
-                DateFormat('dd.MM.yyyy', 'ru_RU').format(_selectedDay),
+                  _lastTime = picked;
+                },
               ),
-              onTap: () async {
-                Navigator.pop(context);
+              actionTile(
+                icon: Icons.calendar_month,
+                title: 'Перенести на дату',
+                subtitle:
+                    'Сейчас: ${DateFormat('dd.MM.yyyy HH:mm', 'ru_RU').format(item.appointment.startAt)}',
+                onTap: () async {
+                  Navigator.pop(context);
 
-                // отмечаем на дату записи/выбранную дату (не "сейчас")
-                final when = DateTime(
-                  _selectedDay.year,
-                  _selectedDay.month,
-                  _selectedDay.day,
-                  12,
-                  0,
-                );
+                  final current = item.appointment.startAt;
 
-                await db.completeWorkoutForClient(
-                  clientId: item.client.id,
-                  when: when,
-                );
+                  final pickedDate = await showDatePicker(
+                    context: context,
+                    initialDate: DateTime(
+                      current.year,
+                      current.month,
+                      current.day,
+                    ),
+                    firstDate: DateTime(2020, 1, 1),
+                    lastDate: DateTime(2035, 12, 31),
+                    locale: const Locale('ru', 'RU'),
+                  );
+                  if (pickedDate == null) return;
 
-                if (!mounted) return;
+                  final pickedTime = await _pickTime(
+                    TimeOfDay.fromDateTime(current),
+                  );
+                  if (pickedTime == null) return;
 
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('Тренировка отмечена ✅')),
-                );
+                  // отмечаем на дату записи/выбранную дату (не "сейчас")
+                  final newStart = DateTime(
+                    pickedDate.year,
+                    pickedDate.month,
+                    pickedDate.day,
+                    pickedTime.hour,
+                    pickedTime.minute,
+                  );
 
-                setState(() {}); // обновит FutureBuilder в subtitle
-              },
-            ),
-          ],
+                  await db.updateAppointmentTime(
+                    id: item.appointment.id,
+                    newStartAt: newStart,
+                  );
+                  _lastTime = pickedTime;
+                },
+              ),
+              actionTile(
+                icon: Icons.delete_outline,
+                title: 'Удалить запись',
+                iconColor: colors.error,
+                onTap: () async {
+                  Navigator.pop(context);
+                  await db.deleteAppointmentById(item.appointment.id);
+                },
+              ),
+              actionTile(
+                icon: Icons.check_circle_outline,
+                title: 'Отметить тренировку выполненной',
+                subtitle: DateFormat(
+                  'dd.MM.yyyy',
+                  'ru_RU',
+                ).format(_selectedDay),
+                onTap: () async {
+                  Navigator.pop(context);
+
+                  final when = DateTime(
+                    _selectedDay.year,
+                    _selectedDay.month,
+                    _selectedDay.day,
+                    12,
+                    0,
+                  );
+
+                  await db.completeWorkoutForClient(
+                    clientId: item.client.id,
+                    when: when,
+                  );
+
+                  if (!mounted) return;
+
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('Тренировка отмечена ✅')),
+                  );
+
+                  setState(() {});
+                },
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -1810,6 +1845,7 @@ class _CalendarScreenState extends State<CalendarScreen>
   @override
   Widget build(BuildContext context) {
     final selectedLabel = _fmtDate(_selectedDay);
+    final colors = Theme.of(context).colorScheme;
     _maybeOpenCategoriesFromRoute();
 
     return SafeArea(
@@ -1845,200 +1881,224 @@ class _CalendarScreenState extends State<CalendarScreen>
                 slivers: [
                   // Календарь сверху
                   SliverToBoxAdapter(
-                    child: ClipRect(
-                      child: AnimatedSize(
-                        duration: const Duration(milliseconds: 240),
-                        curve: Curves.easeInOutCubic,
-                        alignment: Alignment.topCenter,
-                        child: Material(
-                          type: MaterialType.transparency,
-                          child: TableCalendar(
-                            // вертикальный жест календаря отключен: формат
-                            // переключаем только прокруткой списка,
-                            // чтобы горизонтальный свайп месяца не схлопывал вид
-                            availableGestures:
-                                AvailableGestures.horizontalSwipe,
-
-                            pageAnimationCurve: Curves.easeOutCubic,
-                            pageAnimationDuration: const Duration(
-                              milliseconds: 280,
+                    child: Padding(
+                      padding: const EdgeInsets.fromLTRB(12, 10, 12, 6),
+                      child: ClipRRect(
+                        borderRadius: BorderRadius.circular(24),
+                        child: AnimatedSize(
+                          duration: const Duration(milliseconds: 240),
+                          curve: Curves.easeInOutCubic,
+                          alignment: Alignment.topCenter,
+                          child: DecoratedBox(
+                            decoration: BoxDecoration(
+                              color: colors.surface,
+                              borderRadius: BorderRadius.circular(24),
+                              border: Border.all(
+                                color: colors.outlineVariant.withOpacity(0.7),
+                              ),
                             ),
+                            child: Padding(
+                              padding: const EdgeInsets.fromLTRB(8, 8, 8, 6),
+                              child: TableCalendar(
+                                // вертикальный жест календаря отключен: формат
+                                // переключаем только прокруткой списка,
+                                // чтобы горизонтальный свайп месяца не схлопывал вид
+                                availableGestures:
+                                    AvailableGestures.horizontalSwipe,
 
-                            locale: 'ru_RU',
-                            availableCalendarFormats: const {
-                              CalendarFormat.month: 'Месяц',
-                              CalendarFormat.week: 'Неделя',
-                            },
-                            calendarFormat: _calendarFormat,
+                                pageAnimationCurve: Curves.easeOutCubic,
+                                pageAnimationDuration: const Duration(
+                                  milliseconds: 280,
+                                ),
 
-                            headerStyle: HeaderStyle(
-                              formatButtonVisible: false,
-                              titleCentered: true,
-                              titleTextStyle:
-                                  Theme.of(context).textTheme.titleLarge
-                                      ?.copyWith(fontWeight: FontWeight.w600) ??
-                                  const TextStyle(fontSize: 22),
-                              leftChevronIcon: const Icon(Icons.chevron_left),
-                              rightChevronIcon: const Icon(Icons.chevron_right),
-                            ),
-                            daysOfWeekStyle: DaysOfWeekStyle(
-                              weekdayStyle:
-                                  Theme.of(context).textTheme.labelLarge
-                                      ?.copyWith(fontWeight: FontWeight.w500) ??
-                                  const TextStyle(),
-                              weekendStyle:
-                                  Theme.of(
-                                    context,
-                                  ).textTheme.labelLarge?.copyWith(
-                                    fontWeight: FontWeight.w500,
-                                    color: Theme.of(
-                                      context,
-                                    ).colorScheme.onSurfaceVariant,
-                                  ) ??
-                                  const TextStyle(),
-                            ),
-                            calendarStyle: CalendarStyle(
-                              outsideTextStyle: TextStyle(
-                                color: Theme.of(
-                                  context,
-                                ).colorScheme.onSurface.withOpacity(0.35),
-                              ),
-                              weekendTextStyle: TextStyle(
-                                color: Theme.of(
-                                  context,
-                                ).colorScheme.onSurface.withOpacity(0.85),
-                              ),
-                              defaultDecoration: const BoxDecoration(
-                                shape: BoxShape.circle,
-                              ),
-                              todayDecoration: BoxDecoration(
-                                color: Theme.of(
-                                  context,
-                                ).colorScheme.primary.withOpacity(0.18),
-                                shape: BoxShape.circle,
-                              ),
-                              selectedDecoration: BoxDecoration(
-                                color: Theme.of(context).colorScheme.primary,
-                                shape: BoxShape.circle,
-                                boxShadow: [
-                                  BoxShadow(
-                                    color: Theme.of(
-                                      context,
-                                    ).colorScheme.primary.withOpacity(0.28),
-                                    blurRadius: 10,
-                                    offset: const Offset(0, 3),
+                                locale: 'ru_RU',
+                                availableCalendarFormats: const {
+                                  CalendarFormat.month: 'Месяц',
+                                  CalendarFormat.week: 'Неделя',
+                                },
+                                calendarFormat: _calendarFormat,
+
+                                headerStyle: HeaderStyle(
+                                  formatButtonVisible: false,
+                                  titleCentered: true,
+                                  titleTextStyle:
+                                      Theme.of(
+                                        context,
+                                      ).textTheme.titleLarge?.copyWith(
+                                        fontWeight: FontWeight.w700,
+                                      ) ??
+                                      const TextStyle(fontSize: 22),
+                                  leftChevronIcon: Icon(
+                                    Icons.chevron_left,
+                                    color: colors.onSurface,
                                   ),
-                                ],
-                              ),
-                              markersAlignment: Alignment.bottomCenter,
-                              markersMaxCount: 3,
-                              markerMargin: const EdgeInsets.symmetric(
-                                horizontal: 1.5,
-                              ),
-                            ),
-
-                            firstDay: DateTime.utc(2020, 1, 1),
-                            lastDay: DateTime.utc(2035, 12, 31),
-                            focusedDay: _focusedDay,
-
-                            startingDayOfWeek: StartingDayOfWeek.monday,
-                            selectedDayPredicate: (day) =>
-                                isSameDay(_selectedDay, day),
-
-                            onDaySelected: (selectedDay, focusedDay) {
-                              setState(() {
-                                _selectedDay = DateTime(
-                                  selectedDay.year,
-                                  selectedDay.month,
-                                  selectedDay.day,
-                                );
-                                _focusedDay = focusedDay;
-                              });
-                            },
-
-                            onPageChanged: (focusedDay) {
-                              setState(() => _focusedDay = focusedDay);
-                              _setCountsWindow(focusedDay);
-                            },
-
-                            eventLoader: (day) {
-                              final key = DateTime(
-                                day.year,
-                                day.month,
-                                day.day,
-                              );
-                              final visibleWork =
-                                  _isCategoryVisible(_workCategoryId)
-                                  ? (_workApptCountByDay[key] ?? 0)
-                                  : 0;
-                              final visibleTrial =
-                                  _isCategoryVisible(_trialCategoryId)
-                                  ? (_trialApptCountByDay[key] ?? 0)
-                                  : 0;
-                              final planEnd = _planEndCountByDay[key] ?? 0;
-                              final total =
-                                  visibleWork + visibleTrial + planEnd;
-                              return List.filled(total, 1);
-                            },
-
-                            calendarBuilders: CalendarBuilders(
-                              markerBuilder: (context, day, events) {
-                                final key = DateTime(
-                                  day.year,
-                                  day.month,
-                                  day.day,
-                                );
-                                final markers = <Color>[];
-
-                                if (_isCategoryVisible(_workCategoryId) &&
-                                    (_workApptCountByDay[key] ?? 0) > 0) {
-                                  markers.add(
-                                    _categoryColor(
-                                      _workCategoryId,
-                                      Theme.of(context).colorScheme.primary,
-                                    ),
-                                  );
-                                }
-
-                                if (_isCategoryVisible(_trialCategoryId) &&
-                                    (_trialApptCountByDay[key] ?? 0) > 0) {
-                                  markers.add(
-                                    _categoryColor(
-                                      _trialCategoryId,
-                                      const Color(0xFFFF9F43),
-                                    ),
-                                  );
-                                }
-
-                                if ((_planEndCountByDay[key] ?? 0) > 0) {
-                                  markers.add(Colors.redAccent);
-                                }
-
-                                if (markers.isEmpty) return null;
-
-                                return IgnorePointer(
-                                  child: Align(
-                                    alignment: Alignment.bottomCenter,
-                                    child: Padding(
-                                      padding: const EdgeInsets.only(bottom: 4),
-                                      child: Wrap(
-                                        spacing: 3,
-                                        children: [
-                                          for (final color in markers.take(3))
-                                            Container(
-                                              width: 6,
-                                              height: 6,
-                                              decoration: BoxDecoration(
-                                                color: color,
-                                                shape: BoxShape.circle,
-                                              ),
-                                            ),
-                                        ],
+                                  rightChevronIcon: Icon(
+                                    Icons.chevron_right,
+                                    color: colors.onSurface,
+                                  ),
+                                ),
+                                daysOfWeekStyle: DaysOfWeekStyle(
+                                  weekdayStyle:
+                                      Theme.of(
+                                        context,
+                                      ).textTheme.labelLarge?.copyWith(
+                                        fontWeight: FontWeight.w600,
+                                      ) ??
+                                      const TextStyle(),
+                                  weekendStyle:
+                                      Theme.of(
+                                        context,
+                                      ).textTheme.labelLarge?.copyWith(
+                                        fontWeight: FontWeight.w600,
+                                        color: colors.onSurfaceVariant,
+                                      ) ??
+                                      const TextStyle(),
+                                ),
+                                calendarStyle: CalendarStyle(
+                                  outsideTextStyle: TextStyle(
+                                    color: colors.onSurface.withOpacity(0.35),
+                                  ),
+                                  weekendTextStyle: TextStyle(
+                                    color: colors.onSurface.withOpacity(0.85),
+                                  ),
+                                  defaultDecoration: const BoxDecoration(
+                                    shape: BoxShape.circle,
+                                  ),
+                                  todayDecoration: BoxDecoration(
+                                    color: colors.primary.withOpacity(0.18),
+                                    shape: BoxShape.circle,
+                                  ),
+                                  selectedDecoration: BoxDecoration(
+                                    color: colors.primary,
+                                    shape: BoxShape.circle,
+                                    boxShadow: [
+                                      BoxShadow(
+                                        color: colors.primary.withOpacity(0.28),
+                                        blurRadius: 10,
+                                        offset: const Offset(0, 3),
                                       ),
-                                    ),
+                                    ],
                                   ),
-                                );
-                              },
+                                  markersAlignment: Alignment.bottomCenter,
+                                  markersMaxCount: 3,
+                                  markerDecoration: BoxDecoration(
+                                    color: colors.primary,
+                                    shape: BoxShape.circle,
+                                  ),
+                                  markerSize: 6,
+                                  markerMargin: const EdgeInsets.symmetric(
+                                    horizontal: 1.5,
+                                  ),
+                                ),
+
+                                firstDay: DateTime.utc(2020, 1, 1),
+                                lastDay: DateTime.utc(2035, 12, 31),
+                                focusedDay: _focusedDay,
+
+                                startingDayOfWeek: StartingDayOfWeek.monday,
+                                selectedDayPredicate: (day) =>
+                                    isSameDay(_selectedDay, day),
+
+                                onDaySelected: (selectedDay, focusedDay) {
+                                  setState(() {
+                                    _selectedDay = DateTime(
+                                      selectedDay.year,
+                                      selectedDay.month,
+                                      selectedDay.day,
+                                    );
+                                    _focusedDay = focusedDay;
+                                  });
+                                },
+
+                                onPageChanged: (focusedDay) {
+                                  setState(() => _focusedDay = focusedDay);
+                                  _setCountsWindow(focusedDay);
+                                },
+
+                                eventLoader: (day) {
+                                  final key = DateTime(
+                                    day.year,
+                                    day.month,
+                                    day.day,
+                                  );
+                                  final visibleWork =
+                                      _isCategoryVisible(_workCategoryId)
+                                      ? (_workApptCountByDay[key] ?? 0)
+                                      : 0;
+                                  final visibleTrial =
+                                      _isCategoryVisible(_trialCategoryId)
+                                      ? (_trialApptCountByDay[key] ?? 0)
+                                      : 0;
+                                  final planEnd = _planEndCountByDay[key] ?? 0;
+                                  final total =
+                                      visibleWork + visibleTrial + planEnd;
+                                  return List.filled(total, 1);
+                                },
+
+                                calendarBuilders: CalendarBuilders(
+                                  markerBuilder: (context, day, events) {
+                                    final key = DateTime(
+                                      day.year,
+                                      day.month,
+                                      day.day,
+                                    );
+                                    final markers = <Color>[];
+
+                                    if (_isCategoryVisible(_workCategoryId) &&
+                                        (_workApptCountByDay[key] ?? 0) > 0) {
+                                      markers.add(
+                                        _categoryColor(
+                                          _workCategoryId,
+                                          Theme.of(context).colorScheme.primary,
+                                        ),
+                                      );
+                                    }
+
+                                    if (_isCategoryVisible(_trialCategoryId) &&
+                                        (_trialApptCountByDay[key] ?? 0) > 0) {
+                                      markers.add(
+                                        _categoryColor(
+                                          _trialCategoryId,
+                                          const Color(0xFFFF9F43),
+                                        ),
+                                      );
+                                    }
+
+                                    if ((_planEndCountByDay[key] ?? 0) > 0) {
+                                      markers.add(Colors.redAccent);
+                                    }
+
+                                    if (markers.isEmpty) return null;
+
+                                    return IgnorePointer(
+                                      child: Align(
+                                        alignment: Alignment.bottomCenter,
+                                        child: Padding(
+                                          padding: const EdgeInsets.only(
+                                            bottom: 4,
+                                          ),
+                                          child: Wrap(
+                                            spacing: 3,
+                                            children: [
+                                              for (final color in markers.take(
+                                                3,
+                                              ))
+                                                Container(
+                                                  width: 6,
+                                                  height: 6,
+                                                  decoration: BoxDecoration(
+                                                    color: color,
+                                                    shape: BoxShape.circle,
+                                                  ),
+                                                ),
+                                            ],
+                                          ),
+                                        ),
+                                      ),
+                                    );
+                                  },
+                                ),
+                              ),
                             ),
                           ),
                         ),
@@ -2046,7 +2106,7 @@ class _CalendarScreenState extends State<CalendarScreen>
                     ),
                   ),
 
-                  const SliverToBoxAdapter(child: Divider(height: 1)),
+                  const SliverToBoxAdapter(child: SizedBox(height: 4)),
 
                   // Заголовок (скроллится вместе со списком)
                   SliverToBoxAdapter(
@@ -2076,11 +2136,26 @@ class _CalendarScreenState extends State<CalendarScreen>
                     SliverList(
                       delegate: SliverChildBuilderDelegate((context, i) {
                         final it = items[i];
-                        return Column(
-                          children: [
-                            ListTile(
+                        return Padding(
+                          padding: const EdgeInsets.fromLTRB(12, 0, 12, 10),
+                          child: Card(
+                            elevation: 0,
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(16),
+                              side: BorderSide(
+                                color: colors.outlineVariant.withOpacity(0.7),
+                              ),
+                            ),
+                            child: ListTile(
+                              contentPadding: const EdgeInsets.fromLTRB(
+                                14,
+                                8,
+                                8,
+                                8,
+                              ),
                               title: Text(
                                 '${_fmtTime(it.appointment.startAt)} • ${it.client.name}',
+                                style: Theme.of(context).textTheme.titleMedium,
                               ),
                               subtitle: FutureBuilder<WorkoutDayInfo>(
                                 future: db.getWorkoutInfoForClientOnDay(
@@ -2114,7 +2189,7 @@ class _CalendarScreenState extends State<CalendarScreen>
                                 builder: (context, snap) {
                                   final done = snap.data?.doneToday == true;
 
-                                  return IconButton(
+                                  return IconButton.filledTonal(
                                     icon: Icon(
                                       done
                                           ? Icons.check_circle
@@ -2143,8 +2218,7 @@ class _CalendarScreenState extends State<CalendarScreen>
                               },
                               onLongPress: () => _openAppointmentActions(it),
                             ),
-                            const Divider(height: 1),
-                          ],
+                          ),
                         );
                       }, childCount: items.length),
                     ),
