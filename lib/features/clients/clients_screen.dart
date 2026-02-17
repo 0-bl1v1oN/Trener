@@ -66,7 +66,6 @@ class _ClientsScreenState extends State<ClientsScreen> {
                       autofocus: true,
                     ),
                     const SizedBox(height: 12),
-
                     DropdownButtonFormField<String>(
                       value: gender,
                       items: const [
@@ -84,7 +83,6 @@ class _ClientsScreenState extends State<ClientsScreen> {
                       decoration: const InputDecoration(labelText: 'Пол'),
                     ),
                     const SizedBox(height: 12),
-
                     DropdownButtonFormField<String>(
                       value: plan,
                       items: const [
@@ -103,7 +101,6 @@ class _ClientsScreenState extends State<ClientsScreen> {
                       decoration: const InputDecoration(labelText: 'Абонемент'),
                     ),
                     const SizedBox(height: 12),
-
                     InkWell(
                       onTap: pickStartDate,
                       child: InputDecorator(
@@ -115,7 +112,6 @@ class _ClientsScreenState extends State<ClientsScreen> {
                       ),
                     ),
                     const SizedBox(height: 12),
-
                     InputDecorator(
                       decoration: const InputDecoration(
                         labelText: 'Конец абонемента (+28 дней)',
@@ -192,6 +188,8 @@ class _ClientsScreenState extends State<ClientsScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+
     return SafeArea(
       child: Scaffold(
         appBar: AppBar(
@@ -210,43 +208,140 @@ class _ClientsScreenState extends State<ClientsScreen> {
             if (snap.connectionState != ConnectionState.done) {
               return const Center(child: CircularProgressIndicator());
             }
+
             final clients = snap.data ?? const <Client>[];
             if (clients.isEmpty) {
-              return const Center(child: Text('Клиентов пока нет'));
+              return Center(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(
+                      Icons.group_outlined,
+                      size: 48,
+                      color: colors.onSurfaceVariant,
+                    ),
+                    const SizedBox(height: 10),
+                    Text(
+                      'Клиентов пока нет',
+                      style: Theme.of(context).textTheme.titleMedium,
+                    ),
+                    const SizedBox(height: 6),
+                    Text(
+                      'Нажми «+», чтобы добавить первого клиента',
+                      style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                        color: colors.onSurfaceVariant,
+                      ),
+                    ),
+                  ],
+                ),
+              );
             }
 
             return ListView.separated(
+              padding: const EdgeInsets.fromLTRB(12, 12, 12, 20),
               itemCount: clients.length,
-              separatorBuilder: (_, __) => const Divider(height: 1),
+              separatorBuilder: (_, __) => const SizedBox(height: 10),
               itemBuilder: (context, index) {
                 final c = clients[index];
-
-                final parts = <String>[];
-                if (c.gender != null) parts.add('Пол: ${c.gender}');
-                if (c.plan != null) parts.add('Абонемент: ${c.plan}');
-                if (c.planStart != null && c.planEnd != null) {
-                  parts.add(
-                    '${_fmtDate(c.planStart!)} – ${_fmtDate(c.planEnd!)}',
-                  );
-                }
-
-                return ListTile(
-                  title: Text(c.name),
-                  subtitle: parts.isEmpty ? null : Text(parts.join(' • ')),
+                return _ClientCard(
+                  client: c,
+                  dateText: (c.planStart != null && c.planEnd != null)
+                      ? '${_fmtDate(c.planStart!)} – ${_fmtDate(c.planEnd!)}'
+                      : null,
                   onTap: () async {
                     await context.push('/clients/${c.id}');
                     if (!mounted) return;
-                    setState(() {}); // обновить список после возврата
+                    setState(() {});
                   },
-                  trailing: IconButton(
-                    icon: const Icon(Icons.delete_outline),
-                    tooltip: 'Удалить',
-                    onPressed: () => _deleteClient(c.id),
-                  ),
+                  onDelete: () => _deleteClient(c.id),
                 );
               },
             );
           },
+        ),
+      ),
+    );
+  }
+}
+
+class _ClientCard extends StatelessWidget {
+  const _ClientCard({
+    required this.client,
+    required this.onTap,
+    required this.onDelete,
+    this.dateText,
+  });
+
+  final Client client;
+  final VoidCallback onTap;
+  final VoidCallback onDelete;
+  final String? dateText;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    final subtitleParts = <String>[];
+
+    if (client.gender != null) {
+      subtitleParts.add('Пол: ${client.gender}');
+    }
+    if (client.plan != null) {
+      subtitleParts.add('Абонемент: ${client.plan}');
+    }
+
+    return Card(
+      elevation: 0,
+      color: colors.surface,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(16),
+        side: BorderSide(color: colors.outlineVariant.withOpacity(0.7)),
+      ),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(16),
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(14, 12, 8, 12),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      client.name,
+                      style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    if (subtitleParts.isNotEmpty)
+                      Text(
+                        subtitleParts.join(' • '),
+                        style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                          color: colors.onSurfaceVariant,
+                        ),
+                      ),
+                    if (dateText != null) ...[
+                      const SizedBox(height: 2),
+                      Text(
+                        dateText!,
+                        style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                          color: colors.onSurfaceVariant,
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+              IconButton(
+                icon: const Icon(Icons.delete_outline),
+                tooltip: 'Удалить',
+                color: colors.error,
+                onPressed: onDelete,
+              ),
+            ],
+          ),
         ),
       ),
     );
