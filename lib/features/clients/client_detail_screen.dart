@@ -23,10 +23,25 @@ class _ClientDetailScreenState extends State<ClientDetailScreen> {
   String _plan = 'Пробный';
   DateTime _start = DateTime.now();
   DateTime _end = DateTime.now().add(const Duration(days: 28));
+  int _completedInPlan = 0;
 
   bool _loaded = false;
 
   String _fmtDate(DateTime d) => DateFormat('dd.MM.yyyy', 'ru_RU').format(d);
+
+  int _planSize(String value) {
+    if (value == 'Пробный') return 1;
+    return int.tryParse(value) ?? 0;
+  }
+
+  int _remainingSessions() {
+    final size = _planSize(_plan);
+    if (size <= 0) return 0;
+
+    final completedInBundle = _completedInPlan % size;
+    if (completedInBundle == 0 && _completedInPlan > 0) return 0;
+    return size - completedInBundle;
+  }
 
   @override
   void didChangeDependencies() {
@@ -40,6 +55,7 @@ class _ClientDetailScreenState extends State<ClientDetailScreen> {
 
   Future<void> _load() async {
     final c = await db.getClientById(widget.clientId);
+    final overview = await db.getProgramOverview(widget.clientId);
     if (!mounted) return;
 
     if (c == null) {
@@ -54,6 +70,7 @@ class _ClientDetailScreenState extends State<ClientDetailScreen> {
       _plan = c.plan ?? 'Пробный';
       _start = c.planStart ?? DateTime.now();
       _end = c.planEnd ?? _start.add(const Duration(days: 28));
+      _completedInPlan = overview.st.completedInPlan;
     });
   }
 
@@ -107,19 +124,26 @@ class _ClientDetailScreenState extends State<ClientDetailScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+
     return SafeArea(
       child: Scaffold(
-        appBar: AppBar(
-          title: const Text('Клиент'),
-          actions: [
-            IconButton(
-              onPressed: _save,
-              icon: const Icon(Icons.save),
-              tooltip: 'Сохранить',
+        appBar: AppBar(title: const Text('Клиент')),
+        bottomNavigationBar: SafeArea(
+          top: false,
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
+            child: SizedBox(
+              height: 50,
+              child: ElevatedButton.icon(
+                onPressed: _save,
+                icon: const Icon(Icons.save_outlined),
+                label: const Text('Сохранить'),
+              ),
             ),
-          ],
+          ),
         ),
-        body: Padding(
+        body: SingleChildScrollView(
           padding: const EdgeInsets.all(16),
           child: Column(
             children: [
@@ -166,24 +190,70 @@ class _ClientDetailScreenState extends State<ClientDetailScreen> {
               ),
               const SizedBox(height: 12),
 
-              InkWell(
-                onTap: _pickStartDate,
-                child: InputDecorator(
-                  decoration: const InputDecoration(
-                    labelText: 'Начало абонемента',
-                    border: OutlineInputBorder(),
+              Card(
+                elevation: 0,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(16),
+                  side: BorderSide(
+                    color: colors.outlineVariant.withOpacity(0.7),
                   ),
-                  child: Text(_fmtDate(_start)),
                 ),
-              ),
-              const SizedBox(height: 12),
-
-              InputDecorator(
-                decoration: const InputDecoration(
-                  labelText: 'Конец абонемента (+28 дней)',
-                  border: OutlineInputBorder(),
+                child: Padding(
+                  padding: const EdgeInsets.all(12),
+                  child: Column(
+                    children: [
+                      InkWell(
+                        onTap: _pickStartDate,
+                        borderRadius: BorderRadius.circular(12),
+                        child: InputDecorator(
+                          decoration: const InputDecoration(
+                            labelText: 'Начало абонемента',
+                            border: OutlineInputBorder(),
+                          ),
+                          child: Text(_fmtDate(_start)),
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      InputDecorator(
+                        decoration: const InputDecoration(
+                          labelText: 'Конец абонемента (+28 дней)',
+                          border: OutlineInputBorder(),
+                        ),
+                        child: Text(_fmtDate(_end)),
+                      ),
+                      const SizedBox(height: 12),
+                      Container(
+                        width: double.infinity,
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 12,
+                          vertical: 10,
+                        ),
+                        decoration: BoxDecoration(
+                          color: colors.primaryContainer.withOpacity(0.55),
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: Row(
+                          children: [
+                            Icon(
+                              Icons.fitness_center,
+                              size: 18,
+                              color: colors.onPrimaryContainer,
+                            ),
+                            const SizedBox(width: 8),
+                            Text(
+                              'Осталось занятий: ${_remainingSessions()}',
+                              style: Theme.of(context).textTheme.titleSmall
+                                  ?.copyWith(
+                                    color: colors.onPrimaryContainer,
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
-                child: Text(_fmtDate(_end)),
               ),
               const SizedBox(height: 16),
 
@@ -196,8 +266,6 @@ class _ClientDetailScreenState extends State<ClientDetailScreen> {
                   label: const Text('Программа'),
                 ),
               ),
-
-              const Text('Нажми 💾 чтобы сохранить изменения.'),
             ],
           ),
         ),
