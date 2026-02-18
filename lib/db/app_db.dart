@@ -301,6 +301,22 @@ class ContestEntryVm {
   int get attemptsLeft => (maxAttempts - usedAttempts).clamp(0, maxAttempts);
 }
 
+class ContestPrizeVm {
+  final int id;
+  final String title;
+  final double weight;
+  final bool isGood;
+  final int sortOrder;
+
+  const ContestPrizeVm({
+    required this.id,
+    required this.title,
+    required this.weight,
+    required this.isGood,
+    required this.sortOrder,
+  });
+}
+
 class ContestWinnerVm {
   final String clientId;
   final String clientName;
@@ -2515,6 +2531,125 @@ class AppDb extends _$AppDb {
         PRIMARY KEY (event_key, client_id)
       )
     ''');
+
+    await customStatement('''
+      CREATE TABLE IF NOT EXISTS app_contest_prizes (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        event_key TEXT NOT NULL,
+        title TEXT NOT NULL,
+        weight REAL NOT NULL,
+        is_good INTEGER NOT NULL DEFAULT 0,
+        sort_order INTEGER NOT NULL DEFAULT 0
+      )
+    ''');
+  }
+
+  Future<List<ContestPrizeVm>> getContestPrizes({
+    required String eventKey,
+  }) async {
+    await ensureContestTables();
+
+    final rows = await customSelect(
+      '''
+      SELECT id, title, weight, is_good, sort_order
+      FROM app_contest_prizes
+      WHERE event_key = ?
+      ORDER BY sort_order ASC, id ASC
+      ''',
+      variables: [Variable.withString(eventKey)],
+    ).get();
+
+    return rows
+        .map(
+          (r) => ContestPrizeVm(
+            id: (r.data['id'] as int?) ?? 0,
+            title: (r.data['title'] as String?) ?? 'Приз',
+            weight:
+                (r.data['weight'] as double?) ??
+                ((r.data['weight'] as num?)?.toDouble() ?? 0),
+            isGood: ((r.data['is_good'] as int?) ?? 0) == 1,
+            sortOrder: (r.data['sort_order'] as int?) ?? 0,
+          ),
+        )
+        .toList(growable: false);
+  }
+
+  Future<void> replaceContestPrizes({
+    required String eventKey,
+    required List<ContestPrizeVm> prizes,
+  }) async {
+    await ensureContestTables();
+
+    await transaction(() async {
+      await customStatement(
+        'DELETE FROM app_contest_prizes WHERE event_key = ?',
+        [eventKey],
+      );
+
+      for (var i = 0; i < prizes.length; i++) {
+        final p = prizes[i];
+        await customStatement(
+          '''
+          INSERT INTO app_contest_prizes (event_key, title, weight, is_good, sort_order)
+          VALUES (?, ?, ?, ?, ?)
+          ''',
+          [eventKey, p.title, p.weight, p.isGood ? 1 : 0, i],
+        );
+      }
+    });
+  }
+
+  Future<void> upsertContestPrize({
+    required String eventKey,
+    int? id,
+    required String title,
+    required double weight,
+    required bool isGood,
+    required int sortOrder,
+  }) async {
+    await ensureContestTables();
+
+    if (id == null || id <= 0) {
+      await customStatement(
+        '''
+        INSERT INTO app_contest_prizes (event_key, title, weight, is_good, sort_order)
+        VALUES (?, ?, ?, ?, ?)
+        ''',
+        [eventKey, title, weight, isGood ? 1 : 0, sortOrder],
+      );
+      return;
+    }
+
+    await customStatement(
+      '''
+      UPDATE app_contest_prizes
+      SET title = ?, weight = ?, is_good = ?, sort_order = ?
+      WHERE id = ? AND event_key = ?
+      ''',
+      [title, weight, isGood ? 1 : 0, sortOrder, id, eventKey],
+    );
+  }
+
+  Future<void> deleteContestPrize({
+    required String eventKey,
+    required int id,
+  }) async {
+    await ensureContestTables();
+    await customStatement(
+      'DELETE FROM app_contest_prizes WHERE event_key = ? AND id = ?',
+      [eventKey, id],
+    );
+  }
+
+  Future<void> resetContestParticipant({
+    required String eventKey,
+    required String clientId,
+  }) async {
+    await ensureContestTables();
+    await customStatement(
+      'DELETE FROM app_contest_entries WHERE event_key = ? AND client_id = ?',
+      [eventKey, clientId],
+    );
   }
 
   Future<ContestEntryVm?> getContestEntry({

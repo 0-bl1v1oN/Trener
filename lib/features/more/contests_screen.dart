@@ -22,6 +22,7 @@ class _ContestsScreenState extends State<ContestsScreen>
 
   List<Client> _clients = const [];
   List<ContestWinnerVm> _winners = const [];
+  List<_PrizeItem> _prizes = const [];
 
   String? _selectedClientId;
   ContestEntryVm? _entry;
@@ -34,17 +35,62 @@ class _ContestsScreenState extends State<ContestsScreen>
   double _wheelTurns = 0;
   int _selectedIndex = 0;
 
-  final List<_PrizeItem> _prizes = const [
-    _PrizeItem('Суперприз: абонемент на месяц 🎉', 0.02, true),
-    _PrizeItem('Скидка 50% на следующий абонемент', 0.14, true),
-    _PrizeItem('Бесплатная персональная тренировка', 0.14, true),
-    _PrizeItem('Спортивный шейкер в подарок', 0.14, true),
-    _PrizeItem('Протеиновый батончик + вода', 0.14, true),
-    _PrizeItem('Доп. разминка 5 минут 😅', 0.084, false),
-    _PrizeItem('10 бурпи после тренировки', 0.084, false),
-    _PrizeItem('Планка +60 секунд', 0.084, false),
-    _PrizeItem('5 приседаний с паузой', 0.084, false),
-    _PrizeItem('Селфи с тренером для архива 😄', 0.084, false),
+  static const List<_PrizeItem> _defaultPrizes = [
+    _PrizeItem(
+      id: 0,
+      title: 'Суперприз: абонемент на месяц 🎉',
+      weight: 0.02,
+      isGood: true,
+    ),
+    _PrizeItem(
+      id: 0,
+      title: 'Скидка 50% на следующий абонемент',
+      weight: 0.14,
+      isGood: true,
+    ),
+    _PrizeItem(
+      id: 0,
+      title: 'Бесплатная персональная тренировка',
+      weight: 0.14,
+      isGood: true,
+    ),
+    _PrizeItem(
+      id: 0,
+      title: 'Спортивный шейкер в подарок',
+      weight: 0.14,
+      isGood: true,
+    ),
+    _PrizeItem(
+      id: 0,
+      title: 'Протеиновый батончик + вода',
+      weight: 0.12,
+      isGood: true,
+    ),
+    _PrizeItem(
+      id: 0,
+      title: 'Доп. разминка 5 минут 😅',
+      weight: 0.088,
+      isGood: false,
+    ),
+    _PrizeItem(
+      id: 0,
+      title: '10 бурпи после тренировки',
+      weight: 0.088,
+      isGood: false,
+    ),
+    _PrizeItem(id: 0, title: 'Планка +60 секунд', weight: 0.088, isGood: false),
+    _PrizeItem(
+      id: 0,
+      title: '5 приседаний с паузой',
+      weight: 0.088,
+      isGood: false,
+    ),
+    _PrizeItem(
+      id: 0,
+      title: 'Селфи с тренером для архива 😄',
+      weight: 0.088,
+      isGood: false,
+    ),
   ];
 
   @override
@@ -66,12 +112,33 @@ class _ContestsScreenState extends State<ContestsScreen>
     super.dispose();
   }
 
+  Future<void> _ensurePrizesSeeded() async {
+    final existing = await _db.getContestPrizes(eventKey: _eventKey);
+    if (existing.isNotEmpty) return;
+
+    await _db.replaceContestPrizes(
+      eventKey: _eventKey,
+      prizes: List.generate(
+        _defaultPrizes.length,
+        (i) => ContestPrizeVm(
+          id: 0,
+          title: _defaultPrizes[i].title,
+          weight: _defaultPrizes[i].weight,
+          isGood: _defaultPrizes[i].isGood,
+          sortOrder: i,
+        ),
+      ),
+    );
+  }
+
   Future<void> _load() async {
     setState(() => _loading = true);
 
     await _db.ensureContestTables();
+    await _ensurePrizesSeeded();
     final clients = await _db.getAllClients();
     final winners = await _db.getContestWinners(eventKey: _eventKey);
+    final prizeRows = await _db.getContestPrizes(eventKey: _eventKey);
 
     String? selected = _selectedClientId;
     if (selected == null && clients.isNotEmpty) {
@@ -86,12 +153,24 @@ class _ContestsScreenState extends State<ContestsScreen>
       );
     }
 
+    final prizes = prizeRows
+        .map(
+          (p) => _PrizeItem(
+            id: p.id,
+            title: p.title,
+            weight: p.weight,
+            isGood: p.isGood,
+          ),
+        )
+        .toList(growable: false);
+
     if (!mounted) return;
     setState(() {
       _clients = clients;
       _winners = winners;
       _selectedClientId = selected;
       _entry = entry;
+      _prizes = prizes;
       _currentPrize = entry?.currentPrize;
       _selectedIndex = _indexForPrize(entry?.currentPrize);
       _loading = false;
@@ -131,6 +210,20 @@ class _ContestsScreenState extends State<ContestsScreen>
 
   bool get _isFinalized => (_entry?.finalPrize ?? '').isNotEmpty;
 
+  double get _goodChance =>
+      _prizes.where((p) => p.isGood).fold(0.0, (s, p) => s + p.weight) * 100;
+
+  double get _badChance =>
+      _prizes.where((p) => !p.isGood).fold(0.0, (s, p) => s + p.weight) * 100;
+
+  double get _superChance {
+    final superPrize = _prizes.where(
+      (p) => p.title.toLowerCase().contains('суперприз'),
+    );
+    if (superPrize.isEmpty) return 0;
+    return superPrize.first.weight * 100;
+  }
+
   Future<void> _selectClient(String? id) async {
     if (id == null) return;
     final entry = await _db.getContestEntry(eventKey: _eventKey, clientId: id);
@@ -150,7 +243,10 @@ class _ContestsScreenState extends State<ContestsScreen>
   }
 
   int _pickWeightedIndex() {
-    final r = _rng.nextDouble();
+    final total = _prizes.fold<double>(0, (s, p) => s + p.weight);
+    if (_prizes.isEmpty || total <= 0) return 0;
+
+    final r = _rng.nextDouble() * total;
     var acc = 0.0;
     for (var i = 0; i < _prizes.length; i++) {
       acc += _prizes[i].weight;
@@ -162,6 +258,12 @@ class _ContestsScreenState extends State<ContestsScreen>
   Future<void> _spinRoulette() async {
     if (_spinning) return;
     if (_selectedClientId == null) return;
+    if (_prizes.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Список призов пуст. Добавьте призы.')),
+      );
+      return;
+    }
     if (!_isMaleClient) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
@@ -248,6 +350,114 @@ class _ContestsScreenState extends State<ContestsScreen>
     );
   }
 
+  Future<void> _resetSelectedForTest() async {
+    if (_selectedClientId == null) return;
+    await _db.resetContestParticipant(
+      eventKey: _eventKey,
+      clientId: _selectedClientId!,
+    );
+    await _load();
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text(
+          'Тестовый сброс выполнен. Клиент снова может участвовать.',
+        ),
+      ),
+    );
+  }
+
+  Future<void> _removeWinnerForTest(ContestWinnerVm w) async {
+    await _db.resetContestParticipant(
+      eventKey: _eventKey,
+      clientId: w.clientId,
+    );
+    await _load();
+  }
+
+  Future<void> _openPrizeEditor({
+    _PrizeItem? prize,
+    required int sortOrder,
+  }) async {
+    final title = TextEditingController(text: prize?.title ?? '');
+    final weight = TextEditingController(
+      text: ((prize?.weight ?? 0.1) * 100).toStringAsFixed(1),
+    );
+    var isGood = prize?.isGood ?? true;
+
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setLocal) => AlertDialog(
+          title: Text(prize == null ? 'Новый приз' : 'Редактировать приз'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextFormField(
+                controller: title,
+                decoration: const InputDecoration(labelText: 'Название приза'),
+              ),
+              const SizedBox(height: 8),
+              TextFormField(
+                controller: weight,
+                keyboardType: const TextInputType.numberWithOptions(
+                  decimal: true,
+                ),
+                decoration: const InputDecoration(
+                  labelText: 'Вес, % (например 12.5)',
+                ),
+              ),
+              const SizedBox(height: 8),
+              SwitchListTile(
+                value: isGood,
+                onChanged: (v) => setLocal(() => isGood = v),
+                title: const Text('Хороший приз'),
+                contentPadding: EdgeInsets.zero,
+              ),
+            ],
+          ),
+          actions: [
+            if (prize != null)
+              TextButton(
+                onPressed: () => Navigator.pop(context, null),
+                child: const Text('Удалить'),
+              ),
+            TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('Отмена'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(context, true),
+              child: const Text('Сохранить'),
+            ),
+          ],
+        ),
+      ),
+    );
+
+    if (ok == null && prize != null) {
+      await _db.deleteContestPrize(eventKey: _eventKey, id: prize.id);
+      await _load();
+      return;
+    }
+
+    if (ok != true) return;
+
+    final parsedWeight =
+        (double.tryParse(weight.text.replaceAll(',', '.')) ?? 0) / 100;
+    if (title.text.trim().isEmpty || parsedWeight <= 0) return;
+
+    await _db.upsertContestPrize(
+      eventKey: _eventKey,
+      id: prize?.id,
+      title: title.text.trim(),
+      weight: parsedWeight,
+      isGood: isGood,
+      sortOrder: sortOrder,
+    );
+    await _load();
+  }
+
   @override
   Widget build(BuildContext context) {
     final colors = Theme.of(context).colorScheme;
@@ -305,6 +515,19 @@ class _ContestsScreenState extends State<ContestsScreen>
                               'Абонемент: ${_selectedClient!.plan ?? '—'} • Попыток: $_allowedAttempts • Осталось: $_remainingAttempts',
                               style: Theme.of(context).textTheme.bodyMedium,
                             ),
+                          const SizedBox(height: 8),
+                          Wrap(
+                            spacing: 8,
+                            runSpacing: 8,
+                            children: [
+                              _ChanceChip(
+                                label: 'Суперприз',
+                                value: _superChance,
+                              ),
+                              _ChanceChip(label: 'Хорошие', value: _goodChance),
+                              _ChanceChip(label: 'Плохие', value: _badChance),
+                            ],
+                          ),
                           if (_selectedClient != null && !_isMaleClient)
                             Padding(
                               padding: const EdgeInsets.only(top: 8),
@@ -324,6 +547,14 @@ class _ContestsScreenState extends State<ContestsScreen>
                                 ),
                               ),
                             ),
+                          const SizedBox(height: 10),
+                          OutlinedButton.icon(
+                            onPressed: _selectedClientId == null
+                                ? null
+                                : _resetSelectedForTest,
+                            icon: const Icon(Icons.restart_alt),
+                            label: const Text('Тестовый сброс участия'),
+                          ),
                         ],
                       ),
                     ),
@@ -383,6 +614,62 @@ class _ContestsScreenState extends State<ContestsScreen>
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
+                          Row(
+                            children: [
+                              Text(
+                                'Список призов',
+                                style: Theme.of(context).textTheme.titleMedium,
+                              ),
+                              const Spacer(),
+                              IconButton(
+                                tooltip: 'Добавить приз',
+                                onPressed: () =>
+                                    _openPrizeEditor(sortOrder: _prizes.length),
+                                icon: const Icon(Icons.add_circle_outline),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 4),
+                          if (_prizes.isEmpty)
+                            const Text('Пока призов нет')
+                          else
+                            Column(
+                              children: List.generate(_prizes.length, (i) {
+                                final p = _prizes[i];
+                                return ListTile(
+                                  contentPadding: EdgeInsets.zero,
+                                  title: Text(p.title),
+                                  subtitle: Text(
+                                    '${p.isGood ? 'Хороший' : 'Плохой'} • ${(p.weight * 100).toStringAsFixed(1)}%',
+                                  ),
+                                  trailing: IconButton(
+                                    icon: const Icon(Icons.edit_outlined),
+                                    onPressed: () => _openPrizeEditor(
+                                      prize: p,
+                                      sortOrder: i,
+                                    ),
+                                  ),
+                                );
+                              }),
+                            ),
+                        ],
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  Card(
+                    elevation: 0,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(16),
+                      side: BorderSide(
+                        color: colors.outlineVariant.withOpacity(0.7),
+                      ),
+                    ),
+                    child: Padding(
+                      padding: const EdgeInsets.all(14),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
                           Text(
                             'Архив выдачи призов',
                             style: Theme.of(context).textTheme.titleMedium,
@@ -398,8 +685,11 @@ class _ContestsScreenState extends State<ContestsScreen>
                                       contentPadding: EdgeInsets.zero,
                                       title: Text(w.clientName),
                                       subtitle: Text(w.prize),
-                                      trailing: Text(
-                                        '${w.finalizedAt.day.toString().padLeft(2, '0')}.${w.finalizedAt.month.toString().padLeft(2, '0')}',
+                                      trailing: IconButton(
+                                        tooltip: 'Удалить из архива (тест)',
+                                        onPressed: () =>
+                                            _removeWinnerForTest(w),
+                                        icon: const Icon(Icons.delete_outline),
                                       ),
                                     ),
                                   )
@@ -412,6 +702,25 @@ class _ContestsScreenState extends State<ContestsScreen>
                 ],
               ),
       ),
+    );
+  }
+}
+
+class _ChanceChip extends StatelessWidget {
+  const _ChanceChip({required this.label, required this.value});
+
+  final String label;
+  final double value;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(999),
+        color: Theme.of(context).colorScheme.secondaryContainer,
+      ),
+      child: Text('$label: ${value.toStringAsFixed(1)}%'),
     );
   }
 }
@@ -438,48 +747,72 @@ class _RouletteCard extends StatelessWidget {
     return Card(
       elevation: 0,
       shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(20),
         side: BorderSide(color: colors.outlineVariant.withOpacity(0.7)),
       ),
       child: Padding(
         padding: const EdgeInsets.fromLTRB(14, 14, 14, 12),
         child: Column(
           children: [
-            SizedBox(
-              width: 220,
-              height: 220,
-              child: Stack(
-                alignment: Alignment.center,
-                children: [
-                  AnimatedRotation(
-                    turns: turns,
-                    duration: const Duration(milliseconds: 2300),
-                    curve: Curves.easeOutCubic,
-                    child: CustomPaint(
-                      size: const Size(220, 220),
-                      painter: _RoulettePainter(prizes: prizes),
+            Container(
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(20),
+                gradient: LinearGradient(
+                  colors: [
+                    colors.primaryContainer.withOpacity(0.45),
+                    colors.tertiaryContainer.withOpacity(0.35),
+                  ],
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                ),
+              ),
+              padding: const EdgeInsets.symmetric(vertical: 14),
+              child: SizedBox(
+                width: 240,
+                height: 240,
+                child: Stack(
+                  alignment: Alignment.center,
+                  children: [
+                    if (prizes.isNotEmpty)
+                      AnimatedRotation(
+                        turns: turns,
+                        duration: const Duration(milliseconds: 2300),
+                        curve: Curves.easeOutCubic,
+                        child: CustomPaint(
+                          size: const Size(230, 230),
+                          painter: _RoulettePainter(prizes: prizes),
+                        ),
+                      ),
+                    Align(
+                      alignment: Alignment.topCenter,
+                      child: CustomPaint(
+                        size: const Size(28, 28),
+                        painter: _PointerPainter(color: colors.error),
+                      ),
                     ),
-                  ),
-                  Align(
-                    alignment: Alignment.topCenter,
-                    child: Icon(
-                      Icons.arrow_drop_down,
-                      size: 34,
-                      color: colors.error,
+                    Container(
+                      width: 74,
+                      height: 74,
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        gradient: const LinearGradient(
+                          colors: [Color(0xFF7C4DFF), Color(0xFF5E35B1)],
+                          begin: Alignment.topCenter,
+                          end: Alignment.bottomCenter,
+                        ),
+                        boxShadow: const [
+                          BoxShadow(
+                            color: Color(0x557C4DFF),
+                            blurRadius: 12,
+                            spreadRadius: 1,
+                          ),
+                        ],
+                      ),
+                      alignment: Alignment.center,
+                      child: const Icon(Icons.casino, color: Colors.white),
                     ),
-                  ),
-                  Container(
-                    width: 68,
-                    height: 68,
-                    decoration: BoxDecoration(
-                      color: colors.surface,
-                      shape: BoxShape.circle,
-                      border: Border.all(color: colors.outlineVariant),
-                    ),
-                    alignment: Alignment.center,
-                    child: const Icon(Icons.casino),
-                  ),
-                ],
+                  ],
+                ),
               ),
             ),
             const SizedBox(height: 10),
@@ -492,7 +825,7 @@ class _RouletteCard extends StatelessWidget {
               textAlign: TextAlign.center,
               style: Theme.of(context).textTheme.bodyMedium,
             ),
-            if (!spinning && currentPrize != null)
+            if (!spinning && currentPrize != null && prizes.isNotEmpty)
               Padding(
                 padding: const EdgeInsets.only(top: 6),
                 child: Text(
@@ -521,30 +854,91 @@ class _RoulettePainter extends CustomPainter {
     final rect = Rect.fromCircle(center: center, radius: radius);
     final sweep = (2 * pi) / prizes.length;
 
+    final bgPaint = Paint()
+      ..shader = const RadialGradient(
+        colors: [Color(0xFFF4EEFF), Color(0xFFDCCBFF)],
+      ).createShader(rect);
+    canvas.drawCircle(center, radius, bgPaint);
+
     for (var i = 0; i < prizes.length; i++) {
+      final item = prizes[i];
+      final colors = item.isGood
+          ? [const Color(0xFF9C6BFF), const Color(0xFF6F3DFF)]
+          : [const Color(0xFFFF8A80), const Color(0xFFFF5252)];
       final paint = Paint()
         ..style = PaintingStyle.fill
-        ..color = prizes[i].isGood
-            ? const Color(0xFF7E57C2).withOpacity(0.80)
-            : const Color(0xFFEF5350).withOpacity(0.74);
+        ..shader = LinearGradient(
+          colors: colors,
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ).createShader(rect);
+
       canvas.drawArc(rect, (-pi / 2) + (i * sweep), sweep, true, paint);
+
+      final sep = Paint()
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 2
+        ..color = Colors.white.withOpacity(0.8);
+      final angle = (-pi / 2) + (i * sweep);
+      canvas.drawLine(
+        center,
+        center + Offset(cos(angle) * radius, sin(angle) * radius),
+        sep,
+      );
     }
 
-    final border = Paint()
+    final outer = Paint()
       ..style = PaintingStyle.stroke
-      ..strokeWidth = 3
-      ..color = const Color(0xFF674EA7);
-    canvas.drawCircle(center, radius, border);
+      ..strokeWidth = 5
+      ..shader = const LinearGradient(
+        colors: [Color(0xFF7C4DFF), Color(0xFF3F51B5)],
+      ).createShader(rect);
+    canvas.drawCircle(center, radius - 1, outer);
+
+    final inner = Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 2
+      ..color = Colors.white.withOpacity(0.85);
+    canvas.drawCircle(center, radius - 9, inner);
   }
 
   @override
-  bool shouldRepaint(covariant _RoulettePainter oldDelegate) => false;
+  bool shouldRepaint(covariant _RoulettePainter oldDelegate) =>
+      oldDelegate.prizes != prizes;
+}
+
+class _PointerPainter extends CustomPainter {
+  _PointerPainter({required this.color});
+
+  final Color color;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final path = Path()
+      ..moveTo(size.width / 2, size.height)
+      ..lineTo(size.width, 0)
+      ..lineTo(0, 0)
+      ..close();
+
+    final paint = Paint()..color = color;
+    canvas.drawPath(path, paint);
+  }
+
+  @override
+  bool shouldRepaint(covariant _PointerPainter oldDelegate) =>
+      oldDelegate.color != color;
 }
 
 class _PrizeItem {
+  final int id;
   final String title;
   final double weight;
   final bool isGood;
 
-  const _PrizeItem(this.title, this.weight, this.isGood);
+  const _PrizeItem({
+    required this.id,
+    required this.title,
+    required this.weight,
+    required this.isGood,
+  });
 }
