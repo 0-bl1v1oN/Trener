@@ -54,9 +54,14 @@ class _IncomeScreenState extends State<IncomeScreen> {
     final archive = await _db.getIncomeArchive(limit: 12);
 
     if (!mounted) return;
+    final sortedIncomes = [...incomes]
+      ..sort(
+        (a, b) =>
+            a.clientName.toLowerCase().compareTo(b.clientName.toLowerCase()),
+      );
     setState(() {
       _prices = prices;
-      _incomes = incomes;
+      _incomes = sortedIncomes;
       _expenses = expenses;
       _archive = archive;
       _loading = false;
@@ -252,24 +257,37 @@ class _IncomeScreenState extends State<IncomeScreen> {
                       icon: Icons.south_west,
                       child: _incomes.isEmpty
                           ? const Text('Поступлений пока нет')
-                          : Column(
-                              children: _incomes
-                                  .map(
-                                    (e) => ListTile(
-                                      contentPadding: EdgeInsets.zero,
-                                      title: Text(
-                                        '${e.clientName} • абонемент ${e.plan}',
-                                      ),
-                                      subtitle: Text(_dateFmt.format(e.date)),
-                                      trailing: Text(
-                                        _money.format(e.amount),
-                                        style: const TextStyle(
-                                          fontWeight: FontWeight.w700,
+                          : Theme(
+                              data: Theme.of(
+                                context,
+                              ).copyWith(dividerColor: Colors.transparent),
+                              child: ExpansionTile(
+                                tilePadding: EdgeInsets.zero,
+                                childrenPadding: EdgeInsets.zero,
+                                title: Text(
+                                  'Всего поступлений: ${_incomes.length}',
+                                ),
+                                subtitle: const Text(
+                                  'Нажми, чтобы раскрыть список (по алфавиту)',
+                                ),
+                                children: _incomes
+                                    .map(
+                                      (e) => ListTile(
+                                        contentPadding: EdgeInsets.zero,
+                                        title: Text(
+                                          '${e.clientName} • абонемент ${e.plan}',
+                                        ),
+                                        subtitle: Text(_dateFmt.format(e.date)),
+                                        trailing: Text(
+                                          _money.format(e.amount),
+                                          style: const TextStyle(
+                                            fontWeight: FontWeight.w700,
+                                          ),
                                         ),
                                       ),
-                                    ),
-                                  )
-                                  .toList(),
+                                    )
+                                    .toList(),
+                              ),
                             ),
                     ),
                     const SizedBox(height: 12),

@@ -2394,7 +2394,17 @@ class AppDb extends _$AppDb {
              SUM(income_amount) AS income,
              SUM(expense_amount) AS expenses
       FROM (
-        SELECT strftime('%Y-%m', plan_start) AS month_key,
+        SELECT CASE
+                 WHEN typeof(plan_start) = 'integer' AND plan_start > 20000000000
+                   THEN strftime('%Y-%m', plan_start / 1000, 'unixepoch', 'localtime')
+                 WHEN typeof(plan_start) = 'integer'
+                   THEN strftime('%Y-%m', plan_start, 'unixepoch', 'localtime')
+                 WHEN typeof(plan_start) = 'real' AND plan_start > 20000000000
+                   THEN strftime('%Y-%m', CAST(plan_start AS INTEGER) / 1000, 'unixepoch', 'localtime')
+                 WHEN typeof(plan_start) = 'real'
+                   THEN strftime('%Y-%m', CAST(plan_start AS INTEGER), 'unixepoch', 'localtime')
+                 ELSE strftime('%Y-%m', plan_start)
+               END AS month_key,
                CASE plan
                  WHEN '4' THEN ?
                  WHEN '8' THEN ?
@@ -2408,7 +2418,17 @@ class AppDb extends _$AppDb {
 
         UNION ALL
 
-        SELECT strftime('%Y-%m', happened_at / 1000, 'unixepoch', 'localtime') AS month_key,
+        SELECT CASE
+                 WHEN typeof(happened_at) = 'integer' AND happened_at > 20000000000
+                   THEN strftime('%Y-%m', happened_at / 1000, 'unixepoch', 'localtime')
+                 WHEN typeof(happened_at) = 'integer'
+                   THEN strftime('%Y-%m', happened_at, 'unixepoch', 'localtime')
+                 WHEN typeof(happened_at) = 'real' AND happened_at > 20000000000
+                   THEN strftime('%Y-%m', CAST(happened_at AS INTEGER) / 1000, 'unixepoch', 'localtime')
+                 WHEN typeof(happened_at) = 'real'
+                   THEN strftime('%Y-%m', CAST(happened_at AS INTEGER), 'unixepoch', 'localtime')
+                 ELSE strftime('%Y-%m', happened_at)
+               END AS month_key,
                0 AS income_amount,
                amount AS expense_amount
         FROM app_expenses
