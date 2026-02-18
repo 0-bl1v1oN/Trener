@@ -11,6 +11,7 @@ import '../features/programs/defalut_programs_screen.dart';
 import '../features/more/more_screen.dart';
 import '../features/more/income_screen.dart';
 import '../features/more/records_screen.dart';
+import '../features/more/contests_screen.dart';
 
 import '../theme_controller.dart';
 
@@ -127,6 +128,11 @@ final GoRouter _router = GoRouter(
       path: '/records',
       builder: (context, state) => const RecordsScreen(),
     ),
+    GoRoute(
+      parentNavigatorKey: _rootNavKey,
+      path: '/contests',
+      builder: (context, state) => const ContestsScreen(),
+    ),
   ],
 );
 
@@ -142,7 +148,8 @@ class AppShell extends StatelessWidget {
     }
     if (location.startsWith('/more') ||
         location.startsWith('/income') ||
-        location.startsWith('/records')) {
+        location.startsWith('/records') ||
+        location.startsWith('/contests')) {
       return 0;
     }
     if (location.startsWith('/clients')) return 2;

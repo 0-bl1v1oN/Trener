@@ -23,6 +23,13 @@ class MoreScreen extends StatelessWidget {
             ),
             const SizedBox(height: 10),
             _MenuTile(
+              icon: Icons.casino_outlined,
+              title: 'Конкурсы',
+              subtitle: 'Розыгрыши призов и архив победителей',
+              iconColor: colors.primary,
+              onTap: () => context.push('/contests'),
+            ),
+            _MenuTile(
               icon: Icons.payments_outlined,
               title: 'Доход',
               subtitle: 'Доходы, расходы, архив и прайс абонементов',

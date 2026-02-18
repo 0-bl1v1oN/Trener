@@ -280,6 +280,41 @@ class IncomeMonthSummaryVm {
   int get net => income - expenses;
 }
 
+class ContestEntryVm {
+  final String clientId;
+  final int usedAttempts;
+  final int maxAttempts;
+  final String? currentPrize;
+  final String? finalPrize;
+  final DateTime? finalizedAt;
+
+  const ContestEntryVm({
+    required this.clientId,
+    required this.usedAttempts,
+    required this.maxAttempts,
+    this.currentPrize,
+    this.finalPrize,
+    this.finalizedAt,
+  });
+
+  bool get isFinalized => (finalPrize ?? '').isNotEmpty;
+  int get attemptsLeft => (maxAttempts - usedAttempts).clamp(0, maxAttempts);
+}
+
+class ContestWinnerVm {
+  final String clientId;
+  final String clientName;
+  final String prize;
+  final DateTime finalizedAt;
+
+  const ContestWinnerVm({
+    required this.clientId,
+    required this.clientName,
+    required this.prize,
+    required this.finalizedAt,
+  });
+}
+
 @DriftDatabase(
   tables: [
     Clients,
@@ -2464,6 +2499,132 @@ class AppDb extends _$AppDb {
             expenses: (r.data['expenses'] as int?) ?? 0,
           );
         })
+        .toList(growable: false);
+  }
+
+  Future<void> ensureContestTables() async {
+    await customStatement('''
+      CREATE TABLE IF NOT EXISTS app_contest_entries (
+        event_key TEXT NOT NULL,
+        client_id TEXT NOT NULL,
+        used_attempts INTEGER NOT NULL DEFAULT 0,
+        max_attempts INTEGER NOT NULL DEFAULT 1,
+        current_prize TEXT,
+        final_prize TEXT,
+        finalized_at INTEGER,
+        PRIMARY KEY (event_key, client_id)
+      )
+    ''');
+  }
+
+  Future<ContestEntryVm?> getContestEntry({
+    required String eventKey,
+    required String clientId,
+  }) async {
+    await ensureContestTables();
+
+    final rows = await customSelect(
+      '''
+      SELECT client_id, used_attempts, max_attempts, current_prize, final_prize, finalized_at
+      FROM app_contest_entries
+      WHERE event_key = ? AND client_id = ?
+      LIMIT 1
+      ''',
+      variables: [Variable.withString(eventKey), Variable.withString(clientId)],
+      readsFrom: {clients},
+    ).get();
+
+    if (rows.isEmpty) return null;
+    final row = rows.first;
+    final finalizedAtMs = row.data['finalized_at'] as int?;
+
+    return ContestEntryVm(
+      clientId: (row.data['client_id'] as String?) ?? clientId,
+      usedAttempts: (row.data['used_attempts'] as int?) ?? 0,
+      maxAttempts: (row.data['max_attempts'] as int?) ?? 1,
+      currentPrize: row.data['current_prize'] as String?,
+      finalPrize: row.data['final_prize'] as String?,
+      finalizedAt: finalizedAtMs == null
+          ? null
+          : DateTime.fromMillisecondsSinceEpoch(finalizedAtMs),
+    );
+  }
+
+  Future<ContestEntryVm> recordContestSpin({
+    required String eventKey,
+    required String clientId,
+    required int maxAttempts,
+    required String prize,
+  }) async {
+    await ensureContestTables();
+
+    await customStatement(
+      '''
+      INSERT INTO app_contest_entries (event_key, client_id, used_attempts, max_attempts, current_prize)
+      VALUES (?, ?, 1, ?, ?)
+      ON CONFLICT(event_key, client_id)
+      DO UPDATE SET
+        used_attempts = used_attempts + 1,
+        max_attempts = excluded.max_attempts,
+        current_prize = excluded.current_prize
+      ''',
+      [eventKey, clientId, maxAttempts, prize],
+    );
+
+    return (await getContestEntry(eventKey: eventKey, clientId: clientId))!;
+  }
+
+  Future<ContestEntryVm> finalizeContestPrize({
+    required String eventKey,
+    required String clientId,
+  }) async {
+    await ensureContestTables();
+
+    final now = DateTime.now().millisecondsSinceEpoch;
+    await customStatement(
+      '''
+      UPDATE app_contest_entries
+      SET final_prize = current_prize,
+          finalized_at = ?
+      WHERE event_key = ?
+        AND client_id = ?
+        AND current_prize IS NOT NULL
+      ''',
+      [now, eventKey, clientId],
+    );
+
+    return (await getContestEntry(eventKey: eventKey, clientId: clientId))!;
+  }
+
+  Future<List<ContestWinnerVm>> getContestWinners({
+    required String eventKey,
+  }) async {
+    await ensureContestTables();
+
+    final rows = await customSelect(
+      '''
+      SELECT e.client_id, c.name, e.final_prize, e.finalized_at
+      FROM app_contest_entries e
+      LEFT JOIN clients c ON c.id = e.client_id
+      WHERE e.event_key = ?
+        AND e.final_prize IS NOT NULL
+      ORDER BY e.finalized_at DESC
+      ''',
+      variables: [Variable.withString(eventKey)],
+      readsFrom: {clients},
+    ).get();
+
+    return rows
+        .map(
+          (r) => ContestWinnerVm(
+            clientId: (r.data['client_id'] as String?) ?? '',
+            clientName: (r.data['name'] as String?) ?? 'Клиент',
+            prize: (r.data['final_prize'] as String?) ?? 'Приз',
+            finalizedAt: DateTime.fromMillisecondsSinceEpoch(
+              (r.data['finalized_at'] as int?) ?? 0,
+            ),
+          ),
+        )
         .toList(growable: false);
   }
 }
