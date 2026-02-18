@@ -89,6 +89,71 @@ class _IncomeScreenState extends State<IncomeScreen> {
     await _load();
   }
 
+  Future<void> _openDynamicsSheet() async {
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      builder: (context) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(16, 12, 16, 20),
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Динамика и архив',
+                  style: Theme.of(context).textTheme.titleLarge,
+                ),
+                const SizedBox(height: 12),
+                _BarsCard(
+                  archive: _archive.take(6).toList(),
+                  formatter: _money,
+                ),
+                const SizedBox(height: 12),
+                _SectionCard(
+                  title: 'Архив по месяцам',
+                  icon: Icons.history,
+                  child: _archive.isEmpty
+                      ? const Text('Архив пуст')
+                      : Column(
+                          children: _archive
+                              .map(
+                                (m) => ListTile(
+                                  contentPadding: EdgeInsets.zero,
+                                  title: Text(
+                                    DateFormat(
+                                      'LLLL yyyy',
+                                      'ru_RU',
+                                    ).format(m.monthStart),
+                                  ),
+                                  subtitle: Text(
+                                    'Доход: ${_money.format(m.income)} • Расход: ${_money.format(m.expenses)}',
+                                  ),
+                                  trailing: Text(
+                                    _money.format(m.net),
+                                    style: TextStyle(
+                                      fontWeight: FontWeight.w700,
+                                      color: m.net >= 0
+                                          ? Theme.of(
+                                              context,
+                                            ).colorScheme.primary
+                                          : Theme.of(context).colorScheme.error,
+                                    ),
+                                  ),
+                                ),
+                              )
+                              .toList(),
+                        ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
   Future<void> _openPriceEditor() async {
     final p4 = TextEditingController(text: _prices.plan4.toString());
     final p8 = TextEditingController(text: _prices.plan8.toString());
@@ -225,7 +290,12 @@ class _IncomeScreenState extends State<IncomeScreen> {
             IconButton(
               tooltip: 'Прайс',
               onPressed: _openPriceEditor,
-              icon: const Icon(Icons.tune),
+              icon: const Icon(Icons.receipt_long_outlined),
+            ),
+            IconButton(
+              tooltip: 'Динамика',
+              onPressed: _openDynamicsSheet,
+              icon: const Icon(Icons.calendar_month_outlined),
             ),
             IconButton(
               tooltip: 'Обновить',
@@ -267,11 +337,6 @@ class _IncomeScreenState extends State<IncomeScreen> {
                       net: _money.format(_monthNet),
                     ),
                     const SizedBox(height: 14),
-                    _BarsCard(
-                      archive: _archive.take(6).toList(),
-                      formatter: _money,
-                    ),
-                    const SizedBox(height: 14),
                     _SectionCard(
                       title: 'Поступления за месяц',
                       icon: Icons.south_west,
@@ -285,7 +350,7 @@ class _IncomeScreenState extends State<IncomeScreen> {
                                 tilePadding: EdgeInsets.zero,
                                 childrenPadding: EdgeInsets.zero,
                                 title: Text(
-                                  'Показать список (А-Я) • ${_incomes.length} чел.',
+                                  'Показать список • ${_incomes.length} чел.',
                                 ),
                                 subtitle: Text(
                                   'Сумма: ${_money.format(_monthIncome)}',
@@ -294,22 +359,6 @@ class _IncomeScreenState extends State<IncomeScreen> {
                                     .map(
                                       (e) => ListTile(
                                         contentPadding: EdgeInsets.zero,
-                                        leading: CircleAvatar(
-                                          radius: 16,
-                                          backgroundColor:
-                                              colors.primaryContainer,
-                                          child: Text(
-                                            e.clientName.isEmpty
-                                                ? '?'
-                                                : e.clientName
-                                                      .substring(0, 1)
-                                                      .toUpperCase(),
-                                            style: TextStyle(
-                                              color: colors.onPrimaryContainer,
-                                              fontWeight: FontWeight.w700,
-                                            ),
-                                          ),
-                                        ),
                                         title: Text(
                                           '${e.clientName} • абонемент ${e.plan}',
                                         ),
@@ -380,40 +429,6 @@ class _IncomeScreenState extends State<IncomeScreen> {
                                 ),
                         ],
                       ),
-                    ),
-                    const SizedBox(height: 12),
-                    _SectionCard(
-                      title: 'Архив по месяцам',
-                      icon: Icons.history,
-                      child: _archive.isEmpty
-                          ? const Text('Архив пуст')
-                          : Column(
-                              children: _archive
-                                  .map(
-                                    (m) => ListTile(
-                                      contentPadding: EdgeInsets.zero,
-                                      title: Text(
-                                        DateFormat(
-                                          'LLLL yyyy',
-                                          'ru_RU',
-                                        ).format(m.monthStart),
-                                      ),
-                                      subtitle: Text(
-                                        'Доход: ${_money.format(m.income)} • Расход: ${_money.format(m.expenses)}',
-                                      ),
-                                      trailing: Text(
-                                        _money.format(m.net),
-                                        style: TextStyle(
-                                          fontWeight: FontWeight.w700,
-                                          color: m.net >= 0
-                                              ? colors.primary
-                                              : colors.error,
-                                        ),
-                                      ),
-                                    ),
-                                  )
-                                  .toList(),
-                            ),
                     ),
                   ],
                 ),
