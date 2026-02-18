@@ -38,6 +38,17 @@ class _IncomeScreenState extends State<IncomeScreen> {
   int get _monthExpense => _expenses.fold(0, (sum, e) => sum + e.amount);
   int get _monthNet => _monthIncome - _monthExpense;
 
+  int? get _previousMonthNet {
+    final prev = DateTime(_selectedMonth.year, _selectedMonth.month - 1);
+    for (final item in _archive) {
+      if (item.monthStart.year == prev.year &&
+          item.monthStart.month == prev.month) {
+        return item.net;
+      }
+    }
+    return null;
+  }
+
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
@@ -241,6 +252,15 @@ class _IncomeScreenState extends State<IncomeScreen> {
                       onNext: () => _changeMonth(1),
                     ),
                     const SizedBox(height: 12),
+                    _NetHeadlineCard(
+                      net: _money.format(_monthNet),
+                      monthLabel: _monthFmt.format(_selectedMonth),
+                      trendDelta: _previousMonthNet == null
+                          ? null
+                          : _monthNet - _previousMonthNet!,
+                      formatter: _money,
+                    ),
+                    const SizedBox(height: 12),
                     _SummaryCards(
                       income: _money.format(_monthIncome),
                       expenses: _money.format(_monthExpense),
@@ -265,15 +285,31 @@ class _IncomeScreenState extends State<IncomeScreen> {
                                 tilePadding: EdgeInsets.zero,
                                 childrenPadding: EdgeInsets.zero,
                                 title: Text(
-                                  'Всего поступлений: ${_incomes.length}',
+                                  'Показать список (А-Я) • ${_incomes.length} чел.',
                                 ),
-                                subtitle: const Text(
-                                  'Нажми, чтобы раскрыть список (по алфавиту)',
+                                subtitle: Text(
+                                  'Сумма: ${_money.format(_monthIncome)}',
                                 ),
                                 children: _incomes
                                     .map(
                                       (e) => ListTile(
                                         contentPadding: EdgeInsets.zero,
+                                        leading: CircleAvatar(
+                                          radius: 16,
+                                          backgroundColor:
+                                              colors.primaryContainer,
+                                          child: Text(
+                                            e.clientName.isEmpty
+                                                ? '?'
+                                                : e.clientName
+                                                      .substring(0, 1)
+                                                      .toUpperCase(),
+                                            style: TextStyle(
+                                              color: colors.onPrimaryContainer,
+                                              fontWeight: FontWeight.w700,
+                                            ),
+                                          ),
+                                        ),
                                         title: Text(
                                           '${e.clientName} • абонемент ${e.plan}',
                                         ),
@@ -294,43 +330,56 @@ class _IncomeScreenState extends State<IncomeScreen> {
                     _SectionCard(
                       title: 'Расходы за месяц',
                       icon: Icons.north_east,
-                      child: _expenses.isEmpty
-                          ? const Text('Расходов пока нет')
-                          : Column(
-                              children: _expenses
-                                  .map(
-                                    (e) => Dismissible(
-                                      key: ValueKey(e.id),
-                                      background: Container(
-                                        color: colors.errorContainer,
-                                        alignment: Alignment.centerRight,
-                                        padding: const EdgeInsets.only(
-                                          right: 12,
-                                        ),
-                                        child: const Icon(Icons.delete_outline),
-                                      ),
-                                      direction: DismissDirection.endToStart,
-                                      onDismissed: (_) async {
-                                        await _db.deleteExpense(e.id);
-                                        await _load();
-                                      },
-                                      child: ListTile(
-                                        contentPadding: EdgeInsets.zero,
-                                        title: Text(e.category),
-                                        subtitle: Text(
-                                          '${_dateFmt.format(e.date)}${(e.note ?? '').isEmpty ? '' : ' • ${e.note}'}',
-                                        ),
-                                        trailing: Text(
-                                          _money.format(e.amount),
-                                          style: const TextStyle(
-                                            fontWeight: FontWeight.w700,
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Всего: ${_money.format(_monthExpense)}',
+                            style: Theme.of(context).textTheme.bodyMedium,
+                          ),
+                          const SizedBox(height: 8),
+                          _expenses.isEmpty
+                              ? const Text('Расходов пока нет')
+                              : Column(
+                                  children: _expenses
+                                      .map(
+                                        (e) => Dismissible(
+                                          key: ValueKey(e.id),
+                                          background: Container(
+                                            color: colors.errorContainer,
+                                            alignment: Alignment.centerRight,
+                                            padding: const EdgeInsets.only(
+                                              right: 12,
+                                            ),
+                                            child: const Icon(
+                                              Icons.delete_outline,
+                                            ),
+                                          ),
+                                          direction:
+                                              DismissDirection.endToStart,
+                                          onDismissed: (_) async {
+                                            await _db.deleteExpense(e.id);
+                                            await _load();
+                                          },
+                                          child: ListTile(
+                                            contentPadding: EdgeInsets.zero,
+                                            title: Text(e.category),
+                                            subtitle: Text(
+                                              '${_dateFmt.format(e.date)}${(e.note ?? '').isEmpty ? '' : ' • ${e.note}'}',
+                                            ),
+                                            trailing: Text(
+                                              _money.format(e.amount),
+                                              style: const TextStyle(
+                                                fontWeight: FontWeight.w700,
+                                              ),
+                                            ),
                                           ),
                                         ),
-                                      ),
-                                    ),
-                                  )
-                                  .toList(),
-                            ),
+                                      )
+                                      .toList(),
+                                ),
+                        ],
+                      ),
                     ),
                     const SizedBox(height: 12),
                     _SectionCard(
@@ -399,6 +448,87 @@ class _MonthHeader extends StatelessWidget {
         ),
         IconButton(onPressed: onNext, icon: const Icon(Icons.chevron_right)),
       ],
+    );
+  }
+}
+
+class _NetHeadlineCard extends StatelessWidget {
+  const _NetHeadlineCard({
+    required this.net,
+    required this.monthLabel,
+    required this.formatter,
+    this.trendDelta,
+  });
+
+  final String net;
+  final String monthLabel;
+  final int? trendDelta;
+  final NumberFormat formatter;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    final isPositive = trendDelta == null ? null : trendDelta! >= 0;
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          colors: [
+            colors.primaryContainer,
+            colors.primaryContainer.withOpacity(0.65),
+          ],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+        borderRadius: BorderRadius.circular(18),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            monthLabel,
+            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+              color: colors.onPrimaryContainer.withOpacity(0.85),
+            ),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            'Итог месяца: $net',
+            style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+              color: colors.onPrimaryContainer,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+          const SizedBox(height: 8),
+          if (trendDelta == null)
+            Text(
+              'Нет данных для сравнения с прошлым месяцем',
+              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                color: colors.onPrimaryContainer.withOpacity(0.85),
+              ),
+            )
+          else
+            Row(
+              children: [
+                Icon(
+                  isPositive! ? Icons.trending_up : Icons.trending_down,
+                  size: 18,
+                  color: isPositive ? Colors.green.shade800 : colors.error,
+                ),
+                const SizedBox(width: 6),
+                Text(
+                  '${isPositive ? 'Выше' : 'Ниже'} прошлого месяца на ${formatter.format(trendDelta!.abs())}',
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                    fontWeight: FontWeight.w600,
+                    color: colors.onPrimaryContainer,
+                  ),
+                ),
+              ],
+            ),
+        ],
+      ),
     );
   }
 }
@@ -512,7 +642,7 @@ class _BarsCard extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
-              'Динамика (чистый результат)',
+              'Динамика чистого результат',
               style: Theme.of(context).textTheme.titleMedium,
             ),
             const SizedBox(height: 12),
@@ -536,7 +666,7 @@ class _BarsCard extends StatelessWidget {
                               ),
                               const SizedBox(height: 4),
                               Container(
-                                height: 70 * (e.net.abs() / maxValue),
+                                height: 16 + (70 * (e.net.abs() / maxValue)),
                                 decoration: BoxDecoration(
                                   color: e.net >= 0
                                       ? colors.primary
