@@ -101,7 +101,7 @@ class _ContestsScreenState extends State<ContestsScreen>
     _db = AppDbScope.of(context);
     _spinController = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 2300),
+      duration: const Duration(milliseconds: 4200),
     );
     _load();
   }
@@ -209,20 +209,6 @@ class _ContestsScreenState extends State<ContestsScreen>
       (_allowedAttempts - _usedAttempts).clamp(0, _allowedAttempts);
 
   bool get _isFinalized => (_entry?.finalPrize ?? '').isNotEmpty;
-
-  double get _goodChance =>
-      _prizes.where((p) => p.isGood).fold(0.0, (s, p) => s + p.weight) * 100;
-
-  double get _badChance =>
-      _prizes.where((p) => !p.isGood).fold(0.0, (s, p) => s + p.weight) * 100;
-
-  double get _superChance {
-    final superPrize = _prizes.where(
-      (p) => p.title.toLowerCase().contains('суперприз'),
-    );
-    if (superPrize.isEmpty) return 0;
-    return superPrize.first.weight * 100;
-  }
 
   Future<void> _selectClient(String? id) async {
     if (id == null) return;
@@ -515,19 +501,6 @@ class _ContestsScreenState extends State<ContestsScreen>
                               'Абонемент: ${_selectedClient!.plan ?? '—'} • Попыток: $_allowedAttempts • Осталось: $_remainingAttempts',
                               style: Theme.of(context).textTheme.bodyMedium,
                             ),
-                          const SizedBox(height: 8),
-                          Wrap(
-                            spacing: 8,
-                            runSpacing: 8,
-                            children: [
-                              _ChanceChip(
-                                label: 'Суперприз',
-                                value: _superChance,
-                              ),
-                              _ChanceChip(label: 'Хорошие', value: _goodChance),
-                              _ChanceChip(label: 'Плохие', value: _badChance),
-                            ],
-                          ),
                           if (_selectedClient != null && !_isMaleClient)
                             Padding(
                               padding: const EdgeInsets.only(top: 8),
@@ -640,7 +613,7 @@ class _ContestsScreenState extends State<ContestsScreen>
                                   contentPadding: EdgeInsets.zero,
                                   title: Text(p.title),
                                   subtitle: Text(
-                                    '${p.isGood ? 'Хороший' : 'Плохой'} • ${(p.weight * 100).toStringAsFixed(1)}%',
+                                    p.isGood ? 'Хороший приз' : 'Плохой приз',
                                   ),
                                   trailing: IconButton(
                                     icon: const Icon(Icons.edit_outlined),
@@ -706,25 +679,6 @@ class _ContestsScreenState extends State<ContestsScreen>
   }
 }
 
-class _ChanceChip extends StatelessWidget {
-  const _ChanceChip({required this.label, required this.value});
-
-  final String label;
-  final double value;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(999),
-        color: Theme.of(context).colorScheme.secondaryContainer,
-      ),
-      child: Text('$label: ${value.toStringAsFixed(1)}%'),
-    );
-  }
-}
-
 class _RouletteCard extends StatelessWidget {
   const _RouletteCard({
     required this.prizes,
@@ -776,8 +730,8 @@ class _RouletteCard extends StatelessWidget {
                     if (prizes.isNotEmpty)
                       AnimatedRotation(
                         turns: turns,
-                        duration: const Duration(milliseconds: 2300),
-                        curve: Curves.easeOutCubic,
+                        duration: const Duration(milliseconds: 4200),
+                        curve: Curves.easeOutExpo,
                         child: CustomPaint(
                           size: const Size(230, 230),
                           painter: _RoulettePainter(prizes: prizes),
@@ -862,9 +816,12 @@ class _RoulettePainter extends CustomPainter {
 
     for (var i = 0; i < prizes.length; i++) {
       final item = prizes[i];
-      final colors = item.isGood
-          ? [const Color(0xFF9C6BFF), const Color(0xFF6F3DFF)]
-          : [const Color(0xFFFF8A80), const Color(0xFFFF5252)];
+      final isSuper = item.title.toLowerCase().contains('суперприз');
+      final colors = isSuper
+          ? [const Color(0xFFFFE082), const Color(0xFFFFB300)]
+          : (item.isGood
+                ? [const Color(0xFF64B5F6), const Color(0xFF1976D2)]
+                : [const Color(0xFFFF8A80), const Color(0xFFE53935)]);
       final paint = Paint()
         ..style = PaintingStyle.fill
         ..shader = LinearGradient(
@@ -873,13 +830,28 @@ class _RoulettePainter extends CustomPainter {
           end: Alignment.bottomRight,
         ).createShader(rect);
 
-      canvas.drawArc(rect, (-pi / 2) + (i * sweep), sweep, true, paint);
+      final startAngle = (-pi / 2) + (i * sweep);
+      canvas.drawArc(rect, startAngle, sweep, true, paint);
+
+      if (isSuper) {
+        final superStripe = Paint()
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = 7
+          ..color = const Color(0xFFFFD54F).withOpacity(0.95);
+        canvas.drawArc(
+          rect.deflate(10),
+          startAngle + (sweep * 0.08),
+          sweep * 0.84,
+          false,
+          superStripe,
+        );
+      }
 
       final sep = Paint()
         ..style = PaintingStyle.stroke
         ..strokeWidth = 2
         ..color = Colors.white.withOpacity(0.8);
-      final angle = (-pi / 2) + (i * sweep);
+      final angle = startAngle;
       canvas.drawLine(
         center,
         center + Offset(cos(angle) * radius, sin(angle) * radius),
