@@ -2210,12 +2210,59 @@ class AppDb extends _$AppDb {
     await customStatement('''
       CREATE TABLE IF NOT EXISTS app_expenses (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
-        happened_at TEXT NOT NULL,
+        happened_at INTEGER NOT NULL,
         amount INTEGER NOT NULL CHECK(amount >= 0),
         category TEXT NOT NULL DEFAULT 'Расход',
         note TEXT
       )
     ''');
+
+    final happenedAtTypeRows = await customSelect(
+      "PRAGMA table_info('app_expenses')",
+    ).get();
+
+    String? happenedAtType;
+    for (final row in happenedAtTypeRows) {
+      if (row.data['name'] == 'happened_at') {
+        happenedAtType = (row.data['type'] as String?)?.toUpperCase() ?? '';
+        break;
+      }
+    }
+
+    if (happenedAtType != 'INTEGER') {
+      await transaction(() async {
+        await customStatement('''
+          CREATE TABLE IF NOT EXISTS app_expenses_new (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            happened_at INTEGER NOT NULL,
+            amount INTEGER NOT NULL CHECK(amount >= 0),
+            category TEXT NOT NULL DEFAULT 'Расход',
+            note TEXT
+          )
+        ''');
+
+        await customStatement('''
+          INSERT INTO app_expenses_new (id, happened_at, amount, category, note)
+          SELECT
+            id,
+            CASE
+              WHEN typeof(happened_at) = 'integer' THEN happened_at
+              WHEN typeof(happened_at) = 'real' THEN CAST(happened_at AS INTEGER)
+              WHEN typeof(happened_at) = 'text' THEN CAST(strftime('%s', happened_at) AS INTEGER) * 1000
+              ELSE CAST(strftime('%s', 'now') AS INTEGER) * 1000
+            END,
+            amount,
+            COALESCE(NULLIF(TRIM(category), ''), 'Расход'),
+            note
+          FROM app_expenses
+        ''');
+
+        await customStatement('DROP TABLE app_expenses');
+        await customStatement(
+          'ALTER TABLE app_expenses_new RENAME TO app_expenses',
+        );
+      });
+    }
   }
 
   Future<PlanPricesVm> getPlanPrices() async {
@@ -2294,8 +2341,8 @@ class AppDb extends _$AppDb {
       ORDER BY happened_at DESC, id DESC
       ''',
       variables: [
-        Variable.withDateTime(bounds.$1),
-        Variable.withDateTime(bounds.$2),
+        Variable.withInt(bounds.$1.millisecondsSinceEpoch),
+        Variable.withInt(bounds.$2.millisecondsSinceEpoch),
       ],
     ).get();
 
@@ -2303,7 +2350,9 @@ class AppDb extends _$AppDb {
         .map(
           (r) => ExpenseEntryVm(
             id: (r.data['id'] as int?) ?? 0,
-            date: r.read<DateTime>('happened_at'),
+            date: DateTime.fromMillisecondsSinceEpoch(
+              (r.data['happened_at'] as int?) ?? 0,
+            ),
             amount: (r.data['amount'] as int?) ?? 0,
             category: (r.data['category'] as String?) ?? 'Расход',
             note: r.data['note'] as String?,
@@ -2322,7 +2371,7 @@ class AppDb extends _$AppDb {
     await customStatement(
       'INSERT INTO app_expenses (happened_at, amount, category, note) VALUES (?, ?, ?, ?)',
       [
-        date,
+        date.millisecondsSinceEpoch,
         amount,
         category.trim().isEmpty ? 'Расход' : category.trim(),
         note?.trim().isEmpty == true ? null : note?.trim(),
@@ -2359,7 +2408,7 @@ class AppDb extends _$AppDb {
 
         UNION ALL
 
-        SELECT strftime('%Y-%m', happened_at) AS month_key,
+        SELECT strftime('%Y-%m', happened_at / 1000, 'unixepoch', 'localtime') AS month_key,
                0 AS income_amount,
                amount AS expense_amount
         FROM app_expenses
