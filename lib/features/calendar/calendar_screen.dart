@@ -1631,30 +1631,6 @@ class _CalendarScreenState extends State<CalendarScreen>
     _lastTime = time;
   }
 
-  Future<List<Appointment>> _getFutureAppointmentsForClient({
-    required String clientId,
-    required DateTime from,
-  }) {
-    final q = db.select(db.appointments)
-      ..where(
-        (t) =>
-            t.clientId.equals(clientId) & t.startAt.isBiggerOrEqualValue(from),
-      );
-    return q.get();
-  }
-
-  Future<int> _deleteFutureAppointmentsForClient({
-    required String clientId,
-    required DateTime from,
-  }) {
-    return (db.delete(db.appointments)..where(
-          (t) =>
-              t.clientId.equals(clientId) &
-              t.startAt.isBiggerOrEqualValue(from),
-        ))
-        .go();
-  }
-
   Future<void> _openScheduleEditorForClient({
     required Client client,
     required bool hasSchedule,
@@ -1666,7 +1642,7 @@ class _CalendarScreenState extends State<CalendarScreen>
     bool scheduleEnabled = hasSchedule;
 
     if (hasSchedule) {
-      final upcoming = await _getFutureAppointmentsForClient(
+      final upcoming = await db.getFutureAppointmentsForClient(
         clientId: client.id,
         from: DateTime(_selectedDay.year, _selectedDay.month, _selectedDay.day),
       );
@@ -1786,7 +1762,7 @@ class _CalendarScreenState extends State<CalendarScreen>
       _selectedDay.month,
       _selectedDay.day + 1,
     );
-    await _deleteFutureAppointmentsForClient(clientId: client.id, from: from);
+    await db.deleteFutureAppointmentsForClient(clientId: client.id, from: from);
 
     if (scheduleEnabled) {
       await _createSchedule(
@@ -1812,7 +1788,7 @@ class _CalendarScreenState extends State<CalendarScreen>
 
   Future<void> _openAppointmentActions(AppointmentWithClient item) async {
     final colors = Theme.of(context).colorScheme;
-    final upcoming = await _getFutureAppointmentsForClient(
+    final upcoming = await db.getFutureAppointmentsForClient(
       clientId: item.client.id,
       from: DateTime(
         _selectedDay.year,

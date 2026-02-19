@@ -461,6 +461,31 @@ class AppDb extends _$AppDb {
     return (await q.get()).isNotEmpty;
   }
 
+  Future<List<Appointment>> getFutureAppointmentsForClient({
+    required String clientId,
+    required DateTime from,
+  }) {
+    final q = select(appointments)
+      ..where(
+        (t) =>
+            t.clientId.equals(clientId) & t.startAt.isBiggerOrEqualValue(from),
+      )
+      ..orderBy([(t) => OrderingTerm.asc(t.startAt)]);
+    return q.get();
+  }
+
+  Future<int> deleteFutureAppointmentsForClient({
+    required String clientId,
+    required DateTime from,
+  }) {
+    return (delete(appointments)..where(
+          (t) =>
+              t.clientId.equals(clientId) &
+              t.startAt.isBiggerOrEqualValue(from),
+        ))
+        .go();
+  }
+
   Future<void> addAppointmentIfNotExists({
     required String clientId,
     required DateTime startAt,
