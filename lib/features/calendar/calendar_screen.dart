@@ -2609,6 +2609,11 @@ class _CalendarScreenState extends State<CalendarScreen>
                                           if (_isAppointmentDone(
                                             it.appointment,
                                           )) {
+                                            await db
+                                                .toggleWorkoutForClientOnDay(
+                                                  clientId: it.client.id,
+                                                  day: _selectedDay,
+                                                );
                                             await db.updateAppointmentNote(
                                               id: it.appointment.id,
                                               note: _withAttendanceMarker(
