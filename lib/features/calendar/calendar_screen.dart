@@ -1631,8 +1631,172 @@ class _CalendarScreenState extends State<CalendarScreen>
     _lastTime = time;
   }
 
+  Future<void> _openScheduleEditorForClient({
+    required Client client,
+    required bool hasSchedule,
+  }) async {
+    DateTime startDate = _selectedDay;
+    TimeOfDay time = _lastTime ?? const TimeOfDay(hour: 10, minute: 0);
+    final selectedWeekdays = <int>{_selectedDay.weekday};
+    int weeks = 4;
+    bool scheduleEnabled = hasSchedule;
+
+    if (hasSchedule) {
+      final upcoming = await db.getFutureAppointmentsForClient(
+        clientId: client.id,
+        from: DateTime(_selectedDay.year, _selectedDay.month, _selectedDay.day),
+      );
+      if (upcoming.isNotEmpty) {
+        final first = upcoming.first.startAt;
+        time = TimeOfDay.fromDateTime(first);
+        selectedWeekdays
+          ..clear()
+          ..addAll(upcoming.map((e) => e.startAt.weekday).toSet());
+        startDate = DateTime(first.year, first.month, first.day);
+      }
+    }
+
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setLocal) {
+          Widget chip(String label, int wd) => FilterChip(
+            selected: selectedWeekdays.contains(wd),
+            label: Text(label),
+            onSelected: (v) {
+              setLocal(() {
+                if (v) {
+                  selectedWeekdays.add(wd);
+                } else {
+                  selectedWeekdays.remove(wd);
+                }
+                if (selectedWeekdays.isEmpty) {
+                  selectedWeekdays.add(startDate.weekday);
+                }
+              });
+            },
+          );
+
+          return AlertDialog(
+            title: Text(
+              scheduleEnabled ? 'Изменить расписание' : 'Создать расписание',
+            ),
+            content: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  SwitchListTile(
+                    contentPadding: EdgeInsets.zero,
+                    value: scheduleEnabled,
+                    title: const Text('Расписание активно'),
+                    subtitle: Text(
+                      scheduleEnabled
+                          ? 'Можно менять дни и время'
+                          : 'Будет отключено',
+                    ),
+                    onChanged: (v) => setLocal(() => scheduleEnabled = v),
+                  ),
+                  if (scheduleEnabled) ...[
+                    const SizedBox(height: 6),
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 8,
+                      children: [
+                        chip('Пн', DateTime.monday),
+                        chip('Вт', DateTime.tuesday),
+                        chip('Ср', DateTime.wednesday),
+                        chip('Чт', DateTime.thursday),
+                        chip('Пт', DateTime.friday),
+                        chip('Сб', DateTime.saturday),
+                        chip('Вс', DateTime.sunday),
+                      ],
+                    ),
+                    const SizedBox(height: 10),
+                    ListTile(
+                      contentPadding: EdgeInsets.zero,
+                      title: const Text('Время'),
+                      subtitle: Text(time.format(context)),
+                      trailing: const Icon(Icons.schedule),
+                      onTap: () async {
+                        final picked = await _pickTime(time);
+                        if (picked != null) setLocal(() => time = picked);
+                      },
+                    ),
+                    DropdownButtonFormField<int>(
+                      value: weeks,
+                      decoration: const InputDecoration(
+                        labelText: 'Период (недель)',
+                      ),
+                      items: const [4, 8, 12, 16]
+                          .map(
+                            (v) =>
+                                DropdownMenuItem(value: v, child: Text('$v')),
+                          )
+                          .toList(),
+                      onChanged: (v) => setLocal(() => weeks = v ?? 4),
+                    ),
+                  ],
+                ],
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context, false),
+                child: const Text('Отмена'),
+              ),
+              FilledButton(
+                onPressed: () => Navigator.pop(context, true),
+                child: const Text('Сохранить'),
+              ),
+            ],
+          );
+        },
+      ),
+    );
+
+    if (ok != true) return;
+
+    final from = DateTime(
+      _selectedDay.year,
+      _selectedDay.month,
+      _selectedDay.day + 1,
+    );
+    await db.deleteFutureAppointmentsForClient(clientId: client.id, from: from);
+
+    if (scheduleEnabled) {
+      await _createSchedule(
+        clientId: client.id,
+        startDay: startDate,
+        weekdays: selectedWeekdays,
+        time: time,
+        weeks: weeks,
+      );
+      _lastTime = time;
+    }
+
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          scheduleEnabled ? 'Расписание обновлено' : 'Расписание отключено',
+        ),
+      ),
+    );
+    setState(() {});
+  }
+
   Future<void> _openAppointmentActions(AppointmentWithClient item) async {
     final colors = Theme.of(context).colorScheme;
+    final upcoming = await db.getFutureAppointmentsForClient(
+      clientId: item.client.id,
+      from: DateTime(
+        _selectedDay.year,
+        _selectedDay.month,
+        _selectedDay.day + 1,
+      ),
+    );
+    final hasSchedule = upcoming.length >= 2;
 
     Widget actionTile({
       required IconData icon,
@@ -1702,6 +1866,22 @@ class _CalendarScreenState extends State<CalendarScreen>
                 },
               ),
               actionTile(
+                icon: Icons.repeat,
+                title: hasSchedule
+                    ? 'Изменить расписание'
+                    : 'Создать расписание',
+                subtitle: hasSchedule
+                    ? 'Изменить дни/время или отключить'
+                    : 'Создать регулярные тренировки',
+                onTap: () async {
+                  Navigator.pop(context);
+                  await _openScheduleEditorForClient(
+                    client: item.client,
+                    hasSchedule: hasSchedule,
+                  );
+                },
+              ),
+              actionTile(
                 icon: Icons.calendar_month,
                 title: 'Перенести на дату',
                 subtitle:
@@ -1752,38 +1932,6 @@ class _CalendarScreenState extends State<CalendarScreen>
                 onTap: () async {
                   Navigator.pop(context);
                   await db.deleteAppointmentById(item.appointment.id);
-                },
-              ),
-              actionTile(
-                icon: Icons.check_circle_outline,
-                title: 'Отметить тренировку выполненной',
-                subtitle: DateFormat(
-                  'dd.MM.yyyy',
-                  'ru_RU',
-                ).format(_selectedDay),
-                onTap: () async {
-                  Navigator.pop(context);
-
-                  final when = DateTime(
-                    _selectedDay.year,
-                    _selectedDay.month,
-                    _selectedDay.day,
-                    12,
-                    0,
-                  );
-
-                  await db.completeWorkoutForClient(
-                    clientId: item.client.id,
-                    when: when,
-                  );
-
-                  if (!mounted) return;
-
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('Тренировка отмечена ✅')),
-                  );
-
-                  setState(() {});
                 },
               ),
             ],
@@ -2189,20 +2337,38 @@ class _CalendarScreenState extends State<CalendarScreen>
                                 builder: (context, snap) {
                                   final done = snap.data?.doneToday == true;
 
-                                  return IconButton.filledTonal(
-                                    icon: Icon(
-                                      done
-                                          ? Icons.check_circle
-                                          : Icons.radio_button_unchecked,
-                                    ),
-                                    onPressed: () async {
-                                      await db.toggleWorkoutForClientOnDay(
-                                        clientId: it.client.id,
-                                        day: _selectedDay,
-                                      );
-                                      if (!mounted) return;
-                                      setState(() {});
-                                    },
+                                  return Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      IconButton(
+                                        tooltip: 'Удалить запись',
+                                        icon: Icon(
+                                          Icons.delete_outline,
+                                          color: colors.error,
+                                        ),
+                                        onPressed: () async {
+                                          await db.deleteAppointmentById(
+                                            it.appointment.id,
+                                          );
+                                        },
+                                      ),
+                                      IconButton.filledTonal(
+                                        tooltip: 'Отметить выполненной',
+                                        icon: Icon(
+                                          done
+                                              ? Icons.check_circle
+                                              : Icons.radio_button_unchecked,
+                                        ),
+                                        onPressed: () async {
+                                          await db.toggleWorkoutForClientOnDay(
+                                            clientId: it.client.id,
+                                            day: _selectedDay,
+                                          );
+                                          if (!mounted) return;
+                                          setState(() {});
+                                        },
+                                      ),
+                                    ],
                                   );
                                 },
                               ),
