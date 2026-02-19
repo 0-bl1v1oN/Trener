@@ -2004,6 +2004,150 @@ class _CalendarScreenState extends State<CalendarScreen>
     );
   }
 
+  double? _parseWeight(String raw) {
+    final s = raw.trim().replaceAll(',', '.');
+    if (s.isEmpty) return null;
+    return double.tryParse(s);
+  }
+
+  int? _parseReps(String raw) {
+    final s = raw.trim();
+    if (s.isEmpty) return null;
+    return int.tryParse(s);
+  }
+
+  Future<void> _openQuickWorkoutCheck(AppointmentWithClient item) async {
+    final details = await db.getWorkoutDetailsForClientOnDay(
+      clientId: item.client.id,
+      day: _selectedDay,
+    );
+
+    final info = details.$1;
+    final exercises = details.$3;
+
+    if (!info.hasPlan) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('У клиента нет активной программы.')),
+      );
+      return;
+    }
+
+    final kgControllers = <int, TextEditingController>{};
+    final repsControllers = <int, TextEditingController>{};
+
+    for (final e in exercises) {
+      kgControllers[e.templateExerciseId] = TextEditingController(
+        text: e.lastWeightKg == null ? '' : e.lastWeightKg!.toString(),
+      );
+      repsControllers[e.templateExerciseId] = TextEditingController(
+        text: e.lastReps?.toString() ?? '',
+      );
+    }
+
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text('Проверка весов • ${item.client.name}'),
+        content: SizedBox(
+          width: 420,
+          child: exercises.isEmpty
+              ? const Text('В этой тренировке пока нет упражнений.')
+              : ListView.separated(
+                  shrinkWrap: true,
+                  itemCount: exercises.length,
+                  separatorBuilder: (_, __) => const SizedBox(height: 8),
+                  itemBuilder: (context, i) {
+                    final e = exercises[i];
+                    return Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(e.name),
+                        const SizedBox(height: 6),
+                        Row(
+                          children: [
+                            Expanded(
+                              child: TextField(
+                                controller: kgControllers[e.templateExerciseId],
+                                decoration: const InputDecoration(
+                                  labelText: 'Вес (кг)',
+                                  isDense: true,
+                                ),
+                                keyboardType:
+                                    const TextInputType.numberWithOptions(
+                                      decimal: true,
+                                    ),
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: TextField(
+                                controller:
+                                    repsControllers[e.templateExerciseId],
+                                decoration: const InputDecoration(
+                                  labelText: 'Повторы',
+                                  isDense: true,
+                                ),
+                                keyboardType: TextInputType.number,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
+                    );
+                  },
+                ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('Отмена'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            child: const Text('Ок'),
+          ),
+        ],
+      ),
+    );
+
+    if (ok != true) {
+      for (final c in [...kgControllers.values, ...repsControllers.values]) {
+        c.dispose();
+      }
+      return;
+    }
+
+    final results = <int, (double? kg, int? reps)>{};
+    for (final e in exercises) {
+      final kg = _parseWeight(kgControllers[e.templateExerciseId]?.text ?? '');
+      final reps = _parseReps(
+        repsControllers[e.templateExerciseId]?.text ?? '',
+      );
+      results[e.templateExerciseId] = (kg, reps);
+    }
+
+    for (final c in [...kgControllers.values, ...repsControllers.values]) {
+      c.dispose();
+    }
+
+    if (!info.doneToday) {
+      await db.toggleWorkoutForClientOnDay(
+        clientId: item.client.id,
+        day: _selectedDay,
+      );
+    }
+
+    await db.saveWorkoutResultsAndMarkDone(
+      clientId: item.client.id,
+      day: _selectedDay,
+      resultsByTemplateExerciseId: results,
+    );
+
+    if (!mounted) return;
+    setState(() {});
+  }
+
   void _maybeOpenCategoriesFromRoute() {
     final uri = GoRouterState.of(context).uri;
     final shouldOpen = uri.queryParameters['openCategories'] == '1';
@@ -2425,21 +2569,18 @@ class _CalendarScreenState extends State<CalendarScreen>
                                     ),
                                     builder: (context, snap) {
                                       final info = snap.data;
+                                      final planText = it.client.plan == null
+                                          ? ''
+                                          : 'Абонемент: ${it.client.plan}';
                                       if (info == null || !info.hasPlan) {
-                                        return Text(
-                                          it.client.plan == null
-                                              ? ''
-                                              : 'Абонемент: ${it.client.plan}',
-                                        );
+                                        return Text(planText);
                                       }
 
-                                      final planText =
-                                          'Абонемент: ${it.client.plan}';
-                                      final workoutText = info.doneToday
-                                          ? '✅ Выполнено: ${info.label} — ${info.title}'
-                                          : 'Сегодня: ${info.label} — ${info.title}';
+                                      final statusText = info.doneToday
+                                          ? '✅ Было'
+                                          : 'Статус: не выполнено';
 
-                                      return Text('$planText\n$workoutText');
+                                      return Text('$planText\n$statusText');
                                     },
                                   ),
                                   trailing: FutureBuilder<WorkoutDayInfo>(
@@ -2453,6 +2594,31 @@ class _CalendarScreenState extends State<CalendarScreen>
                                       return Row(
                                         mainAxisSize: MainAxisSize.min,
                                         children: [
+                                          IconButton.filledTonal(
+                                            tooltip: done
+                                                ? 'Снять отметку выполнения'
+                                                : 'Проверить и отметить выполненной',
+                                            icon: Icon(
+                                              done
+                                                  ? Icons.check_circle
+                                                  : Icons
+                                                        .radio_button_unchecked,
+                                            ),
+                                            onPressed: () async {
+                                              if (done) {
+                                                await db
+                                                    .toggleWorkoutForClientOnDay(
+                                                      clientId: it.client.id,
+                                                      day: _selectedDay,
+                                                    );
+                                                if (!mounted) return;
+                                                setState(() {});
+                                                return;
+                                              }
+
+                                              await _openQuickWorkoutCheck(it);
+                                            },
+                                          ),
                                           IconButton(
                                             tooltip: 'Удалить запись',
                                             icon: Icon(
@@ -2463,24 +2629,6 @@ class _CalendarScreenState extends State<CalendarScreen>
                                               await db.deleteAppointmentById(
                                                 it.appointment.id,
                                               );
-                                            },
-                                          ),
-                                          IconButton.filledTonal(
-                                            tooltip: 'Отметить выполненной',
-                                            icon: Icon(
-                                              done
-                                                  ? Icons.check_circle
-                                                  : Icons
-                                                        .radio_button_unchecked,
-                                            ),
-                                            onPressed: () async {
-                                              await db
-                                                  .toggleWorkoutForClientOnDay(
-                                                    clientId: it.client.id,
-                                                    day: _selectedDay,
-                                                  );
-                                              if (!mounted) return;
-                                              setState(() {});
                                             },
                                           ),
                                         ],
