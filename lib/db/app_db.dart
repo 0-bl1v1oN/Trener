@@ -752,6 +752,24 @@ class AppDb extends _$AppDb {
       return map;
     });
   }
+
+  Stream<List<Client>> watchClientsWithPlanEndForDay(DateTime day) {
+    final dayStart = DateTime(day.year, day.month, day.day);
+    final dayEnd = dayStart.add(const Duration(days: 1));
+
+    final q = (select(clients)
+      ..where(
+        (t) =>
+            t.planEnd.isNotNull() &
+            t.planEnd.isBiggerOrEqualValue(dayStart) &
+            t.planEnd.isSmallerThanValue(dayEnd) &
+            t.plan.isNotNull() &
+            t.plan.equals('Пробный').not(),
+      )
+      ..orderBy([(t) => OrderingTerm.asc(t.name)]));
+
+    return q.watch();
+  }
   // ===== Programs / Workouts =====
 
   int _parsePlanSize(String? plan) {

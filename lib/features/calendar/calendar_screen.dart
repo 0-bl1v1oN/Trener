@@ -1969,6 +1969,41 @@ class _CalendarScreenState extends State<CalendarScreen>
     return created;
   }
 
+  Future<void> _extendClientPlan(Client client, {int days = 28}) async {
+    if (client.plan == null || client.plan == 'Пробный') return;
+
+    final base = client.planEnd ?? _selectedDay;
+    final baseDate = DateTime(base.year, base.month, base.day);
+    final nextEnd = baseDate.add(Duration(days: days));
+
+    await db.upsertClient(
+      ClientsCompanion(
+        id: Value(client.id),
+        name: Value(client.name),
+        gender: Value(client.gender),
+        plan: Value(client.plan),
+        planStart: client.planStart == null
+            ? Value(
+                DateTime(
+                  _selectedDay.year,
+                  _selectedDay.month,
+                  _selectedDay.day,
+                ),
+              )
+            : Value(client.planStart!),
+        planEnd: Value(nextEnd),
+      ),
+    );
+
+    await db.syncProgramStateFromClient(client.id);
+
+    if (!mounted) return;
+    final fmt = DateFormat('dd.MM.yyyy', 'ru_RU').format(nextEnd);
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('Абонемент ${client.name} продлён до $fmt')),
+    );
+  }
+
   void _maybeOpenCategoriesFromRoute() {
     final uri = GoRouterState.of(context).uri;
     final shouldOpen = uri.queryParameters['openCategories'] == '1';
@@ -2021,375 +2056,458 @@ class _CalendarScreenState extends State<CalendarScreen>
           builder: (context, snap) {
             final items = snap.data ?? const <AppointmentWithClient>[];
 
-            return NotificationListener<ScrollNotification>(
-              onNotification: _onListScroll,
-              child: CustomScrollView(
-                controller: _appointmentsController,
-                physics: const AlwaysScrollableScrollPhysics(),
-                slivers: [
-                  // Календарь сверху
-                  SliverToBoxAdapter(
-                    child: Padding(
-                      padding: const EdgeInsets.fromLTRB(12, 10, 12, 6),
-                      child: ClipRRect(
-                        borderRadius: BorderRadius.circular(24),
-                        child: AnimatedSize(
-                          duration: const Duration(milliseconds: 240),
-                          curve: Curves.easeInOutCubic,
-                          alignment: Alignment.topCenter,
-                          child: DecoratedBox(
-                            decoration: BoxDecoration(
-                              color: colors.surface,
-                              borderRadius: BorderRadius.circular(24),
-                              border: Border.all(
-                                color: colors.outlineVariant.withOpacity(0.7),
+            return StreamBuilder<List<Client>>(
+              stream: db.watchClientsWithPlanEndForDay(_selectedDay),
+              builder: (context, planSnap) {
+                final expiringClients = planSnap.data ?? const <Client>[];
+                final hasAnyItems =
+                    items.isNotEmpty || expiringClients.isNotEmpty;
+
+                return NotificationListener<ScrollNotification>(
+                  onNotification: _onListScroll,
+                  child: CustomScrollView(
+                    controller: _appointmentsController,
+                    physics: const AlwaysScrollableScrollPhysics(),
+                    slivers: [
+                      // Календарь сверху
+                      SliverToBoxAdapter(
+                        child: Padding(
+                          padding: const EdgeInsets.fromLTRB(12, 10, 12, 6),
+                          child: ClipRRect(
+                            borderRadius: BorderRadius.circular(24),
+                            child: AnimatedSize(
+                              duration: const Duration(milliseconds: 240),
+                              curve: Curves.easeInOutCubic,
+                              alignment: Alignment.topCenter,
+                              child: DecoratedBox(
+                                decoration: BoxDecoration(
+                                  color: colors.surface,
+                                  borderRadius: BorderRadius.circular(24),
+                                  border: Border.all(
+                                    color: colors.outlineVariant.withOpacity(
+                                      0.7,
+                                    ),
+                                  ),
+                                ),
+                                child: Padding(
+                                  padding: const EdgeInsets.fromLTRB(
+                                    8,
+                                    8,
+                                    8,
+                                    6,
+                                  ),
+                                  child: TableCalendar(
+                                    // вертикальный жест календаря отключен: формат
+                                    // переключаем только прокруткой списка,
+                                    // чтобы горизонтальный свайп месяца не схлопывал вид
+                                    availableGestures:
+                                        AvailableGestures.horizontalSwipe,
+
+                                    pageAnimationCurve: Curves.easeOutCubic,
+                                    pageAnimationDuration: const Duration(
+                                      milliseconds: 280,
+                                    ),
+
+                                    locale: 'ru_RU',
+                                    availableCalendarFormats: const {
+                                      CalendarFormat.month: 'Месяц',
+                                      CalendarFormat.week: 'Неделя',
+                                    },
+                                    calendarFormat: _calendarFormat,
+
+                                    headerStyle: HeaderStyle(
+                                      formatButtonVisible: false,
+                                      titleCentered: true,
+                                      titleTextStyle:
+                                          Theme.of(
+                                            context,
+                                          ).textTheme.titleLarge?.copyWith(
+                                            fontWeight: FontWeight.w700,
+                                          ) ??
+                                          const TextStyle(fontSize: 22),
+                                      leftChevronIcon: Icon(
+                                        Icons.chevron_left,
+                                        color: colors.onSurface,
+                                      ),
+                                      rightChevronIcon: Icon(
+                                        Icons.chevron_right,
+                                        color: colors.onSurface,
+                                      ),
+                                    ),
+                                    daysOfWeekStyle: DaysOfWeekStyle(
+                                      weekdayStyle:
+                                          Theme.of(
+                                            context,
+                                          ).textTheme.labelLarge?.copyWith(
+                                            fontWeight: FontWeight.w600,
+                                          ) ??
+                                          const TextStyle(),
+                                      weekendStyle:
+                                          Theme.of(
+                                            context,
+                                          ).textTheme.labelLarge?.copyWith(
+                                            fontWeight: FontWeight.w600,
+                                            color: colors.onSurfaceVariant,
+                                          ) ??
+                                          const TextStyle(),
+                                    ),
+                                    calendarStyle: CalendarStyle(
+                                      outsideTextStyle: TextStyle(
+                                        color: colors.onSurface.withOpacity(
+                                          0.35,
+                                        ),
+                                      ),
+                                      weekendTextStyle: TextStyle(
+                                        color: colors.onSurface.withOpacity(
+                                          0.85,
+                                        ),
+                                      ),
+                                      defaultDecoration: const BoxDecoration(
+                                        shape: BoxShape.circle,
+                                      ),
+                                      todayDecoration: BoxDecoration(
+                                        color: colors.primary.withOpacity(0.18),
+                                        shape: BoxShape.circle,
+                                      ),
+                                      selectedDecoration: BoxDecoration(
+                                        color: colors.primary,
+                                        shape: BoxShape.circle,
+                                        boxShadow: [
+                                          BoxShadow(
+                                            color: colors.primary.withOpacity(
+                                              0.28,
+                                            ),
+                                            blurRadius: 10,
+                                            offset: const Offset(0, 3),
+                                          ),
+                                        ],
+                                      ),
+                                      markersAlignment: Alignment.bottomCenter,
+                                      markersMaxCount: 3,
+                                      markerDecoration: BoxDecoration(
+                                        color: colors.primary,
+                                        shape: BoxShape.circle,
+                                      ),
+                                      markerSize: 6,
+                                      markerMargin: const EdgeInsets.symmetric(
+                                        horizontal: 1.5,
+                                      ),
+                                    ),
+
+                                    firstDay: DateTime.utc(2020, 1, 1),
+                                    lastDay: DateTime.utc(2035, 12, 31),
+                                    focusedDay: _focusedDay,
+
+                                    startingDayOfWeek: StartingDayOfWeek.monday,
+                                    selectedDayPredicate: (day) =>
+                                        isSameDay(_selectedDay, day),
+
+                                    onDaySelected: (selectedDay, focusedDay) {
+                                      setState(() {
+                                        _selectedDay = DateTime(
+                                          selectedDay.year,
+                                          selectedDay.month,
+                                          selectedDay.day,
+                                        );
+                                        _focusedDay = focusedDay;
+                                      });
+                                    },
+
+                                    onPageChanged: (focusedDay) {
+                                      setState(() => _focusedDay = focusedDay);
+                                      _setCountsWindow(focusedDay);
+                                    },
+
+                                    eventLoader: (day) {
+                                      final key = DateTime(
+                                        day.year,
+                                        day.month,
+                                        day.day,
+                                      );
+                                      final visibleWork =
+                                          _isCategoryVisible(_workCategoryId)
+                                          ? (_workApptCountByDay[key] ?? 0)
+                                          : 0;
+                                      final visibleTrial =
+                                          _isCategoryVisible(_trialCategoryId)
+                                          ? (_trialApptCountByDay[key] ?? 0)
+                                          : 0;
+                                      final planEnd =
+                                          _planEndCountByDay[key] ?? 0;
+                                      final total =
+                                          visibleWork + visibleTrial + planEnd;
+                                      return List.filled(total, 1);
+                                    },
+
+                                    calendarBuilders: CalendarBuilders(
+                                      markerBuilder: (context, day, events) {
+                                        final key = DateTime(
+                                          day.year,
+                                          day.month,
+                                          day.day,
+                                        );
+                                        final markers = <Color>[];
+
+                                        if (_isCategoryVisible(
+                                              _workCategoryId,
+                                            ) &&
+                                            (_workApptCountByDay[key] ?? 0) >
+                                                0) {
+                                          markers.add(
+                                            _categoryColor(
+                                              _workCategoryId,
+                                              Theme.of(
+                                                context,
+                                              ).colorScheme.primary,
+                                            ),
+                                          );
+                                        }
+
+                                        if (_isCategoryVisible(
+                                              _trialCategoryId,
+                                            ) &&
+                                            (_trialApptCountByDay[key] ?? 0) >
+                                                0) {
+                                          markers.add(
+                                            _categoryColor(
+                                              _trialCategoryId,
+                                              const Color(0xFFFF9F43),
+                                            ),
+                                          );
+                                        }
+
+                                        if ((_planEndCountByDay[key] ?? 0) >
+                                            0) {
+                                          markers.add(Colors.redAccent);
+                                        }
+
+                                        if (markers.isEmpty) return null;
+
+                                        return IgnorePointer(
+                                          child: Align(
+                                            alignment: Alignment.bottomCenter,
+                                            child: Padding(
+                                              padding: const EdgeInsets.only(
+                                                bottom: 4,
+                                              ),
+                                              child: Wrap(
+                                                spacing: 3,
+                                                children: [
+                                                  for (final color
+                                                      in markers.take(3))
+                                                    Container(
+                                                      width: 6,
+                                                      height: 6,
+                                                      decoration: BoxDecoration(
+                                                        color: color,
+                                                        shape: BoxShape.circle,
+                                                      ),
+                                                    ),
+                                                ],
+                                              ),
+                                            ),
+                                          ),
+                                        );
+                                      },
+                                    ),
+                                  ),
+                                ),
                               ),
                             ),
-                            child: Padding(
-                              padding: const EdgeInsets.fromLTRB(8, 8, 8, 6),
-                              child: TableCalendar(
-                                // вертикальный жест календаря отключен: формат
-                                // переключаем только прокруткой списка,
-                                // чтобы горизонтальный свайп месяца не схлопывал вид
-                                availableGestures:
-                                    AvailableGestures.horizontalSwipe,
+                          ),
+                        ),
+                      ),
 
-                                pageAnimationCurve: Curves.easeOutCubic,
-                                pageAnimationDuration: const Duration(
-                                  milliseconds: 280,
-                                ),
+                      const SliverToBoxAdapter(child: SizedBox(height: 4)),
 
-                                locale: 'ru_RU',
-                                availableCalendarFormats: const {
-                                  CalendarFormat.month: 'Месяц',
-                                  CalendarFormat.week: 'Неделя',
-                                },
-                                calendarFormat: _calendarFormat,
+                      // Заголовок (скроллится вместе со списком)
+                      SliverToBoxAdapter(
+                        child: Padding(
+                          padding: const EdgeInsets.fromLTRB(16, 10, 16, 10),
+                          child: Align(
+                            alignment: Alignment.centerLeft,
+                            child: Text(
+                              'Записи на $selectedLabel',
+                              style: Theme.of(context).textTheme.titleMedium,
+                            ),
+                          ),
+                        ),
+                      ),
 
-                                headerStyle: HeaderStyle(
-                                  formatButtonVisible: false,
-                                  titleCentered: true,
-                                  titleTextStyle:
-                                      Theme.of(
-                                        context,
-                                      ).textTheme.titleLarge?.copyWith(
-                                        fontWeight: FontWeight.w700,
-                                      ) ??
-                                      const TextStyle(fontSize: 22),
-                                  leftChevronIcon: Icon(
-                                    Icons.chevron_left,
-                                    color: colors.onSurface,
-                                  ),
-                                  rightChevronIcon: Icon(
-                                    Icons.chevron_right,
-                                    color: colors.onSurface,
-                                  ),
-                                ),
-                                daysOfWeekStyle: DaysOfWeekStyle(
-                                  weekdayStyle:
-                                      Theme.of(
-                                        context,
-                                      ).textTheme.labelLarge?.copyWith(
-                                        fontWeight: FontWeight.w600,
-                                      ) ??
-                                      const TextStyle(),
-                                  weekendStyle:
-                                      Theme.of(
-                                        context,
-                                      ).textTheme.labelLarge?.copyWith(
-                                        fontWeight: FontWeight.w600,
-                                        color: colors.onSurfaceVariant,
-                                      ) ??
-                                      const TextStyle(),
-                                ),
-                                calendarStyle: CalendarStyle(
-                                  outsideTextStyle: TextStyle(
-                                    color: colors.onSurface.withOpacity(0.35),
-                                  ),
-                                  weekendTextStyle: TextStyle(
-                                    color: colors.onSurface.withOpacity(0.85),
-                                  ),
-                                  defaultDecoration: const BoxDecoration(
-                                    shape: BoxShape.circle,
-                                  ),
-                                  todayDecoration: BoxDecoration(
-                                    color: colors.primary.withOpacity(0.18),
-                                    shape: BoxShape.circle,
-                                  ),
-                                  selectedDecoration: BoxDecoration(
-                                    color: colors.primary,
-                                    shape: BoxShape.circle,
-                                    boxShadow: [
-                                      BoxShadow(
-                                        color: colors.primary.withOpacity(0.28),
-                                        blurRadius: 10,
-                                        offset: const Offset(0, 3),
-                                      ),
-                                    ],
-                                  ),
-                                  markersAlignment: Alignment.bottomCenter,
-                                  markersMaxCount: 3,
-                                  markerDecoration: BoxDecoration(
-                                    color: colors.primary,
-                                    shape: BoxShape.circle,
-                                  ),
-                                  markerSize: 6,
-                                  markerMargin: const EdgeInsets.symmetric(
-                                    horizontal: 1.5,
+                      if (expiringClients.isNotEmpty)
+                        SliverList(
+                          delegate: SliverChildBuilderDelegate((context, i) {
+                            final client = expiringClients[i];
+                            final planEnd = client.planEnd == null
+                                ? ''
+                                : DateFormat(
+                                    'dd.MM.yyyy',
+                                    'ru_RU',
+                                  ).format(client.planEnd!);
+                            return Padding(
+                              padding: const EdgeInsets.fromLTRB(12, 0, 12, 10),
+                              child: Card(
+                                elevation: 0,
+                                color: colors.errorContainer.withOpacity(0.45),
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(16),
+                                  side: BorderSide(
+                                    color: colors.error.withOpacity(0.4),
                                   ),
                                 ),
+                                child: ListTile(
+                                  leading: Icon(
+                                    Icons.warning_amber_rounded,
+                                    color: colors.error,
+                                  ),
+                                  title: Text(
+                                    'Заканчивается абонемент • ${client.name}',
+                                  ),
+                                  subtitle: Text(
+                                    planEnd.isEmpty
+                                        ? 'Проверьте дату окончания'
+                                        : 'Дата окончания: $planEnd',
+                                  ),
+                                  trailing: FilledButton.tonalIcon(
+                                    onPressed: () => _extendClientPlan(client),
+                                    icon: const Icon(Icons.event_repeat),
+                                    label: const Text('+28 дней'),
+                                  ),
+                                ),
+                              ),
+                            );
+                          }, childCount: expiringClients.length),
+                        ),
 
-                                firstDay: DateTime.utc(2020, 1, 1),
-                                lastDay: DateTime.utc(2035, 12, 31),
-                                focusedDay: _focusedDay,
+                      if (items.isEmpty && !hasAnyItems)
+                        SliverFillRemaining(
+                          hasScrollBody: false,
+                          child: Center(
+                            child: Text(
+                              'На этот день записей и окончаний абонемента нет',
+                              style: Theme.of(context).textTheme.bodyMedium,
+                            ),
+                          ),
+                        )
+                      else if (items.isNotEmpty)
+                        SliverList(
+                          delegate: SliverChildBuilderDelegate((context, i) {
+                            final it = items[i];
+                            return Padding(
+                              padding: const EdgeInsets.fromLTRB(12, 0, 12, 10),
+                              child: Card(
+                                elevation: 0,
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(16),
+                                  side: BorderSide(
+                                    color: colors.outlineVariant.withOpacity(
+                                      0.7,
+                                    ),
+                                  ),
+                                ),
+                                child: ListTile(
+                                  contentPadding: const EdgeInsets.fromLTRB(
+                                    14,
+                                    8,
+                                    8,
+                                    8,
+                                  ),
+                                  title: Text(
+                                    '${_fmtTime(it.appointment.startAt)} • ${it.client.name}',
+                                    style: Theme.of(
+                                      context,
+                                    ).textTheme.titleMedium,
+                                  ),
+                                  subtitle: FutureBuilder<WorkoutDayInfo>(
+                                    future: db.getWorkoutInfoForClientOnDay(
+                                      clientId: it.client.id,
+                                      day: _selectedDay,
+                                    ),
+                                    builder: (context, snap) {
+                                      final info = snap.data;
+                                      if (info == null || !info.hasPlan) {
+                                        return Text(
+                                          it.client.plan == null
+                                              ? ''
+                                              : 'Абонемент: ${it.client.plan}',
+                                        );
+                                      }
 
-                                startingDayOfWeek: StartingDayOfWeek.monday,
-                                selectedDayPredicate: (day) =>
-                                    isSameDay(_selectedDay, day),
+                                      final planText =
+                                          'Абонемент: ${it.client.plan}';
+                                      final workoutText = info.doneToday
+                                          ? '✅ Выполнено: ${info.label} — ${info.title}'
+                                          : 'Сегодня: ${info.label} — ${info.title}';
 
-                                onDaySelected: (selectedDay, focusedDay) {
-                                  setState(() {
-                                    _selectedDay = DateTime(
-                                      selectedDay.year,
-                                      selectedDay.month,
-                                      selectedDay.day,
-                                    );
-                                    _focusedDay = focusedDay;
-                                  });
-                                },
+                                      return Text('$planText\n$workoutText');
+                                    },
+                                  ),
+                                  trailing: FutureBuilder<WorkoutDayInfo>(
+                                    future: db.getWorkoutInfoForClientOnDay(
+                                      clientId: it.client.id,
+                                      day: _selectedDay,
+                                    ),
+                                    builder: (context, snap) {
+                                      final done = snap.data?.doneToday == true;
 
-                                onPageChanged: (focusedDay) {
-                                  setState(() => _focusedDay = focusedDay);
-                                  _setCountsWindow(focusedDay);
-                                },
-
-                                eventLoader: (day) {
-                                  final key = DateTime(
-                                    day.year,
-                                    day.month,
-                                    day.day,
-                                  );
-                                  final visibleWork =
-                                      _isCategoryVisible(_workCategoryId)
-                                      ? (_workApptCountByDay[key] ?? 0)
-                                      : 0;
-                                  final visibleTrial =
-                                      _isCategoryVisible(_trialCategoryId)
-                                      ? (_trialApptCountByDay[key] ?? 0)
-                                      : 0;
-                                  final planEnd = _planEndCountByDay[key] ?? 0;
-                                  final total =
-                                      visibleWork + visibleTrial + planEnd;
-                                  return List.filled(total, 1);
-                                },
-
-                                calendarBuilders: CalendarBuilders(
-                                  markerBuilder: (context, day, events) {
-                                    final key = DateTime(
-                                      day.year,
-                                      day.month,
-                                      day.day,
-                                    );
-                                    final markers = <Color>[];
-
-                                    if (_isCategoryVisible(_workCategoryId) &&
-                                        (_workApptCountByDay[key] ?? 0) > 0) {
-                                      markers.add(
-                                        _categoryColor(
-                                          _workCategoryId,
-                                          Theme.of(context).colorScheme.primary,
-                                        ),
-                                      );
-                                    }
-
-                                    if (_isCategoryVisible(_trialCategoryId) &&
-                                        (_trialApptCountByDay[key] ?? 0) > 0) {
-                                      markers.add(
-                                        _categoryColor(
-                                          _trialCategoryId,
-                                          const Color(0xFFFF9F43),
-                                        ),
-                                      );
-                                    }
-
-                                    if ((_planEndCountByDay[key] ?? 0) > 0) {
-                                      markers.add(Colors.redAccent);
-                                    }
-
-                                    if (markers.isEmpty) return null;
-
-                                    return IgnorePointer(
-                                      child: Align(
-                                        alignment: Alignment.bottomCenter,
-                                        child: Padding(
-                                          padding: const EdgeInsets.only(
-                                            bottom: 4,
+                                      return Row(
+                                        mainAxisSize: MainAxisSize.min,
+                                        children: [
+                                          IconButton(
+                                            tooltip: 'Удалить запись',
+                                            icon: Icon(
+                                              Icons.delete_outline,
+                                              color: colors.error,
+                                            ),
+                                            onPressed: () async {
+                                              await db.deleteAppointmentById(
+                                                it.appointment.id,
+                                              );
+                                            },
                                           ),
-                                          child: Wrap(
-                                            spacing: 3,
-                                            children: [
-                                              for (final color in markers.take(
-                                                3,
-                                              ))
-                                                Container(
-                                                  width: 6,
-                                                  height: 6,
-                                                  decoration: BoxDecoration(
-                                                    color: color,
-                                                    shape: BoxShape.circle,
-                                                  ),
-                                                ),
-                                            ],
+                                          IconButton.filledTonal(
+                                            tooltip: 'Отметить выполненной',
+                                            icon: Icon(
+                                              done
+                                                  ? Icons.check_circle
+                                                  : Icons
+                                                        .radio_button_unchecked,
+                                            ),
+                                            onPressed: () async {
+                                              await db
+                                                  .toggleWorkoutForClientOnDay(
+                                                    clientId: it.client.id,
+                                                    day: _selectedDay,
+                                                  );
+                                              if (!mounted) return;
+                                              setState(() {});
+                                            },
                                           ),
-                                        ),
-                                      ),
+                                        ],
+                                      );
+                                    },
+                                  ),
+                                  onTap: () async {
+                                    final dayStr = DateFormat(
+                                      'yyyy-MM-dd',
+                                    ).format(_selectedDay);
+                                    await context.push(
+                                      '/clients/${it.client.id}/program?day=$dayStr',
                                     );
+                                    if (!mounted) return;
+                                    setState(() {});
                                   },
+                                  onLongPress: () =>
+                                      _openAppointmentActions(it),
                                 ),
                               ),
-                            ),
-                          ),
+                            );
+                          }, childCount: items.length),
                         ),
-                      ),
-                    ),
+                    ],
                   ),
-
-                  const SliverToBoxAdapter(child: SizedBox(height: 4)),
-
-                  // Заголовок (скроллится вместе со списком)
-                  SliverToBoxAdapter(
-                    child: Padding(
-                      padding: const EdgeInsets.fromLTRB(16, 10, 16, 10),
-                      child: Align(
-                        alignment: Alignment.centerLeft,
-                        child: Text(
-                          'Записи на $selectedLabel',
-                          style: Theme.of(context).textTheme.titleMedium,
-                        ),
-                      ),
-                    ),
-                  ),
-
-                  if (items.isEmpty)
-                    SliverFillRemaining(
-                      hasScrollBody: false,
-                      child: Center(
-                        child: Text(
-                          'На этот день записей нет',
-                          style: Theme.of(context).textTheme.bodyMedium,
-                        ),
-                      ),
-                    )
-                  else
-                    SliverList(
-                      delegate: SliverChildBuilderDelegate((context, i) {
-                        final it = items[i];
-                        return Padding(
-                          padding: const EdgeInsets.fromLTRB(12, 0, 12, 10),
-                          child: Card(
-                            elevation: 0,
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(16),
-                              side: BorderSide(
-                                color: colors.outlineVariant.withOpacity(0.7),
-                              ),
-                            ),
-                            child: ListTile(
-                              contentPadding: const EdgeInsets.fromLTRB(
-                                14,
-                                8,
-                                8,
-                                8,
-                              ),
-                              title: Text(
-                                '${_fmtTime(it.appointment.startAt)} • ${it.client.name}',
-                                style: Theme.of(context).textTheme.titleMedium,
-                              ),
-                              subtitle: FutureBuilder<WorkoutDayInfo>(
-                                future: db.getWorkoutInfoForClientOnDay(
-                                  clientId: it.client.id,
-                                  day: _selectedDay,
-                                ),
-                                builder: (context, snap) {
-                                  final info = snap.data;
-                                  if (info == null || !info.hasPlan) {
-                                    return Text(
-                                      it.client.plan == null
-                                          ? ''
-                                          : 'Абонемент: ${it.client.plan}',
-                                    );
-                                  }
-
-                                  final planText =
-                                      'Абонемент: ${it.client.plan}';
-                                  final workoutText = info.doneToday
-                                      ? '✅ Выполнено: ${info.label} — ${info.title}'
-                                      : 'Сегодня: ${info.label} — ${info.title}';
-
-                                  return Text('$planText\n$workoutText');
-                                },
-                              ),
-                              trailing: FutureBuilder<WorkoutDayInfo>(
-                                future: db.getWorkoutInfoForClientOnDay(
-                                  clientId: it.client.id,
-                                  day: _selectedDay,
-                                ),
-                                builder: (context, snap) {
-                                  final done = snap.data?.doneToday == true;
-
-                                  return Row(
-                                    mainAxisSize: MainAxisSize.min,
-                                    children: [
-                                      IconButton(
-                                        tooltip: 'Удалить запись',
-                                        icon: Icon(
-                                          Icons.delete_outline,
-                                          color: colors.error,
-                                        ),
-                                        onPressed: () async {
-                                          await db.deleteAppointmentById(
-                                            it.appointment.id,
-                                          );
-                                        },
-                                      ),
-                                      IconButton.filledTonal(
-                                        tooltip: 'Отметить выполненной',
-                                        icon: Icon(
-                                          done
-                                              ? Icons.check_circle
-                                              : Icons.radio_button_unchecked,
-                                        ),
-                                        onPressed: () async {
-                                          await db.toggleWorkoutForClientOnDay(
-                                            clientId: it.client.id,
-                                            day: _selectedDay,
-                                          );
-                                          if (!mounted) return;
-                                          setState(() {});
-                                        },
-                                      ),
-                                    ],
-                                  );
-                                },
-                              ),
-                              onTap: () async {
-                                final dayStr = DateFormat(
-                                  'yyyy-MM-dd',
-                                ).format(_selectedDay);
-                                await context.push(
-                                  '/clients/${it.client.id}/program?day=$dayStr',
-                                );
-                                if (!mounted) return;
-                                setState(() {});
-                              },
-                              onLongPress: () => _openAppointmentActions(it),
-                            ),
-                          ),
-                        );
-                      }, childCount: items.length),
-                    ),
-                ],
-              ),
+                );
+              },
             );
           },
         ),
