@@ -2943,6 +2943,523 @@ class WorkoutExerciseResultsCompanion
   }
 }
 
+class $WorkoutDraftsTable extends WorkoutDrafts
+    with TableInfo<$WorkoutDraftsTable, WorkoutDraft> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $WorkoutDraftsTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _idMeta = const VerificationMeta('id');
+  @override
+  late final GeneratedColumn<int> id = GeneratedColumn<int>(
+    'id',
+    aliasedName,
+    false,
+    hasAutoIncrement: true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'PRIMARY KEY AUTOINCREMENT',
+    ),
+  );
+  static const VerificationMeta _clientIdMeta = const VerificationMeta(
+    'clientId',
+  );
+  @override
+  late final GeneratedColumn<String> clientId = GeneratedColumn<String>(
+    'client_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _dayMeta = const VerificationMeta('day');
+  @override
+  late final GeneratedColumn<DateTime> day = GeneratedColumn<DateTime>(
+    'day',
+    aliasedName,
+    false,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _templateIdxMeta = const VerificationMeta(
+    'templateIdx',
+  );
+  @override
+  late final GeneratedColumn<int> templateIdx = GeneratedColumn<int>(
+    'template_idx',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(-1),
+  );
+  static const VerificationMeta _templateExerciseIdMeta =
+      const VerificationMeta('templateExerciseId');
+  @override
+  late final GeneratedColumn<int> templateExerciseId = GeneratedColumn<int>(
+    'template_exercise_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _lastWeightKgMeta = const VerificationMeta(
+    'lastWeightKg',
+  );
+  @override
+  late final GeneratedColumn<double> lastWeightKg = GeneratedColumn<double>(
+    'last_weight_kg',
+    aliasedName,
+    true,
+    type: DriftSqlType.double,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _lastRepsMeta = const VerificationMeta(
+    'lastReps',
+  );
+  @override
+  late final GeneratedColumn<int> lastReps = GeneratedColumn<int>(
+    'last_reps',
+    aliasedName,
+    true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _updatedAtMeta = const VerificationMeta(
+    'updatedAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> updatedAt = GeneratedColumn<DateTime>(
+    'updated_at',
+    aliasedName,
+    false,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: false,
+    defaultValue: currentDateAndTime,
+  );
+  @override
+  List<GeneratedColumn> get $columns => [
+    id,
+    clientId,
+    day,
+    templateIdx,
+    templateExerciseId,
+    lastWeightKg,
+    lastReps,
+    updatedAt,
+  ];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'workout_drafts';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<WorkoutDraft> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('id')) {
+      context.handle(_idMeta, id.isAcceptableOrUnknown(data['id']!, _idMeta));
+    }
+    if (data.containsKey('client_id')) {
+      context.handle(
+        _clientIdMeta,
+        clientId.isAcceptableOrUnknown(data['client_id']!, _clientIdMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_clientIdMeta);
+    }
+    if (data.containsKey('day')) {
+      context.handle(
+        _dayMeta,
+        day.isAcceptableOrUnknown(data['day']!, _dayMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_dayMeta);
+    }
+    if (data.containsKey('template_idx')) {
+      context.handle(
+        _templateIdxMeta,
+        templateIdx.isAcceptableOrUnknown(
+          data['template_idx']!,
+          _templateIdxMeta,
+        ),
+      );
+    }
+    if (data.containsKey('template_exercise_id')) {
+      context.handle(
+        _templateExerciseIdMeta,
+        templateExerciseId.isAcceptableOrUnknown(
+          data['template_exercise_id']!,
+          _templateExerciseIdMeta,
+        ),
+      );
+    } else if (isInserting) {
+      context.missing(_templateExerciseIdMeta);
+    }
+    if (data.containsKey('last_weight_kg')) {
+      context.handle(
+        _lastWeightKgMeta,
+        lastWeightKg.isAcceptableOrUnknown(
+          data['last_weight_kg']!,
+          _lastWeightKgMeta,
+        ),
+      );
+    }
+    if (data.containsKey('last_reps')) {
+      context.handle(
+        _lastRepsMeta,
+        lastReps.isAcceptableOrUnknown(data['last_reps']!, _lastRepsMeta),
+      );
+    }
+    if (data.containsKey('updated_at')) {
+      context.handle(
+        _updatedAtMeta,
+        updatedAt.isAcceptableOrUnknown(data['updated_at']!, _updatedAtMeta),
+      );
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {id};
+  @override
+  List<Set<GeneratedColumn>> get uniqueKeys => [
+    {clientId, day, templateIdx, templateExerciseId},
+  ];
+  @override
+  WorkoutDraft map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return WorkoutDraft(
+      id: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}id'],
+      )!,
+      clientId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}client_id'],
+      )!,
+      day: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}day'],
+      )!,
+      templateIdx: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}template_idx'],
+      )!,
+      templateExerciseId: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}template_exercise_id'],
+      )!,
+      lastWeightKg: attachedDatabase.typeMapping.read(
+        DriftSqlType.double,
+        data['${effectivePrefix}last_weight_kg'],
+      ),
+      lastReps: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}last_reps'],
+      ),
+      updatedAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}updated_at'],
+      )!,
+    );
+  }
+
+  @override
+  $WorkoutDraftsTable createAlias(String alias) {
+    return $WorkoutDraftsTable(attachedDatabase, alias);
+  }
+}
+
+class WorkoutDraft extends DataClass implements Insertable<WorkoutDraft> {
+  final int id;
+  final String clientId;
+  final DateTime day;
+  final int templateIdx;
+  final int templateExerciseId;
+  final double? lastWeightKg;
+  final int? lastReps;
+  final DateTime updatedAt;
+  const WorkoutDraft({
+    required this.id,
+    required this.clientId,
+    required this.day,
+    required this.templateIdx,
+    required this.templateExerciseId,
+    this.lastWeightKg,
+    this.lastReps,
+    required this.updatedAt,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['id'] = Variable<int>(id);
+    map['client_id'] = Variable<String>(clientId);
+    map['day'] = Variable<DateTime>(day);
+    map['template_idx'] = Variable<int>(templateIdx);
+    map['template_exercise_id'] = Variable<int>(templateExerciseId);
+    if (!nullToAbsent || lastWeightKg != null) {
+      map['last_weight_kg'] = Variable<double>(lastWeightKg);
+    }
+    if (!nullToAbsent || lastReps != null) {
+      map['last_reps'] = Variable<int>(lastReps);
+    }
+    map['updated_at'] = Variable<DateTime>(updatedAt);
+    return map;
+  }
+
+  WorkoutDraftsCompanion toCompanion(bool nullToAbsent) {
+    return WorkoutDraftsCompanion(
+      id: Value(id),
+      clientId: Value(clientId),
+      day: Value(day),
+      templateIdx: Value(templateIdx),
+      templateExerciseId: Value(templateExerciseId),
+      lastWeightKg: lastWeightKg == null && nullToAbsent
+          ? const Value.absent()
+          : Value(lastWeightKg),
+      lastReps: lastReps == null && nullToAbsent
+          ? const Value.absent()
+          : Value(lastReps),
+      updatedAt: Value(updatedAt),
+    );
+  }
+
+  factory WorkoutDraft.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return WorkoutDraft(
+      id: serializer.fromJson<int>(json['id']),
+      clientId: serializer.fromJson<String>(json['clientId']),
+      day: serializer.fromJson<DateTime>(json['day']),
+      templateIdx: serializer.fromJson<int>(json['templateIdx']),
+      templateExerciseId: serializer.fromJson<int>(json['templateExerciseId']),
+      lastWeightKg: serializer.fromJson<double?>(json['lastWeightKg']),
+      lastReps: serializer.fromJson<int?>(json['lastReps']),
+      updatedAt: serializer.fromJson<DateTime>(json['updatedAt']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'id': serializer.toJson<int>(id),
+      'clientId': serializer.toJson<String>(clientId),
+      'day': serializer.toJson<DateTime>(day),
+      'templateIdx': serializer.toJson<int>(templateIdx),
+      'templateExerciseId': serializer.toJson<int>(templateExerciseId),
+      'lastWeightKg': serializer.toJson<double?>(lastWeightKg),
+      'lastReps': serializer.toJson<int?>(lastReps),
+      'updatedAt': serializer.toJson<DateTime>(updatedAt),
+    };
+  }
+
+  WorkoutDraft copyWith({
+    int? id,
+    String? clientId,
+    DateTime? day,
+    int? templateIdx,
+    int? templateExerciseId,
+    Value<double?> lastWeightKg = const Value.absent(),
+    Value<int?> lastReps = const Value.absent(),
+    DateTime? updatedAt,
+  }) => WorkoutDraft(
+    id: id ?? this.id,
+    clientId: clientId ?? this.clientId,
+    day: day ?? this.day,
+    templateIdx: templateIdx ?? this.templateIdx,
+    templateExerciseId: templateExerciseId ?? this.templateExerciseId,
+    lastWeightKg: lastWeightKg.present ? lastWeightKg.value : this.lastWeightKg,
+    lastReps: lastReps.present ? lastReps.value : this.lastReps,
+    updatedAt: updatedAt ?? this.updatedAt,
+  );
+  WorkoutDraft copyWithCompanion(WorkoutDraftsCompanion data) {
+    return WorkoutDraft(
+      id: data.id.present ? data.id.value : this.id,
+      clientId: data.clientId.present ? data.clientId.value : this.clientId,
+      day: data.day.present ? data.day.value : this.day,
+      templateIdx: data.templateIdx.present
+          ? data.templateIdx.value
+          : this.templateIdx,
+      templateExerciseId: data.templateExerciseId.present
+          ? data.templateExerciseId.value
+          : this.templateExerciseId,
+      lastWeightKg: data.lastWeightKg.present
+          ? data.lastWeightKg.value
+          : this.lastWeightKg,
+      lastReps: data.lastReps.present ? data.lastReps.value : this.lastReps,
+      updatedAt: data.updatedAt.present ? data.updatedAt.value : this.updatedAt,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('WorkoutDraft(')
+          ..write('id: $id, ')
+          ..write('clientId: $clientId, ')
+          ..write('day: $day, ')
+          ..write('templateIdx: $templateIdx, ')
+          ..write('templateExerciseId: $templateExerciseId, ')
+          ..write('lastWeightKg: $lastWeightKg, ')
+          ..write('lastReps: $lastReps, ')
+          ..write('updatedAt: $updatedAt')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(
+    id,
+    clientId,
+    day,
+    templateIdx,
+    templateExerciseId,
+    lastWeightKg,
+    lastReps,
+    updatedAt,
+  );
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is WorkoutDraft &&
+          other.id == this.id &&
+          other.clientId == this.clientId &&
+          other.day == this.day &&
+          other.templateIdx == this.templateIdx &&
+          other.templateExerciseId == this.templateExerciseId &&
+          other.lastWeightKg == this.lastWeightKg &&
+          other.lastReps == this.lastReps &&
+          other.updatedAt == this.updatedAt);
+}
+
+class WorkoutDraftsCompanion extends UpdateCompanion<WorkoutDraft> {
+  final Value<int> id;
+  final Value<String> clientId;
+  final Value<DateTime> day;
+  final Value<int> templateIdx;
+  final Value<int> templateExerciseId;
+  final Value<double?> lastWeightKg;
+  final Value<int?> lastReps;
+  final Value<DateTime> updatedAt;
+  const WorkoutDraftsCompanion({
+    this.id = const Value.absent(),
+    this.clientId = const Value.absent(),
+    this.day = const Value.absent(),
+    this.templateIdx = const Value.absent(),
+    this.templateExerciseId = const Value.absent(),
+    this.lastWeightKg = const Value.absent(),
+    this.lastReps = const Value.absent(),
+    this.updatedAt = const Value.absent(),
+  });
+  WorkoutDraftsCompanion.insert({
+    this.id = const Value.absent(),
+    required String clientId,
+    required DateTime day,
+    this.templateIdx = const Value.absent(),
+    required int templateExerciseId,
+    this.lastWeightKg = const Value.absent(),
+    this.lastReps = const Value.absent(),
+    this.updatedAt = const Value.absent(),
+  }) : clientId = Value(clientId),
+       day = Value(day),
+       templateExerciseId = Value(templateExerciseId);
+  static Insertable<WorkoutDraft> custom({
+    Expression<int>? id,
+    Expression<String>? clientId,
+    Expression<DateTime>? day,
+    Expression<int>? templateIdx,
+    Expression<int>? templateExerciseId,
+    Expression<double>? lastWeightKg,
+    Expression<int>? lastReps,
+    Expression<DateTime>? updatedAt,
+  }) {
+    return RawValuesInsertable({
+      if (id != null) 'id': id,
+      if (clientId != null) 'client_id': clientId,
+      if (day != null) 'day': day,
+      if (templateIdx != null) 'template_idx': templateIdx,
+      if (templateExerciseId != null)
+        'template_exercise_id': templateExerciseId,
+      if (lastWeightKg != null) 'last_weight_kg': lastWeightKg,
+      if (lastReps != null) 'last_reps': lastReps,
+      if (updatedAt != null) 'updated_at': updatedAt,
+    });
+  }
+
+  WorkoutDraftsCompanion copyWith({
+    Value<int>? id,
+    Value<String>? clientId,
+    Value<DateTime>? day,
+    Value<int>? templateIdx,
+    Value<int>? templateExerciseId,
+    Value<double?>? lastWeightKg,
+    Value<int?>? lastReps,
+    Value<DateTime>? updatedAt,
+  }) {
+    return WorkoutDraftsCompanion(
+      id: id ?? this.id,
+      clientId: clientId ?? this.clientId,
+      day: day ?? this.day,
+      templateIdx: templateIdx ?? this.templateIdx,
+      templateExerciseId: templateExerciseId ?? this.templateExerciseId,
+      lastWeightKg: lastWeightKg ?? this.lastWeightKg,
+      lastReps: lastReps ?? this.lastReps,
+      updatedAt: updatedAt ?? this.updatedAt,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (id.present) {
+      map['id'] = Variable<int>(id.value);
+    }
+    if (clientId.present) {
+      map['client_id'] = Variable<String>(clientId.value);
+    }
+    if (day.present) {
+      map['day'] = Variable<DateTime>(day.value);
+    }
+    if (templateIdx.present) {
+      map['template_idx'] = Variable<int>(templateIdx.value);
+    }
+    if (templateExerciseId.present) {
+      map['template_exercise_id'] = Variable<int>(templateExerciseId.value);
+    }
+    if (lastWeightKg.present) {
+      map['last_weight_kg'] = Variable<double>(lastWeightKg.value);
+    }
+    if (lastReps.present) {
+      map['last_reps'] = Variable<int>(lastReps.value);
+    }
+    if (updatedAt.present) {
+      map['updated_at'] = Variable<DateTime>(updatedAt.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('WorkoutDraftsCompanion(')
+          ..write('id: $id, ')
+          ..write('clientId: $clientId, ')
+          ..write('day: $day, ')
+          ..write('templateIdx: $templateIdx, ')
+          ..write('templateExerciseId: $templateExerciseId, ')
+          ..write('lastWeightKg: $lastWeightKg, ')
+          ..write('lastReps: $lastReps, ')
+          ..write('updatedAt: $updatedAt')
+          ..write(')'))
+        .toString();
+  }
+}
+
 class $ClientTemplateExerciseOverridesTable
     extends ClientTemplateExerciseOverrides
     with
@@ -3295,6 +3812,7 @@ abstract class _$AppDb extends GeneratedDatabase {
       $WorkoutTemplateExercisesTable(this);
   late final $WorkoutExerciseResultsTable workoutExerciseResults =
       $WorkoutExerciseResultsTable(this);
+  late final $WorkoutDraftsTable workoutDrafts = $WorkoutDraftsTable(this);
   late final $ClientTemplateExerciseOverridesTable
   clientTemplateExerciseOverrides = $ClientTemplateExerciseOverridesTable(this);
   @override
@@ -3309,6 +3827,7 @@ abstract class _$AppDb extends GeneratedDatabase {
     workoutSessions,
     workoutTemplateExercises,
     workoutExerciseResults,
+    workoutDrafts,
     clientTemplateExerciseOverrides,
   ];
 }
@@ -4906,6 +5425,263 @@ typedef $$WorkoutExerciseResultsTableProcessedTableManager =
       WorkoutExerciseResult,
       PrefetchHooks Function()
     >;
+typedef $$WorkoutDraftsTableCreateCompanionBuilder =
+    WorkoutDraftsCompanion Function({
+      Value<int> id,
+      required String clientId,
+      required DateTime day,
+      Value<int> templateIdx,
+      required int templateExerciseId,
+      Value<double?> lastWeightKg,
+      Value<int?> lastReps,
+      Value<DateTime> updatedAt,
+    });
+typedef $$WorkoutDraftsTableUpdateCompanionBuilder =
+    WorkoutDraftsCompanion Function({
+      Value<int> id,
+      Value<String> clientId,
+      Value<DateTime> day,
+      Value<int> templateIdx,
+      Value<int> templateExerciseId,
+      Value<double?> lastWeightKg,
+      Value<int?> lastReps,
+      Value<DateTime> updatedAt,
+    });
+
+class $$WorkoutDraftsTableFilterComposer
+    extends Composer<_$AppDb, $WorkoutDraftsTable> {
+  $$WorkoutDraftsTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<int> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get clientId => $composableBuilder(
+    column: $table.clientId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get day => $composableBuilder(
+    column: $table.day,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get templateIdx => $composableBuilder(
+    column: $table.templateIdx,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get templateExerciseId => $composableBuilder(
+    column: $table.templateExerciseId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<double> get lastWeightKg => $composableBuilder(
+    column: $table.lastWeightKg,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get lastReps => $composableBuilder(
+    column: $table.lastReps,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get updatedAt => $composableBuilder(
+    column: $table.updatedAt,
+    builder: (column) => ColumnFilters(column),
+  );
+}
+
+class $$WorkoutDraftsTableOrderingComposer
+    extends Composer<_$AppDb, $WorkoutDraftsTable> {
+  $$WorkoutDraftsTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<int> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get clientId => $composableBuilder(
+    column: $table.clientId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get day => $composableBuilder(
+    column: $table.day,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get templateIdx => $composableBuilder(
+    column: $table.templateIdx,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get templateExerciseId => $composableBuilder(
+    column: $table.templateExerciseId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<double> get lastWeightKg => $composableBuilder(
+    column: $table.lastWeightKg,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get lastReps => $composableBuilder(
+    column: $table.lastReps,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get updatedAt => $composableBuilder(
+    column: $table.updatedAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+}
+
+class $$WorkoutDraftsTableAnnotationComposer
+    extends Composer<_$AppDb, $WorkoutDraftsTable> {
+  $$WorkoutDraftsTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<int> get id =>
+      $composableBuilder(column: $table.id, builder: (column) => column);
+
+  GeneratedColumn<String> get clientId =>
+      $composableBuilder(column: $table.clientId, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get day =>
+      $composableBuilder(column: $table.day, builder: (column) => column);
+
+  GeneratedColumn<int> get templateIdx => $composableBuilder(
+    column: $table.templateIdx,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<int> get templateExerciseId => $composableBuilder(
+    column: $table.templateExerciseId,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<double> get lastWeightKg => $composableBuilder(
+    column: $table.lastWeightKg,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<int> get lastReps =>
+      $composableBuilder(column: $table.lastReps, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get updatedAt =>
+      $composableBuilder(column: $table.updatedAt, builder: (column) => column);
+}
+
+class $$WorkoutDraftsTableTableManager
+    extends
+        RootTableManager<
+          _$AppDb,
+          $WorkoutDraftsTable,
+          WorkoutDraft,
+          $$WorkoutDraftsTableFilterComposer,
+          $$WorkoutDraftsTableOrderingComposer,
+          $$WorkoutDraftsTableAnnotationComposer,
+          $$WorkoutDraftsTableCreateCompanionBuilder,
+          $$WorkoutDraftsTableUpdateCompanionBuilder,
+          (
+            WorkoutDraft,
+            BaseReferences<_$AppDb, $WorkoutDraftsTable, WorkoutDraft>,
+          ),
+          WorkoutDraft,
+          PrefetchHooks Function()
+        > {
+  $$WorkoutDraftsTableTableManager(_$AppDb db, $WorkoutDraftsTable table)
+    : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$WorkoutDraftsTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$WorkoutDraftsTableOrderingComposer($db: db, $table: table),
+          createComputedFieldComposer: () =>
+              $$WorkoutDraftsTableAnnotationComposer($db: db, $table: table),
+          updateCompanionCallback:
+              ({
+                Value<int> id = const Value.absent(),
+                Value<String> clientId = const Value.absent(),
+                Value<DateTime> day = const Value.absent(),
+                Value<int> templateIdx = const Value.absent(),
+                Value<int> templateExerciseId = const Value.absent(),
+                Value<double?> lastWeightKg = const Value.absent(),
+                Value<int?> lastReps = const Value.absent(),
+                Value<DateTime> updatedAt = const Value.absent(),
+              }) => WorkoutDraftsCompanion(
+                id: id,
+                clientId: clientId,
+                day: day,
+                templateIdx: templateIdx,
+                templateExerciseId: templateExerciseId,
+                lastWeightKg: lastWeightKg,
+                lastReps: lastReps,
+                updatedAt: updatedAt,
+              ),
+          createCompanionCallback:
+              ({
+                Value<int> id = const Value.absent(),
+                required String clientId,
+                required DateTime day,
+                Value<int> templateIdx = const Value.absent(),
+                required int templateExerciseId,
+                Value<double?> lastWeightKg = const Value.absent(),
+                Value<int?> lastReps = const Value.absent(),
+                Value<DateTime> updatedAt = const Value.absent(),
+              }) => WorkoutDraftsCompanion.insert(
+                id: id,
+                clientId: clientId,
+                day: day,
+                templateIdx: templateIdx,
+                templateExerciseId: templateExerciseId,
+                lastWeightKg: lastWeightKg,
+                lastReps: lastReps,
+                updatedAt: updatedAt,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map((e) => (e.readTable(table), BaseReferences(db, table, e)))
+              .toList(),
+          prefetchHooksCallback: null,
+        ),
+      );
+}
+
+typedef $$WorkoutDraftsTableProcessedTableManager =
+    ProcessedTableManager<
+      _$AppDb,
+      $WorkoutDraftsTable,
+      WorkoutDraft,
+      $$WorkoutDraftsTableFilterComposer,
+      $$WorkoutDraftsTableOrderingComposer,
+      $$WorkoutDraftsTableAnnotationComposer,
+      $$WorkoutDraftsTableCreateCompanionBuilder,
+      $$WorkoutDraftsTableUpdateCompanionBuilder,
+      (
+        WorkoutDraft,
+        BaseReferences<_$AppDb, $WorkoutDraftsTable, WorkoutDraft>,
+      ),
+      WorkoutDraft,
+      PrefetchHooks Function()
+    >;
 typedef $$ClientTemplateExerciseOverridesTableCreateCompanionBuilder =
     ClientTemplateExerciseOverridesCompanion Function({
       Value<int> id,
@@ -5128,6 +5904,8 @@ class $AppDbManager {
         _db,
         _db.workoutExerciseResults,
       );
+  $$WorkoutDraftsTableTableManager get workoutDrafts =>
+      $$WorkoutDraftsTableTableManager(_db, _db.workoutDrafts);
   $$ClientTemplateExerciseOverridesTableTableManager
   get clientTemplateExerciseOverrides =>
       $$ClientTemplateExerciseOverridesTableTableManager(

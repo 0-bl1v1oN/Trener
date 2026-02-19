@@ -21,6 +21,13 @@ class WorkoutScreen extends StatefulWidget {
   State<WorkoutScreen> createState() => _WorkoutScreenState();
 }
 
+class _WorkoutScreenData {
+  final WorkoutDayInfo info;
+  final List<WorkoutExerciseVm> exercises;
+
+  const _WorkoutScreenData({required this.info, required this.exercises});
+}
+
 class _WorkoutScreenState extends State<WorkoutScreen> {
   late AppDb db;
 
@@ -131,7 +138,30 @@ class _WorkoutScreenState extends State<WorkoutScreen> {
     setState(() {});
   }
 
-  Future<void> _save({
+  Future<void> _saveDraft({
+    required Map<int, (double? kg, int? reps)> results,
+  }) async {
+    if (_saving) return;
+    setState(() => _saving = true);
+
+    try {
+      await db.saveWorkoutDraftResults(
+        clientId: widget.clientId,
+        day: widget.day,
+        resultsByTemplateExerciseId: results,
+        templateIdx: widget.templateIdx,
+      );
+
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Черновик сохранён')));
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
+  }
+
+  Future<void> _markDone({
     required Map<int, (double? kg, int? reps)> results,
   }) async {
     if (_saving) return;
@@ -142,7 +172,7 @@ class _WorkoutScreenState extends State<WorkoutScreen> {
         clientId: widget.clientId,
         day: widget.day,
         resultsByTemplateExerciseId: results,
-        templateIdx: widget.templateIdx, // ✅ ключевой параметр
+        templateIdx: widget.templateIdx,
       );
 
       if (!mounted) return;
@@ -179,23 +209,49 @@ class _WorkoutScreenState extends State<WorkoutScreen> {
     }
   }
 
+  Future<_WorkoutScreenData> _loadScreenData() async {
+    final data = widget.templateIdx == null
+        ? await db.getWorkoutDetailsForClientOnDay(
+            clientId: widget.clientId,
+            day: widget.day,
+          )
+        : await db.getWorkoutDetailsForClientOnDayForcedTemplateIdx(
+            clientId: widget.clientId,
+            day: widget.day,
+            templateIdx: widget.templateIdx!,
+          );
+
+    final drafts = await db.getWorkoutDraftResults(
+      clientId: widget.clientId,
+      day: widget.day,
+      templateIdx: widget.templateIdx,
+    );
+
+    final exercises = data.$3.map((e) {
+      final d = drafts[e.templateExerciseId];
+      if (d == null) return e;
+      return WorkoutExerciseVm(
+        templateExerciseId: e.templateExerciseId,
+        templateId: e.templateId,
+        orderIndex: e.orderIndex,
+        name: e.name,
+        lastWeightKg: d.$1,
+        lastReps: d.$2,
+        supersetGroup: e.supersetGroup,
+      );
+    }).toList();
+
+    return _WorkoutScreenData(info: data.$1, exercises: exercises);
+  }
+
   @override
   Widget build(BuildContext context) {
     final dayLabel = DateFormat('d MMMM y', 'ru_RU').format(widget.day);
 
     return Scaffold(
       appBar: AppBar(title: Text('Тренировка • $dayLabel')),
-      body: FutureBuilder(
-        future: (widget.templateIdx == null)
-            ? db.getWorkoutDetailsForClientOnDay(
-                clientId: widget.clientId,
-                day: widget.day,
-              )
-            : db.getWorkoutDetailsForClientOnDayForcedTemplateIdx(
-                clientId: widget.clientId,
-                day: widget.day,
-                templateIdx: widget.templateIdx!,
-              ),
+      body: FutureBuilder<_WorkoutScreenData>(
+        future: _loadScreenData(),
 
         builder: (context, snap) {
           if (snap.connectionState == ConnectionState.waiting) {
@@ -218,7 +274,9 @@ class _WorkoutScreenState extends State<WorkoutScreen> {
             return const Center(child: Text('Нет данных'));
           }
 
-          final (info, _, exercises) = snap.data!;
+          final data = snap.data!;
+          final info = data.info;
+          final exercises = data.exercises;
 
           if (!info.hasPlan) {
             return const Center(
@@ -266,7 +324,8 @@ class _WorkoutScreenState extends State<WorkoutScreen> {
               _BottomBar(
                 saving: _saving,
                 done: info.doneToday,
-                onSave: () => _save(results: buildResults()),
+                onSaveDraft: () => _saveDraft(results: buildResults()),
+                onMarkDone: () => _markDone(results: buildResults()),
                 onCancel: _cancelWorkout,
               ),
             ],
@@ -402,24 +461,51 @@ class _Header extends StatelessWidget {
     final title = '${info.label} — ${info.title}';
     final done = info.doneToday;
 
+    final colors = Theme.of(context).colorScheme;
     return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 14, 16, 12),
-      child: Row(
-        children: [
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  done ? '✅ Выполнено' : 'Сегодня',
-                  style: Theme.of(context).textTheme.labelLarge,
-                ),
-                const SizedBox(height: 6),
-                Text(title, style: Theme.of(context).textTheme.titleLarge),
-              ],
-            ),
+      padding: const EdgeInsets.fromLTRB(12, 12, 12, 10),
+      child: Container(
+        padding: const EdgeInsets.all(14),
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            colors: [
+              colors.primary.withOpacity(0.16),
+              colors.secondary.withOpacity(0.08),
+            ],
           ),
-        ],
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(color: colors.primary.withOpacity(0.22)),
+        ),
+        child: Row(
+          children: [
+            Container(
+              width: 40,
+              height: 40,
+              decoration: BoxDecoration(
+                color: colors.primary.withOpacity(0.18),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Icon(
+                done ? Icons.check_circle : Icons.fitness_center,
+                color: colors.primary,
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    done ? '✅ Выполнено' : 'В процессе',
+                    style: Theme.of(context).textTheme.labelLarge,
+                  ),
+                  const SizedBox(height: 4),
+                  Text(title, style: Theme.of(context).textTheme.titleMedium),
+                ],
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -428,13 +514,15 @@ class _Header extends StatelessWidget {
 class _BottomBar extends StatelessWidget {
   final bool saving;
   final bool done;
-  final VoidCallback onSave;
+  final VoidCallback onSaveDraft;
+  final VoidCallback onMarkDone;
   final VoidCallback onCancel;
 
   const _BottomBar({
     required this.saving,
     required this.done,
-    required this.onSave,
+    required this.onSaveDraft,
+    required this.onMarkDone,
     required this.onCancel,
   });
 
@@ -464,24 +552,36 @@ class _BottomBar extends StatelessWidget {
               ),
               const SizedBox(height: 8),
             ],
-            SizedBox(
-              width: double.infinity,
-              height: 48,
-              child: ElevatedButton.icon(
-                onPressed: saving ? null : onSave,
-                icon: saving
-                    ? const SizedBox(
-                        width: 18,
-                        height: 18,
-                        child: CircularProgressIndicator(strokeWidth: 2),
-                      )
-                    : const Icon(Icons.check_circle_outline),
-                label: Text(
-                  done
-                      ? 'Сохранить изменения'
-                      : 'Сохранить и отметить выполнено',
+            Row(
+              children: [
+                Expanded(
+                  child: SizedBox(
+                    height: 46,
+                    child: OutlinedButton.icon(
+                      onPressed: saving ? null : onSaveDraft,
+                      icon: const Icon(Icons.save_outlined),
+                      label: const Text('Сохранить'),
+                    ),
+                  ),
                 ),
-              ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: SizedBox(
+                    height: 46,
+                    child: ElevatedButton.icon(
+                      onPressed: saving ? null : onMarkDone,
+                      icon: saving
+                          ? const SizedBox(
+                              width: 18,
+                              height: 18,
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            )
+                          : Icon(done ? Icons.check : Icons.task_alt),
+                      label: Text(done ? 'Готово' : 'Отметить выполнено'),
+                    ),
+                  ),
+                ),
+              ],
             ),
           ],
         ),
@@ -502,6 +602,7 @@ class _ExerciseCard extends StatelessWidget {
       elevation: 0,
       color: colors.surface,
       margin: const EdgeInsets.only(bottom: 10),
+      shadowColor: colors.primary.withOpacity(0.08),
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(20),
         side: BorderSide(color: colors.outlineVariant.withOpacity(0.6)),

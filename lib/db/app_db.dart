@@ -131,6 +131,25 @@ class WorkoutExerciseResults extends Table {
   ];
 }
 
+class WorkoutDrafts extends Table {
+  IntColumn get id => integer().autoIncrement()();
+
+  TextColumn get clientId => text()();
+  DateTimeColumn get day => dateTime()();
+  IntColumn get templateIdx => integer().withDefault(const Constant(-1))();
+  IntColumn get templateExerciseId => integer()();
+
+  RealColumn get lastWeightKg => real().nullable()();
+  IntColumn get lastReps => integer().nullable()();
+
+  DateTimeColumn get updatedAt => dateTime().withDefault(currentDateAndTime)();
+
+  @override
+  List<Set<Column>> get uniqueKeys => [
+    {clientId, day, templateIdx, templateExerciseId},
+  ];
+}
+
 class AppointmentWithClient {
   final Appointment appointment;
   final Client client;
@@ -342,6 +361,7 @@ class ContestWinnerVm {
     WorkoutSessions,
     WorkoutTemplateExercises,
     WorkoutExerciseResults,
+    WorkoutDrafts,
     ClientTemplateExerciseOverrides,
   ],
 )
@@ -354,7 +374,7 @@ class AppDb extends _$AppDb {
   Future<void>? _templateDefaultsPatchFuture;
 
   @override
-  int get schemaVersion => 6;
+  int get schemaVersion => 7;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -375,6 +395,7 @@ class AppDb extends _$AppDb {
       await m.deleteTable(appointments.actualTableName);
       await m.deleteTable(clients.actualTableName);
       await m.deleteTable(clientTemplateExerciseOverrides.actualTableName);
+      await m.deleteTable(workoutDrafts.actualTableName);
 
       await m.createTable(clients);
       await m.createTable(appointments);
@@ -384,6 +405,8 @@ class AppDb extends _$AppDb {
       await m.createTable(workoutTemplateExercises);
       await m.createTable(workoutExerciseResults);
       await m.createTable(clientTemplateExerciseOverrides);
+
+      await m.createTable(workoutDrafts);
       await _ensureProgramDayOverridesTable();
 
       await _seedWorkoutTemplates();
@@ -637,6 +660,87 @@ class AppDb extends _$AppDb {
     await (update(appointments)..where((t) => t.id.equals(id))).write(
       AppointmentsCompanion(note: Value(note)),
     );
+  }
+
+  Future<Map<int, (double? kg, int? reps)>> getWorkoutDraftResults({
+    required String clientId,
+    required DateTime day,
+    int? templateIdx,
+  }) async {
+    final dayOnly = DateTime(day.year, day.month, day.day);
+    final idx = templateIdx ?? -1;
+
+    final rows =
+        await (select(workoutDrafts)..where(
+              (t) =>
+                  t.clientId.equals(clientId) &
+                  t.day.equals(dayOnly) &
+                  t.templateIdx.equals(idx),
+            ))
+            .get();
+
+    return {
+      for (final r in rows) r.templateExerciseId: (r.lastWeightKg, r.lastReps),
+    };
+  }
+
+  Future<void> saveWorkoutDraftResults({
+    required String clientId,
+    required DateTime day,
+    required Map<int, (double? kg, int? reps)> resultsByTemplateExerciseId,
+    int? templateIdx,
+  }) async {
+    final dayOnly = DateTime(day.year, day.month, day.day);
+    final idx = templateIdx ?? -1;
+
+    await transaction(() async {
+      for (final entry in resultsByTemplateExerciseId.entries) {
+        final exId = entry.key;
+        final kg = entry.value.$1;
+        final reps = entry.value.$2;
+
+        if (kg == null && reps == null) {
+          await (delete(workoutDrafts)..where(
+                (t) =>
+                    t.clientId.equals(clientId) &
+                    t.day.equals(dayOnly) &
+                    t.templateIdx.equals(idx) &
+                    t.templateExerciseId.equals(exId),
+              ))
+              .go();
+          continue;
+        }
+
+        await into(workoutDrafts).insertOnConflictUpdate(
+          WorkoutDraftsCompanion.insert(
+            clientId: clientId,
+            day: dayOnly,
+            templateIdx: Value(idx),
+            templateExerciseId: exId,
+            lastWeightKg: kg == null ? const Value.absent() : Value(kg),
+            lastReps: reps == null ? const Value.absent() : Value(reps),
+            updatedAt: Value(DateTime.now()),
+          ),
+        );
+      }
+    });
+  }
+
+  Future<void> clearWorkoutDraftResults({
+    required String clientId,
+    required DateTime day,
+    int? templateIdx,
+  }) async {
+    final dayOnly = DateTime(day.year, day.month, day.day);
+    final idx = templateIdx ?? -1;
+
+    await (delete(workoutDrafts)..where(
+          (t) =>
+              t.clientId.equals(clientId) &
+              t.day.equals(dayOnly) &
+              t.templateIdx.equals(idx),
+        ))
+        .go();
   }
 
   Future<bool> appointmentExists({
@@ -2184,6 +2288,7 @@ class AppDb extends _$AppDb {
             now.millisecond,
             now.microsecond,
           );
+          await completeWorkoutForClient(clientId: clientId, when: when);
         } else {
           await completeWorkoutForClientWithTemplateIdx(
             clientId: clientId,
@@ -2259,6 +2364,12 @@ class AppDb extends _$AppDb {
         }
       }
     });
+
+    await clearWorkoutDraftResults(
+      clientId: clientId,
+      day: day,
+      templateIdx: templateIdx,
+    );
   }
 
   Future<void> toggleClientSupersetWithNext({
