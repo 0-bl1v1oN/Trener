@@ -59,6 +59,83 @@ class _ClientProgramScreenState extends State<ClientProgramScreen> {
     await _reload();
   }
 
+  Future<void> _openSwapDayDialog({
+    required ProgramOverviewVm overview,
+    required ProgramSlotVm source,
+    required String gender,
+  }) async {
+    if (source.isDone) return;
+
+    final sourceTitle = _templateTitleForIdx(source.templateIdx, gender);
+    final candidates = overview.slots
+        .where(
+          (s) =>
+              !s.isDone &&
+              s.absoluteIndex != source.absoluteIndex &&
+              _templateTitleForIdx(s.templateIdx, gender) == sourceTitle,
+        )
+        .toList();
+
+    if (candidates.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Нет подходящих дней для замены этого типа тренировки.',
+          ),
+        ),
+      );
+      return;
+    }
+
+    final target = await showModalBottomSheet<ProgramSlotVm>(
+      context: context,
+      builder: (context) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
+              title: Text(
+                'Заменить «День ${source.slotIndex} • $sourceTitle» на:',
+              ),
+              subtitle: const Text('Можно выбрать только такой же тип дня.'),
+            ),
+            const Divider(height: 1),
+            ...candidates.map(
+              (s) => ListTile(
+                leading: const Icon(Icons.swap_horiz),
+                title: Text('День ${s.slotIndex} • $sourceTitle'),
+                onTap: () => Navigator.of(context).pop(s),
+              ),
+            ),
+            const SizedBox(height: 8),
+          ],
+        ),
+      ),
+    );
+
+    if (target == null) return;
+
+    final db = AppDbScope.of(context);
+    try {
+      await db.swapPlannedProgramDays(
+        clientId: widget.clientId,
+        firstAbsoluteIndex: source.absoluteIndex,
+        secondAbsoluteIndex: target.absoluteIndex,
+      );
+      if (!mounted) return;
+      await _reload();
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Дни успешно переставлены.')),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Не удалось переставить дни: $e')));
+    }
+  }
+
   String _templateTitleForIdx(int idx, String gender) {
     // Быстрый “человеческий” заголовок без лишних запросов:
     // М: спина/грудь/ноги по кругу, Ж: верх/низ по кругу
@@ -262,6 +339,13 @@ class _ClientProgramScreenState extends State<ClientProgramScreen> {
                               );
                             }
                           },
+                          onLongPress: isDone
+                              ? null
+                              : () => _openSwapDayDialog(
+                                  overview: overview,
+                                  source: slot,
+                                  gender: gender,
+                                ),
                         ),
                       );
                     },

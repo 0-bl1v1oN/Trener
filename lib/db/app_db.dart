@@ -186,12 +186,14 @@ class WorkoutExerciseVm {
 
 class ProgramSlotVm {
   final int slotIndex; // 1..planSize
+  final int absoluteIndex; // индекс в текущем экземпляре плана
   final int templateIdx; // 0..8
   final DateTime? performedAt; // null = будущая
   final int? sessionId;
 
   ProgramSlotVm({
     required this.slotIndex,
+    required this.absoluteIndex,
     required this.templateIdx,
     this.performedAt,
     this.sessionId,
@@ -358,6 +360,7 @@ class AppDb extends _$AppDb {
   MigrationStrategy get migration => MigrationStrategy(
     onCreate: (m) async {
       await m.createAll();
+      await _ensureProgramDayOverridesTable();
       await _seedWorkoutTemplates();
       await _seedWorkoutTemplateExercises();
     },
@@ -381,11 +384,167 @@ class AppDb extends _$AppDb {
       await m.createTable(workoutTemplateExercises);
       await m.createTable(workoutExerciseResults);
       await m.createTable(clientTemplateExerciseOverrides);
+      await _ensureProgramDayOverridesTable();
 
       await _seedWorkoutTemplates();
       await _seedWorkoutTemplateExercises();
     },
   );
+
+  Future<void> _ensureProgramDayOverridesTable() async {
+    await customStatement('''
+      CREATE TABLE IF NOT EXISTS client_program_day_overrides (
+        client_id TEXT NOT NULL,
+        plan_instance INTEGER NOT NULL,
+        absolute_index INTEGER NOT NULL,
+        template_idx INTEGER NOT NULL,
+        PRIMARY KEY (client_id, plan_instance, absolute_index)
+      )
+    ''');
+  }
+
+  Future<Map<int, int>> _getProgramDayOverrides({
+    required String clientId,
+    required int planInstance,
+  }) async {
+    await _ensureProgramDayOverridesTable();
+
+    final rows = await customSelect(
+      'SELECT absolute_index, template_idx FROM client_program_day_overrides '
+      'WHERE client_id = ? AND plan_instance = ?',
+      variables: [Variable.withString(clientId), Variable.withInt(planInstance)],
+    ).get();
+
+    final out = <int, int>{};
+    for (final r in rows) {
+      out[r.read<int>('absolute_index')] = r.read<int>('template_idx');
+    }
+    return out;
+  }
+
+  Future<void> _setProgramDayOverride({
+    required String clientId,
+    required int planInstance,
+    required int absoluteIndex,
+    required int templateIdx,
+  }) async {
+    await _ensureProgramDayOverridesTable();
+    await customStatement(
+      'INSERT OR REPLACE INTO client_program_day_overrides '
+      '(client_id, plan_instance, absolute_index, template_idx) VALUES (?, ?, ?, ?)',
+      [clientId, planInstance, absoluteIndex, templateIdx],
+    );
+  }
+
+  Future<void> _deleteProgramDayOverride({
+    required String clientId,
+    required int planInstance,
+    required int absoluteIndex,
+  }) async {
+    await _ensureProgramDayOverridesTable();
+    await customStatement(
+      'DELETE FROM client_program_day_overrides '
+      'WHERE client_id = ? AND plan_instance = ? AND absolute_index = ?',
+      [clientId, planInstance, absoluteIndex],
+    );
+  }
+
+  Future<String> _templateLabelByIdx({
+    required String gender,
+    required int templateIdx,
+  }) async {
+    final row = await (select(workoutTemplates)..where(
+          (t) => t.gender.equals(gender) & t.idx.equals(templateIdx),
+        ))
+        .getSingleOrNull();
+
+    if (row != null) return row.label;
+
+    if (gender == 'М') {
+      const groups = ['Спина', 'Грудь', 'Ноги'];
+      return groups[templateIdx % 3];
+    }
+    const groups = ['Спина', 'Ноги', 'Грудь', 'Ноги', 'Спина', 'Ноги', 'Грудь', 'Ноги'];
+    return groups[templateIdx % groups.length];
+  }
+
+  Future<void> swapPlannedProgramDays({
+    required String clientId,
+    required int firstAbsoluteIndex,
+    required int secondAbsoluteIndex,
+  }) async {
+    if (firstAbsoluteIndex == secondAbsoluteIndex) return;
+
+    await ensureProgramStateForClient(clientId);
+
+    final st = await (select(clientProgramStates)
+          ..where((t) => t.clientId.equals(clientId)))
+        .getSingleOrNull();
+    if (st == null || st.planSize <= 0) return;
+
+    if (firstAbsoluteIndex < st.completedInPlan ||
+        secondAbsoluteIndex < st.completedInPlan) {
+      throw StateError('Можно менять только запланированные (не выполненные) дни.');
+    }
+
+    final c = await getClientById(clientId);
+    final gender = c == null ? 'М' : _programTrackByClient(c);
+    final cycleLen = _cycleLenByGender(gender);
+
+    int defaultIdx(int absoluteIndex) =>
+        _mod(st.cycleStartIndex + absoluteIndex, cycleLen);
+
+    final overrides = await _getProgramDayOverrides(
+      clientId: clientId,
+      planInstance: st.planInstance,
+    );
+
+    final firstCurrent = overrides[firstAbsoluteIndex] ??
+        defaultIdx(firstAbsoluteIndex);
+    final secondCurrent = overrides[secondAbsoluteIndex] ??
+        defaultIdx(secondAbsoluteIndex);
+
+    final firstLabel =
+        await _templateLabelByIdx(gender: gender, templateIdx: firstCurrent);
+    final secondLabel =
+        await _templateLabelByIdx(gender: gender, templateIdx: secondCurrent);
+
+    if (firstLabel != secondLabel) {
+      throw StateError('Можно менять только одинаковые типы дней (например, Спина ↔ Спина).');
+    }
+
+    final firstDefault = defaultIdx(firstAbsoluteIndex);
+    final secondDefault = defaultIdx(secondAbsoluteIndex);
+
+    if (secondCurrent == firstDefault) {
+      await _deleteProgramDayOverride(
+        clientId: clientId,
+        planInstance: st.planInstance,
+        absoluteIndex: firstAbsoluteIndex,
+      );
+    } else {
+      await _setProgramDayOverride(
+        clientId: clientId,
+        planInstance: st.planInstance,
+        absoluteIndex: firstAbsoluteIndex,
+        templateIdx: secondCurrent,
+      );
+    }
+
+    if (firstCurrent == secondDefault) {
+      await _deleteProgramDayOverride(
+        clientId: clientId,
+        planInstance: st.planInstance,
+        absoluteIndex: secondAbsoluteIndex,
+      );
+    } else {
+      await _setProgramDayOverride(
+        clientId: clientId,
+        planInstance: st.planInstance,
+        absoluteIndex: secondAbsoluteIndex,
+        templateIdx: firstCurrent,
+      );
+    }
 
   // --- Clients ---
   Future<List<Client>> getAllClients() =>
@@ -2201,21 +2360,27 @@ class AppDb extends _$AppDb {
     final completed = st.completedInPlan;
     final bundleStart = (completed ~/ planSize) * planSize;
     final completedInBundle = completed - bundleStart;
+    final overrides = await _getProgramDayOverrides(
+      clientId: clientId,
+      planInstance: st.planInstance,
+    );
 
     final slots = <ProgramSlotVm>[];
 
     for (var k = 0; k < planSize; k++) {
       final absoluteIndex =
           bundleStart + (st.planSize == 4 ? st.windowStart : 0) + k;
-      final idx = _mod(st.cycleStartIndex + absoluteIndex, cycleLen);
+      final defaultIdx = _mod(st.cycleStartIndex + absoluteIndex, cycleLen);
       final hasSession =
           k < completedInBundle && absoluteIndex < sessions.length;
       final s = hasSession ? sessions[absoluteIndex] : null;
+      final plannedIdx = overrides[absoluteIndex] ?? defaultIdx;
 
       slots.add(
         ProgramSlotVm(
           slotIndex: k + 1,
-          templateIdx: s?.templateIdx ?? idx,
+          absoluteIndex: absoluteIndex,
+          templateIdx: s?.templateIdx ?? plannedIdx,
           performedAt: s?.performedAt,
           sessionId: s?.id,
         ),
