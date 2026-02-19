@@ -2142,10 +2142,12 @@ class _CalendarScreenState extends State<CalendarScreen>
       c.dispose();
     }
 
-    await db.toggleWorkoutForClientOnDay(
-      clientId: item.client.id,
-      day: _selectedDay,
-    );
+    if (!info.doneToday) {
+      await db.toggleWorkoutForClientOnDay(
+        clientId: item.client.id,
+        day: _selectedDay,
+      );
+    }
 
     await db.saveWorkoutResultsAndMarkDone(
       clientId: item.client.id,
@@ -2597,11 +2599,6 @@ class _CalendarScreenState extends State<CalendarScreen>
                                           if (_isAppointmentDone(
                                             it.appointment,
                                           )) {
-                                            await db
-                                                .toggleWorkoutForClientOnDay(
-                                                  clientId: it.client.id,
-                                                  day: _selectedDay,
-                                                );
                                             await db.updateAppointmentNote(
                                               id: it.appointment.id,
                                               note: _withAttendanceMarker(
