@@ -373,6 +373,7 @@ class _WorkoutScreenState extends State<WorkoutScreen> {
         e.supersetGroup != null &&
         ex[index + 1].supersetGroup == e.supersetGroup;
 
+    final colors = Theme.of(context).colorScheme;
     final kgC = _kgController(e.templateExerciseId, e.lastWeightKg);
     final repsC = _repsController(e.templateExerciseId, e.lastReps);
 
@@ -381,43 +382,89 @@ class _WorkoutScreenState extends State<WorkoutScreen> {
       children: [
         Row(
           children: [
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(e.name, style: Theme.of(context).textTheme.titleMedium),
-                  const SizedBox(height: 4),
-                  Wrap(
-                    spacing: 6,
-                    runSpacing: 6,
-                    children: [
-                      ActionChip(
-                        avatar: const Icon(Icons.edit, size: 16),
-                        label: const Text('Переименовать'),
-                        onPressed: () => _renameExercise(e),
-                      ),
-                      if (hasNext)
-                        ActionChip(
-                          avatar: Icon(
-                            linkedWithNext ? Icons.link_off : Icons.link,
-                            size: 16,
-                          ),
-                          label: Text(
-                            linkedWithNext
-                                ? 'Убрать суперсет'
-                                : 'Сделать суперсет',
-                          ),
-                          onPressed: () => _toggleSupersetForExercise(e),
-                        ),
-                    ],
-                  ),
-                ],
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+              decoration: BoxDecoration(
+                color: colors.primary.withOpacity(0.12),
+                borderRadius: BorderRadius.circular(999),
               ),
+              child: Text(
+                'Упр. ${index + 1}',
+                style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                  color: colors.primary,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ),
+            if (linkedWithNext) ...[
+              const SizedBox(width: 6),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                decoration: BoxDecoration(
+                  color: colors.tertiary.withOpacity(0.14),
+                  borderRadius: BorderRadius.circular(999),
+                ),
+                child: Text(
+                  'Суперсет',
+                  style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                    color: colors.tertiary,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ),
+            ],
+          ],
+        ),
+        const SizedBox(height: 8),
+        Text(
+          e.name,
+          style: Theme.of(context).textTheme.titleSmall?.copyWith(
+            fontWeight: FontWeight.w600,
+            height: 1.25,
+            letterSpacing: 0.1,
+          ),
+        ),
+        const SizedBox(height: 10),
+        Row(
+          children: [
+            Expanded(
+              child: FilledButton.tonalIcon(
+                onPressed: () => _renameExercise(e),
+                icon: const Icon(Icons.edit_outlined, size: 16),
+                label: const Text('Название'),
+                style: FilledButton.styleFrom(
+                  visualDensity: VisualDensity.compact,
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 10,
+                    vertical: 10,
+                  ),
+                ),
+              ),
+            ),
+            const SizedBox(width: 8),
+            Expanded(
+              child: hasNext
+                  ? FilledButton.tonalIcon(
+                      onPressed: () => _toggleSupersetForExercise(e),
+                      icon: Icon(
+                        linkedWithNext ? Icons.link_off : Icons.link,
+                        size: 16,
+                      ),
+                      label: Text(linkedWithNext ? 'Убрать сет' : 'Суперсет'),
+                      style: FilledButton.styleFrom(
+                        visualDensity: VisualDensity.compact,
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 10,
+                          vertical: 10,
+                        ),
+                      ),
+                    )
+                  : const SizedBox.shrink(),
             ),
           ],
         ),
 
-        const SizedBox(height: 8),
+        const SizedBox(height: 10),
         Row(
           children: [
             Expanded(
@@ -426,9 +473,24 @@ class _WorkoutScreenState extends State<WorkoutScreen> {
                 keyboardType: const TextInputType.numberWithOptions(
                   decimal: true,
                 ),
-                decoration: const InputDecoration(
-                  labelText: 'кг (последний подход)',
-                  border: OutlineInputBorder(),
+                style: Theme.of(
+                  context,
+                ).textTheme.bodyLarge?.copyWith(fontWeight: FontWeight.w600),
+                decoration: InputDecoration(
+                  prefixIcon: const Icon(Icons.fitness_center, size: 18),
+                  labelText: 'Вес, кг',
+                  filled: true,
+                  fillColor: colors.surfaceContainerHighest.withOpacity(0.35),
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(14),
+                    borderSide: BorderSide(color: colors.outlineVariant),
+                  ),
+                  enabledBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(14),
+                    borderSide: BorderSide(
+                      color: colors.outlineVariant.withOpacity(0.65),
+                    ),
+                  ),
                   isDense: true,
                 ),
               ),
@@ -438,9 +500,24 @@ class _WorkoutScreenState extends State<WorkoutScreen> {
               child: TextField(
                 controller: repsC,
                 keyboardType: TextInputType.number,
-                decoration: const InputDecoration(
-                  labelText: 'повторы',
-                  border: OutlineInputBorder(),
+                style: Theme.of(
+                  context,
+                ).textTheme.bodyLarge?.copyWith(fontWeight: FontWeight.w600),
+                decoration: InputDecoration(
+                  prefixIcon: const Icon(Icons.repeat, size: 18),
+                  labelText: 'Повторы',
+                  filled: true,
+                  fillColor: colors.surfaceContainerHighest.withOpacity(0.35),
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(14),
+                    borderSide: BorderSide(color: colors.outlineVariant),
+                  ),
+                  enabledBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(14),
+                    borderSide: BorderSide(
+                      color: colors.outlineVariant.withOpacity(0.65),
+                    ),
+                  ),
                   isDense: true,
                 ),
               ),
@@ -602,12 +679,22 @@ class _ExerciseCard extends StatelessWidget {
       elevation: 0,
       color: colors.surface,
       margin: const EdgeInsets.only(bottom: 10),
-      shadowColor: colors.primary.withOpacity(0.08),
+
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(20),
-        side: BorderSide(color: colors.outlineVariant.withOpacity(0.6)),
+        side: BorderSide(color: colors.outlineVariant.withOpacity(0.45)),
       ),
-      child: Padding(padding: const EdgeInsets.all(14), child: child),
+      child: Container(
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(20),
+          gradient: LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: [colors.surface, colors.primary.withOpacity(0.02)],
+          ),
+        ),
+        child: Padding(padding: const EdgeInsets.all(14), child: child),
+      ),
     );
   }
 }
@@ -624,11 +711,11 @@ class _SuperSetCard extends StatelessWidget {
     final colors = Theme.of(context).colorScheme;
     return Card(
       elevation: 0,
-      color: colors.primary.withOpacity(0.04),
+      color: colors.primary.withOpacity(0.05),
       margin: const EdgeInsets.only(bottom: 10),
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(20),
-        side: BorderSide(color: colors.primary.withOpacity(0.25)),
+        side: BorderSide(color: colors.primary.withOpacity(0.28)),
       ),
       child: Padding(
         padding: const EdgeInsets.all(14),
