@@ -153,7 +153,9 @@ class _ClientProgramScreenState extends State<ClientProgramScreen> {
                               children: [
                                 ListTile(
                                   leading: const Icon(Icons.swap_horiz),
-                                  title: Text('День ${s.slotIndex} • $sourceTitle'),
+                                  title: Text(
+                                    'День ${s.slotIndex} • $sourceTitle',
+                                  ),
                                   trailing: Icon(
                                     isSelected
                                         ? Icons.expand_less
@@ -188,7 +190,8 @@ class _ClientProgramScreenState extends State<ClientProgramScreen> {
                                       }
 
                                       final items =
-                                          snap.data ?? const <WorkoutExerciseVm>[];
+                                          snap.data ??
+                                          const <WorkoutExerciseVm>[];
                                       return Padding(
                                         padding: const EdgeInsets.fromLTRB(
                                           12,
@@ -211,9 +214,12 @@ class _ClientProgramScreenState extends State<ClientProgramScreen> {
                                             Align(
                                               alignment: Alignment.centerRight,
                                               child: FilledButton.icon(
-                                                onPressed: () =>
-                                                    Navigator.of(context).pop(s),
-                                                icon: const Icon(Icons.swap_horiz),
+                                                onPressed: () => Navigator.of(
+                                                  context,
+                                                ).pop(s),
+                                                icon: const Icon(
+                                                  Icons.swap_horiz,
+                                                ),
                                                 label: const Text(
                                                   'Заменить на этот день',
                                                 ),
@@ -235,7 +241,7 @@ class _ClientProgramScreenState extends State<ClientProgramScreen> {
               },
             ),
           );
-        ),
+        },
       ),
     );
 
