@@ -87,35 +87,160 @@ class _ClientProgramScreenState extends State<ClientProgramScreen> {
       return;
     }
 
+    final db = AppDbScope.of(context);
+
+    Future<List<WorkoutExerciseVm>> loadPreview(ProgramSlotVm slot) {
+      return db
+          .getWorkoutDetailsForClientOnDayForcedTemplateIdx(
+            clientId: widget.clientId,
+            day: widget.day ?? DateTime.now(),
+            templateIdx: slot.templateIdx,
+          )
+          .then((t) => t.$3);
+    }
+
+    ProgramSlotVm? selected;
+    Future<List<WorkoutExerciseVm>>? previewFuture;
+
     final target = await showModalBottomSheet<ProgramSlotVm>(
       context: context,
-      builder: (context) => SafeArea(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            ListTile(
-              title: Text(
-                'Заменить «День ${source.slotIndex} • $sourceTitle» на:',
-              ),
-              subtitle: const Text('Можно выбрать только такой же тип дня.'),
+      isScrollControlled: true,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setModalState) {
+          void selectForPreview(ProgramSlotVm slot) {
+            setModalState(() {
+              if (selected?.absoluteIndex == slot.absoluteIndex) {
+                selected = null;
+                previewFuture = null;
+                return;
+              }
+              selected = slot;
+              previewFuture = loadPreview(slot);
+            });
+          }
+
+          return SafeArea(
+            child: DraggableScrollableSheet(
+              expand: false,
+              initialChildSize: 0.7,
+              minChildSize: 0.35,
+              maxChildSize: 0.95,
+              builder: (context, scrollController) {
+                return Column(
+                  children: [
+                    ListTile(
+                      title: Text(
+                        'Заменить «День ${source.slotIndex} • $sourceTitle» на:',
+                      ),
+                      subtitle: const Text(
+                        'Выберите день того же типа. Нажмите на день, чтобы открыть предпросмотр упражнений.',
+                      ),
+                    ),
+                    const Divider(height: 1),
+                    Expanded(
+                      child: ListView.separated(
+                        controller: scrollController,
+                        padding: const EdgeInsets.fromLTRB(12, 8, 12, 12),
+                        itemCount: candidates.length,
+                        separatorBuilder: (_, __) => const SizedBox(height: 8),
+                        itemBuilder: (context, i) {
+                          final s = candidates[i];
+                          final isSelected =
+                              selected?.absoluteIndex == s.absoluteIndex;
+
+                          return Card(
+                            child: Column(
+                              children: [
+                                ListTile(
+                                  leading: const Icon(Icons.swap_horiz),
+                                  title: Text('День ${s.slotIndex} • $sourceTitle'),
+                                  trailing: Icon(
+                                    isSelected
+                                        ? Icons.expand_less
+                                        : Icons.expand_more,
+                                  ),
+                                  onTap: () => selectForPreview(s),
+                                ),
+                                if (isSelected)
+                                  FutureBuilder<List<WorkoutExerciseVm>>(
+                                    future: previewFuture,
+                                    builder: (context, snap) {
+                                      if (snap.connectionState ==
+                                          ConnectionState.waiting) {
+                                        return const Padding(
+                                          padding: EdgeInsets.all(12),
+                                          child: LinearProgressIndicator(),
+                                        );
+                                      }
+
+                                      if (snap.hasError) {
+                                        return Padding(
+                                          padding: const EdgeInsets.fromLTRB(
+                                            12,
+                                            4,
+                                            12,
+                                            12,
+                                          ),
+                                          child: Text(
+                                            'Не удалось загрузить упражнения: ${snap.error}',
+                                          ),
+                                        );
+                                      }
+
+                                      final items =
+                                          snap.data ?? const <WorkoutExerciseVm>[];
+                                      return Padding(
+                                        padding: const EdgeInsets.fromLTRB(
+                                          12,
+                                          0,
+                                          12,
+                                          12,
+                                        ),
+                                        child: Column(
+                                          crossAxisAlignment:
+                                              CrossAxisAlignment.start,
+                                          children: [
+                                            Text(
+                                              items.isEmpty
+                                                  ? 'Упражнений нет'
+                                                  : 'Упражнения: ${items.map((e) => e.name).join(' • ')}',
+                                              maxLines: 3,
+                                              overflow: TextOverflow.ellipsis,
+                                            ),
+                                            const SizedBox(height: 8),
+                                            Align(
+                                              alignment: Alignment.centerRight,
+                                              child: FilledButton.icon(
+                                                onPressed: () =>
+                                                    Navigator.of(context).pop(s),
+                                                icon: const Icon(Icons.swap_horiz),
+                                                label: const Text(
+                                                  'Заменить на этот день',
+                                                ),
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                      );
+                                    },
+                                  ),
+                              ],
+                            ),
+                          );
+                        },
+                      ),
+                    ),
+                  ],
+                );
+              },
             ),
-            const Divider(height: 1),
-            ...candidates.map(
-              (s) => ListTile(
-                leading: const Icon(Icons.swap_horiz),
-                title: Text('День ${s.slotIndex} • $sourceTitle'),
-                onTap: () => Navigator.of(context).pop(s),
-              ),
-            ),
-            const SizedBox(height: 8),
-          ],
+          );
         ),
       ),
     );
 
     if (target == null) return;
 
-    final db = AppDbScope.of(context);
     try {
       await db.swapPlannedProgramDays(
         clientId: widget.clientId,
