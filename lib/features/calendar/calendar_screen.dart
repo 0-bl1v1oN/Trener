@@ -2142,12 +2142,22 @@ class _CalendarScreenState extends State<CalendarScreen>
       c.dispose();
     }
 
-    if (!info.doneToday) {
-      await db.toggleWorkoutForClientOnDay(
-        clientId: item.client.id,
-        day: _selectedDay,
-      );
-    }
+    final now = DateTime.now();
+    final completeAt = DateTime(
+      _selectedDay.year,
+      _selectedDay.month,
+      _selectedDay.day,
+      12,
+      0,
+      0,
+      now.millisecond,
+      now.microsecond,
+    );
+
+    await db.completeWorkoutForClient(
+      clientId: item.client.id,
+      when: completeAt,
+    );
 
     await db.saveWorkoutResultsAndMarkDone(
       clientId: item.client.id,
