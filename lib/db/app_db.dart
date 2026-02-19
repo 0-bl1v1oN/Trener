@@ -633,6 +633,12 @@ class AppDb extends _$AppDb {
     );
   }
 
+  Future<void> updateAppointmentNote({required String id, String? note}) async {
+    await (update(appointments)..where((t) => t.id.equals(id))).write(
+      AppointmentsCompanion(note: Value(note)),
+    );
+  }
+
   Future<bool> appointmentExists({
     required String clientId,
     required DateTime startAt,

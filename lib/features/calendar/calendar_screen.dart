@@ -107,6 +107,17 @@ class _CalendarScreenState extends State<CalendarScreen>
   bool _collapseLock = false;
   bool _openingCategoriesFromRoute = false;
 
+  static const String _attendanceMarker = '[attended]';
+
+  bool _isAppointmentDone(Appointment appointment) =>
+      appointment.note?.contains(_attendanceMarker) == true;
+
+  String? _withAttendanceMarker(String? note, bool done) {
+    final current = (note ?? '').replaceAll(_attendanceMarker, '').trim();
+    if (!done) return current.isEmpty ? null : current;
+    return current.isEmpty ? _attendanceMarker : '$current $_attendanceMarker';
+  }
+
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
@@ -2131,17 +2142,20 @@ class _CalendarScreenState extends State<CalendarScreen>
       c.dispose();
     }
 
-    if (!info.doneToday) {
-      await db.toggleWorkoutForClientOnDay(
-        clientId: item.client.id,
-        day: _selectedDay,
-      );
-    }
+    await db.toggleWorkoutForClientOnDay(
+      clientId: item.client.id,
+      day: _selectedDay,
+    );
 
     await db.saveWorkoutResultsAndMarkDone(
       clientId: item.client.id,
       day: _selectedDay,
       resultsByTemplateExerciseId: results,
+    );
+
+    await db.updateAppointmentNote(
+      id: item.appointment.id,
+      note: _withAttendanceMarker(item.appointment.note, true),
     );
 
     if (!mounted) return;
@@ -2562,78 +2576,60 @@ class _CalendarScreenState extends State<CalendarScreen>
                                       context,
                                     ).textTheme.titleMedium,
                                   ),
-                                  subtitle: FutureBuilder<WorkoutDayInfo>(
-                                    future: db.getWorkoutInfoForClientOnDay(
-                                      clientId: it.client.id,
-                                      day: _selectedDay,
-                                    ),
-                                    builder: (context, snap) {
-                                      final info = snap.data;
-                                      final planText = it.client.plan == null
-                                          ? ''
-                                          : 'Абонемент: ${it.client.plan}';
-                                      if (info == null || !info.hasPlan) {
-                                        return Text(planText);
-                                      }
-
-                                      final statusText = info.doneToday
-                                          ? '✅ Было'
-                                          : 'Статус: не выполнено';
-
-                                      return Text('$planText\n$statusText');
-                                    },
+                                  subtitle: Text(
+                                    '${it.client.plan == null ? '' : 'Абонемент: ${it.client.plan}'}\n'
+                                    '${_isAppointmentDone(it.appointment) ? '✅ Было' : 'Статус: не выполнено'}',
                                   ),
-                                  trailing: FutureBuilder<WorkoutDayInfo>(
-                                    future: db.getWorkoutInfoForClientOnDay(
-                                      clientId: it.client.id,
-                                      day: _selectedDay,
-                                    ),
-                                    builder: (context, snap) {
-                                      final done = snap.data?.doneToday == true;
+                                  trailing: Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      IconButton.filledTonal(
+                                        tooltip:
+                                            _isAppointmentDone(it.appointment)
+                                            ? 'Снять отметку выполнения'
+                                            : 'Проверить и отметить выполненной',
+                                        icon: Icon(
+                                          _isAppointmentDone(it.appointment)
+                                              ? Icons.check_circle
+                                              : Icons.radio_button_unchecked,
+                                        ),
+                                        onPressed: () async {
+                                          if (_isAppointmentDone(
+                                            it.appointment,
+                                          )) {
+                                            await db
+                                                .toggleWorkoutForClientOnDay(
+                                                  clientId: it.client.id,
+                                                  day: _selectedDay,
+                                                );
+                                            await db.updateAppointmentNote(
+                                              id: it.appointment.id,
+                                              note: _withAttendanceMarker(
+                                                it.appointment.note,
+                                                false,
+                                              ),
+                                            );
+                                            if (!mounted) return;
+                                            setState(() {});
+                                            return;
+                                          }
 
-                                      return Row(
-                                        mainAxisSize: MainAxisSize.min,
-                                        children: [
-                                          IconButton.filledTonal(
-                                            tooltip: done
-                                                ? 'Снять отметку выполнения'
-                                                : 'Проверить и отметить выполненной',
-                                            icon: Icon(
-                                              done
-                                                  ? Icons.check_circle
-                                                  : Icons
-                                                        .radio_button_unchecked,
-                                            ),
-                                            onPressed: () async {
-                                              if (done) {
-                                                await db
-                                                    .toggleWorkoutForClientOnDay(
-                                                      clientId: it.client.id,
-                                                      day: _selectedDay,
-                                                    );
-                                                if (!mounted) return;
-                                                setState(() {});
-                                                return;
-                                              }
-
-                                              await _openQuickWorkoutCheck(it);
-                                            },
-                                          ),
-                                          IconButton(
-                                            tooltip: 'Удалить запись',
-                                            icon: Icon(
-                                              Icons.delete_outline,
-                                              color: colors.error,
-                                            ),
-                                            onPressed: () async {
-                                              await db.deleteAppointmentById(
-                                                it.appointment.id,
-                                              );
-                                            },
-                                          ),
-                                        ],
-                                      );
-                                    },
+                                          await _openQuickWorkoutCheck(it);
+                                        },
+                                      ),
+                                      IconButton(
+                                        tooltip: 'Удалить запись',
+                                        icon: Icon(
+                                          Icons.delete_outline,
+                                          color: colors.error,
+                                        ),
+                                        onPressed: () async {
+                                          await db.deleteAppointmentById(
+                                            it.appointment.id,
+                                          );
+                                        },
+                                      ),
+                                    ],
                                   ),
                                   onTap: () async {
                                     final dayStr = DateFormat(
