@@ -412,7 +412,10 @@ class AppDb extends _$AppDb {
     final rows = await customSelect(
       'SELECT absolute_index, template_idx FROM client_program_day_overrides '
       'WHERE client_id = ? AND plan_instance = ?',
-      variables: [Variable.withString(clientId), Variable.withInt(planInstance)],
+      variables: [
+        Variable.withString(clientId),
+        Variable.withInt(planInstance),
+      ],
     ).get();
 
     final out = <int, int>{};
@@ -453,10 +456,11 @@ class AppDb extends _$AppDb {
     required String gender,
     required int templateIdx,
   }) async {
-    final row = await (select(workoutTemplates)..where(
-          (t) => t.gender.equals(gender) & t.idx.equals(templateIdx),
-        ))
-        .getSingleOrNull();
+    final row =
+        await (select(workoutTemplates)..where(
+              (t) => t.gender.equals(gender) & t.idx.equals(templateIdx),
+            ))
+            .getSingleOrNull();
 
     if (row != null) return row.label;
 
@@ -464,7 +468,16 @@ class AppDb extends _$AppDb {
       const groups = ['Спина', 'Грудь', 'Ноги'];
       return groups[templateIdx % 3];
     }
-    const groups = ['Спина', 'Ноги', 'Грудь', 'Ноги', 'Спина', 'Ноги', 'Грудь', 'Ноги'];
+    const groups = [
+      'Спина',
+      'Ноги',
+      'Грудь',
+      'Ноги',
+      'Спина',
+      'Ноги',
+      'Грудь',
+      'Ноги',
+    ];
     return groups[templateIdx % groups.length];
   }
 
@@ -477,14 +490,16 @@ class AppDb extends _$AppDb {
 
     await ensureProgramStateForClient(clientId);
 
-    final st = await (select(clientProgramStates)
-          ..where((t) => t.clientId.equals(clientId)))
-        .getSingleOrNull();
+    final st = await (select(
+      clientProgramStates,
+    )..where((t) => t.clientId.equals(clientId))).getSingleOrNull();
     if (st == null || st.planSize <= 0) return;
 
     if (firstAbsoluteIndex < st.completedInPlan ||
         secondAbsoluteIndex < st.completedInPlan) {
-      throw StateError('Можно менять только запланированные (не выполненные) дни.');
+      throw StateError(
+        'Можно менять только запланированные (не выполненные) дни.',
+      );
     }
 
     final c = await getClientById(clientId);
@@ -499,18 +514,24 @@ class AppDb extends _$AppDb {
       planInstance: st.planInstance,
     );
 
-    final firstCurrent = overrides[firstAbsoluteIndex] ??
-        defaultIdx(firstAbsoluteIndex);
-    final secondCurrent = overrides[secondAbsoluteIndex] ??
-        defaultIdx(secondAbsoluteIndex);
+    final firstCurrent =
+        overrides[firstAbsoluteIndex] ?? defaultIdx(firstAbsoluteIndex);
+    final secondCurrent =
+        overrides[secondAbsoluteIndex] ?? defaultIdx(secondAbsoluteIndex);
 
-    final firstLabel =
-        await _templateLabelByIdx(gender: gender, templateIdx: firstCurrent);
-    final secondLabel =
-        await _templateLabelByIdx(gender: gender, templateIdx: secondCurrent);
+    final firstLabel = await _templateLabelByIdx(
+      gender: gender,
+      templateIdx: firstCurrent,
+    );
+    final secondLabel = await _templateLabelByIdx(
+      gender: gender,
+      templateIdx: secondCurrent,
+    );
 
     if (firstLabel != secondLabel) {
-      throw StateError('Можно менять только одинаковые типы дней (например, Спина ↔ Спина).');
+      throw StateError(
+        'Можно менять только одинаковые типы дней (например, Спина ↔ Спина).',
+      );
     }
 
     final firstDefault = defaultIdx(firstAbsoluteIndex);
@@ -545,6 +566,7 @@ class AppDb extends _$AppDb {
         templateIdx: firstCurrent,
       );
     }
+  }
 
   // --- Clients ---
   Future<List<Client>> getAllClients() =>
