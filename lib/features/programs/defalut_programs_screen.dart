@@ -89,7 +89,8 @@ class _ProgramTemplatesTab extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final colors = Theme.of(context).colorScheme;
+    final theme = Theme.of(context);
+    final colors = theme.colorScheme;
 
     return FutureBuilder<List<WorkoutTemplate>>(
       future: future,
@@ -106,18 +107,38 @@ class _ProgramTemplatesTab extends StatelessWidget {
           return const Center(child: Text('Шаблоны не найдены'));
         }
 
-        return ListView.separated(
+        return ListView(
           padding: const EdgeInsets.all(12),
-          itemCount: list.length,
-          separatorBuilder: (_, __) => const SizedBox(height: 10),
-          itemBuilder: (context, i) {
-            final t = list[i];
-            return _EditableTemplateTile(
-              template: t,
-              title: _titleWithoutDayPrefix(t.title),
-              onChanged: onChanged,
-            );
-          },
+          children: [
+            Container(
+              margin: const EdgeInsets.only(bottom: 12),
+              padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(14),
+                gradient: LinearGradient(
+                  colors: [
+                    colors.primaryContainer.withOpacity(0.55),
+                    colors.surface,
+                  ],
+                ),
+                border: Border.all(color: colors.outlineVariant),
+              ),
+              child: Text(
+                'Редактируйте упражнения прямо в карточке: название, суперсеты, добавление и удаление.',
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: colors.onSurfaceVariant,
+                ),
+              ),
+            ),
+            for (final t in list) ...[
+              _EditableTemplateTile(
+                template: t,
+                title: _titleWithoutDayPrefix(t.title),
+                onChanged: onChanged,
+              ),
+              const SizedBox(height: 10),
+            ],
+          ],
         );
       },
     );
@@ -290,7 +311,8 @@ class _EditableTemplateTileState extends State<_EditableTemplateTile> {
 
   @override
   Widget build(BuildContext context) {
-    final colors = Theme.of(context).colorScheme;
+    final theme = Theme.of(context);
+    final colors = theme.colorScheme;
 
     return Card(
       elevation: 0,
@@ -299,15 +321,40 @@ class _EditableTemplateTileState extends State<_EditableTemplateTile> {
         side: BorderSide(color: colors.outlineVariant.withOpacity(0.7)),
       ),
       child: Theme(
-        data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
+        data: theme.copyWith(dividerColor: Colors.transparent),
         child: ExpansionTile(
-          tilePadding: const EdgeInsets.fromLTRB(14, 6, 10, 6),
+          tilePadding: const EdgeInsets.fromLTRB(12, 8, 10, 8),
           childrenPadding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
-          title: Text(widget.title),
-          subtitle: Text('Тренировка ${widget.template.idx + 1}'),
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(16),
           ),
+          title: Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
+                decoration: BoxDecoration(
+                  color: colors.primaryContainer,
+                  borderRadius: BorderRadius.circular(999),
+                ),
+                child: Text(
+                  '#${widget.template.idx + 1}',
+                  style: theme.textTheme.labelSmall?.copyWith(
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  widget.title,
+                  style: theme.textTheme.titleMedium?.copyWith(
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          subtitle: const Text('Редактируемый шаблон тренировки'),
           collapsedShape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(16),
           ),
@@ -357,10 +404,9 @@ class _EditableTemplateTileState extends State<_EditableTemplateTile> {
                                 Expanded(
                                   child: Text(
                                     e.name,
-                                    style: Theme.of(context)
-                                        .textTheme
-                                        .titleSmall
-                                        ?.copyWith(fontWeight: FontWeight.w700),
+                                    style: theme.textTheme.titleSmall?.copyWith(
+                                      fontWeight: FontWeight.w700,
+                                    ),
                                   ),
                                 ),
                                 if (e.groupId != null)
@@ -375,9 +421,7 @@ class _EditableTemplateTileState extends State<_EditableTemplateTile> {
                                     ),
                                     child: Text(
                                       'Суперсет',
-                                      style: Theme.of(
-                                        context,
-                                      ).textTheme.labelSmall,
+                                      style: theme.textTheme.labelSmall,
                                     ),
                                   ),
                               ],
