@@ -2586,98 +2586,233 @@ class _CalendarScreenState extends State<CalendarScreen>
                         SliverList(
                           delegate: SliverChildBuilderDelegate((context, i) {
                             final it = items[i];
+                            final done = _isAppointmentDone(it.appointment);
+                            final hasPlan = (it.client.plan ?? '')
+                                .trim()
+                                .isNotEmpty;
                             return Padding(
-                              padding: const EdgeInsets.fromLTRB(12, 0, 12, 10),
-                              child: Card(
-                                elevation: 0,
-                                shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(16),
-                                  side: BorderSide(
-                                    color: colors.outlineVariant.withOpacity(
-                                      0.7,
+                              padding: EdgeInsets.fromLTRB(
+                                12,
+                                0,
+                                12,
+                                i == items.length - 1 ? 98 : 10,
+                              ),
+                              child: InkWell(
+                                borderRadius: BorderRadius.circular(18),
+                                onTap: () async {
+                                  final dayStr = DateFormat(
+                                    'yyyy-MM-dd',
+                                  ).format(_selectedDay);
+                                  await context.push(
+                                    '/clients/${it.client.id}/program?day=$dayStr',
+                                  );
+                                  if (!mounted) return;
+                                  setState(() {});
+                                },
+                                onLongPress: () => _openAppointmentActions(it),
+                                child: Container(
+                                  padding: const EdgeInsets.fromLTRB(
+                                    12,
+                                    12,
+                                    10,
+                                    12,
+                                  ),
+                                  decoration: BoxDecoration(
+                                    borderRadius: BorderRadius.circular(18),
+                                    gradient: LinearGradient(
+                                      colors: [
+                                        colors.surface,
+                                        colors.surfaceContainerHighest
+                                            .withOpacity(0.35),
+                                      ],
+                                      begin: Alignment.topLeft,
+                                      end: Alignment.bottomRight,
+                                    ),
+                                    border: Border.all(
+                                      color: done
+                                          ? colors.primary.withOpacity(0.22)
+                                          : colors.outlineVariant.withOpacity(
+                                              0.75,
+                                            ),
                                     ),
                                   ),
-                                ),
-                                child: ListTile(
-                                  contentPadding: const EdgeInsets.fromLTRB(
-                                    14,
-                                    8,
-                                    8,
-                                    8,
-                                  ),
-                                  title: Text(
-                                    '${_fmtTime(it.appointment.startAt)} • ${it.client.name}',
-                                    style: Theme.of(
-                                      context,
-                                    ).textTheme.titleMedium,
-                                  ),
-                                  subtitle: Text(
-                                    '${it.client.plan == null ? '' : 'Абонемент: ${it.client.plan}'}\n'
-                                    '${_isAppointmentDone(it.appointment) ? '✅ Было' : 'Статус: не выполнено'}',
-                                  ),
-                                  trailing: Row(
-                                    mainAxisSize: MainAxisSize.min,
+                                  child: Row(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
                                     children: [
-                                      IconButton.filledTonal(
-                                        tooltip:
-                                            _isAppointmentDone(it.appointment)
-                                            ? 'Снять отметку выполнения'
-                                            : 'Проверить и отметить выполненной',
-                                        icon: Icon(
-                                          _isAppointmentDone(it.appointment)
-                                              ? Icons.check_circle
-                                              : Icons.radio_button_unchecked,
+                                      Expanded(
+                                        child: Column(
+                                          crossAxisAlignment:
+                                              CrossAxisAlignment.start,
+                                          children: [
+                                            Row(
+                                              children: [
+                                                Container(
+                                                  padding:
+                                                      const EdgeInsets.symmetric(
+                                                        horizontal: 8,
+                                                        vertical: 4,
+                                                      ),
+                                                  decoration: BoxDecoration(
+                                                    color: colors
+                                                        .primaryContainer
+                                                        .withOpacity(0.75),
+                                                    borderRadius:
+                                                        BorderRadius.circular(
+                                                          999,
+                                                        ),
+                                                  ),
+                                                  child: Text(
+                                                    _fmtTime(
+                                                      it.appointment.startAt,
+                                                    ),
+                                                    style: Theme.of(context)
+                                                        .textTheme
+                                                        .labelMedium
+                                                        ?.copyWith(
+                                                          fontWeight:
+                                                              FontWeight.w700,
+                                                        ),
+                                                  ),
+                                                ),
+                                                const SizedBox(width: 8),
+                                                Expanded(
+                                                  child: Text(
+                                                    it.client.name,
+                                                    style: Theme.of(context)
+                                                        .textTheme
+                                                        .titleMedium
+                                                        ?.copyWith(
+                                                          fontWeight:
+                                                              FontWeight.w700,
+                                                        ),
+                                                  ),
+                                                ),
+                                              ],
+                                            ),
+                                            const SizedBox(height: 8),
+                                            Wrap(
+                                              spacing: 8,
+                                              runSpacing: 8,
+                                              children: [
+                                                if (hasPlan)
+                                                  Container(
+                                                    padding:
+                                                        const EdgeInsets.symmetric(
+                                                          horizontal: 10,
+                                                          vertical: 5,
+                                                        ),
+                                                    decoration: BoxDecoration(
+                                                      color: colors
+                                                          .secondaryContainer
+                                                          .withOpacity(0.8),
+                                                      borderRadius:
+                                                          BorderRadius.circular(
+                                                            999,
+                                                          ),
+                                                    ),
+                                                    child: Text(
+                                                      'Абонемент: ${it.client.plan}',
+                                                      style: Theme.of(
+                                                        context,
+                                                      ).textTheme.labelMedium,
+                                                    ),
+                                                  ),
+                                                Container(
+                                                  padding:
+                                                      const EdgeInsets.symmetric(
+                                                        horizontal: 10,
+                                                        vertical: 5,
+                                                      ),
+                                                  decoration: BoxDecoration(
+                                                    color: done
+                                                        ? Colors.green
+                                                              .withOpacity(0.14)
+                                                        : colors.errorContainer
+                                                              .withOpacity(
+                                                                0.45,
+                                                              ),
+                                                    borderRadius:
+                                                        BorderRadius.circular(
+                                                          999,
+                                                        ),
+                                                  ),
+                                                  child: Text(
+                                                    done
+                                                        ? '✅ Было'
+                                                        : '⏳ Не выполнено',
+                                                    style: Theme.of(context)
+                                                        .textTheme
+                                                        .labelMedium
+                                                        ?.copyWith(
+                                                          fontWeight:
+                                                              FontWeight.w600,
+                                                          color: done
+                                                              ? Colors
+                                                                    .green
+                                                                    .shade800
+                                                              : colors
+                                                                    .onErrorContainer,
+                                                        ),
+                                                  ),
+                                                ),
+                                              ],
+                                            ),
+                                          ],
                                         ),
-                                        onPressed: () async {
-                                          if (_isAppointmentDone(
-                                            it.appointment,
-                                          )) {
-                                            await db
-                                                .toggleWorkoutForClientOnDay(
-                                                  clientId: it.client.id,
-                                                  day: _selectedDay,
-                                                );
-                                            await db.updateAppointmentNote(
-                                              id: it.appointment.id,
-                                              note: _withAttendanceMarker(
-                                                it.appointment.note,
-                                                false,
-                                              ),
-                                            );
-                                            if (!mounted) return;
-                                            setState(() {});
-                                            return;
-                                          }
-
-                                          await _openQuickWorkoutCheck(it);
-                                        },
                                       ),
-                                      IconButton(
-                                        tooltip: 'Удалить запись',
-                                        icon: Icon(
-                                          Icons.delete_outline,
-                                          color: colors.error,
-                                        ),
-                                        onPressed: () async {
-                                          await db.deleteAppointmentById(
-                                            it.appointment.id,
-                                          );
-                                        },
+                                      const SizedBox(width: 8),
+                                      Column(
+                                        children: [
+                                          IconButton.filledTonal(
+                                            tooltip: done
+                                                ? 'Снять отметку выполнения'
+                                                : 'Проверить и отметить выполненной',
+                                            icon: Icon(
+                                              done
+                                                  ? Icons.check_circle
+                                                  : Icons
+                                                        .radio_button_unchecked,
+                                            ),
+                                            onPressed: () async {
+                                              if (done) {
+                                                await db
+                                                    .toggleWorkoutForClientOnDay(
+                                                      clientId: it.client.id,
+                                                      day: _selectedDay,
+                                                    );
+                                                await db.updateAppointmentNote(
+                                                  id: it.appointment.id,
+                                                  note: _withAttendanceMarker(
+                                                    it.appointment.note,
+                                                    false,
+                                                  ),
+                                                );
+                                                if (!mounted) return;
+                                                setState(() {});
+                                                return;
+                                              }
+
+                                              await _openQuickWorkoutCheck(it);
+                                            },
+                                          ),
+                                          const SizedBox(height: 4),
+                                          IconButton(
+                                            tooltip: 'Удалить запись',
+                                            icon: Icon(
+                                              Icons.delete_outline,
+                                              color: colors.error,
+                                            ),
+                                            onPressed: () async {
+                                              await db.deleteAppointmentById(
+                                                it.appointment.id,
+                                              );
+                                            },
+                                          ),
+                                        ],
                                       ),
                                     ],
                                   ),
-                                  onTap: () async {
-                                    final dayStr = DateFormat(
-                                      'yyyy-MM-dd',
-                                    ).format(_selectedDay);
-                                    await context.push(
-                                      '/clients/${it.client.id}/program?day=$dayStr',
-                                    );
-                                    if (!mounted) return;
-                                    setState(() {});
-                                  },
-                                  onLongPress: () =>
-                                      _openAppointmentActions(it),
                                 ),
                               ),
                             );
