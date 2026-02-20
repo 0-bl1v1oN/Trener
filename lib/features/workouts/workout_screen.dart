@@ -94,6 +94,17 @@ class _WorkoutScreenState extends State<WorkoutScreen> {
     return int.tryParse(t);
   }
 
+  Map<int, (double? kg, int? reps)> _collectCurrentResults() {
+    final ids = <int>{..._kgCtrls.keys, ..._repsCtrls.keys};
+    return {
+      for (final id in ids)
+        id: (
+          _parseKg(_kgCtrls[id]?.text ?? ''),
+          _parseInt(_repsCtrls[id]?.text ?? ''),
+        ),
+    };
+  }
+
   Future<void> _renameExercise(WorkoutExerciseVm e) async {
     final ctrl = TextEditingController(text: e.name);
 
@@ -192,6 +203,12 @@ class _WorkoutScreenState extends State<WorkoutScreen> {
     setState(() => _saving = true);
 
     try {
+      await db.saveWorkoutDraftResults(
+        clientId: widget.clientId,
+        day: widget.day,
+        resultsByTemplateExerciseId: _collectCurrentResults(),
+        templateIdx: widget.templateIdx,
+      );
       if (widget.templateIdx != null) {
         await db.toggleWorkoutForClientOnDayWithTemplateIdx(
           clientId: widget.clientId,

@@ -2045,7 +2045,25 @@ class _CalendarScreenState extends State<CalendarScreen>
       templateIdx: nextTemplateIdx,
     );
 
-    final exercises = details.$3;
+    final drafts = await db.getWorkoutDraftResults(
+      clientId: item.client.id,
+      day: _selectedDay,
+      templateIdx: nextTemplateIdx,
+    );
+
+    final exercises = details.$3.map((e) {
+      final d = drafts[e.templateExerciseId];
+      if (d == null) return e;
+      return WorkoutExerciseVm(
+        templateExerciseId: e.templateExerciseId,
+        templateId: e.templateId,
+        orderIndex: e.orderIndex,
+        name: e.name,
+        lastWeightKg: d.$1,
+        lastReps: d.$2,
+        supersetGroup: e.supersetGroup,
+      );
+    }).toList();
 
     final kgControllers = <int, TextEditingController>{};
     final repsControllers = <int, TextEditingController>{};
