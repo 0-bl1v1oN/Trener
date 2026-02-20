@@ -521,16 +521,10 @@ class _WorkoutPreviewSheetState extends State<WorkoutPreviewSheet> {
   bool _loaded = false;
   late Future<List<WorkoutExerciseVm>> _future;
 
-  @override
-  void didChangeDependencies() {
-    super.didChangeDependencies();
-    if (_loaded) return;
-    _loaded = true;
-
+  Future<List<WorkoutExerciseVm>> _loadExercises() {
     final db = AppDbScope.of(context);
 
-    // Берём упражнения “как будто на этот день выбрана эта тренировка”
-    _future = db
+    return db
         .getWorkoutDetailsForClientOnDayForcedTemplateIdx(
           clientId: widget.clientId,
           day: widget.day,
@@ -539,36 +533,214 @@ class _WorkoutPreviewSheetState extends State<WorkoutPreviewSheet> {
         .then((t) => t.$3);
   }
 
+  Future<void> _refresh() async {
+    setState(() {
+      _future = _loadExercises();
+    });
+  }
+
+  Future<void> _renameExercise(WorkoutExerciseVm e) async {
+    final ctrl = TextEditingController(text: e.name);
+    final next = await showDialog<String>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Переименовать упражнение'),
+        content: TextField(
+          controller: ctrl,
+          autofocus: true,
+          decoration: const InputDecoration(
+            labelText: 'Новое название',
+            border: OutlineInputBorder(),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Отмена'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, ctrl.text.trim()),
+            child: const Text('Сохранить'),
+          ),
+        ],
+      ),
+    );
+
+    if (next == null || next.trim().isEmpty) return;
+
+    final db = AppDbScope.of(context);
+    await db.renameWorkoutTemplateExercise(
+      templateExerciseId: e.templateExerciseId,
+      newName: next,
+    );
+    if (!mounted) return;
+    await _refresh();
+  }
+
+  Future<void> _toggleSuperset(WorkoutExerciseVm e) async {
+    final db = AppDbScope.of(context);
+    await db.toggleClientSupersetWithNext(
+      clientId: widget.clientId,
+      templateId: e.templateId,
+      orderIndex: e.orderIndex,
+    );
+    if (!mounted) return;
+    await _refresh();
+  }
+
+  Future<void> _deleteExercise(WorkoutExerciseVm e) async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Удалить упражнение?'),
+        content: Text('«${e.name}» будет удалено из этого дня программы.'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Отмена'),
+          ),
+          FilledButton.tonal(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Удалить'),
+          ),
+        ],
+      ),
+    );
+
+    if (ok != true) return;
+
+    final db = AppDbScope.of(context);
+    await db.deleteWorkoutTemplateExercise(e.templateExerciseId);
+    if (!mounted) return;
+    await _refresh();
+  }
+
+  Future<void> _addExercise(List<WorkoutExerciseVm> current) async {
+    final ctrl = TextEditingController();
+    final name = await showDialog<String>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Новое упражнение'),
+        content: TextField(
+          controller: ctrl,
+          autofocus: true,
+          decoration: const InputDecoration(
+            labelText: 'Название упражнения',
+            border: OutlineInputBorder(),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Отмена'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, ctrl.text.trim()),
+            child: const Text('Добавить'),
+          ),
+        ],
+      ),
+    );
+
+    if (name == null || name.trim().isEmpty) return;
+
+    final db = AppDbScope.of(context);
+    final templateId = current.isNotEmpty
+        ? current.first.templateId
+        : await db.getTemplateIdForClientTemplateIdx(
+            clientId: widget.clientId,
+            templateIdx: widget.templateIdx,
+          );
+
+    if (templateId == null) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Не удалось определить день программы.')),
+      );
+      return;
+    }
+
+    await db.addWorkoutTemplateExercise(templateId: templateId, name: name);
+    if (!mounted) return;
+    await _refresh();
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (_loaded) return;
+    _loaded = true;
+    _future = _loadExercises();
+  }
+
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
     return SafeArea(
       child: DraggableScrollableSheet(
         expand: false,
-        initialChildSize: 0.85,
+        initialChildSize: 0.9,
         minChildSize: 0.4,
         maxChildSize: 0.95,
         builder: (context, scrollController) {
           return Material(
+            color: theme.colorScheme.surface,
             child: Column(
               children: [
-                Padding(
-                  padding: const EdgeInsets.all(12),
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.fromLTRB(16, 14, 12, 14),
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      colors: [
+                        theme.colorScheme.primaryContainer.withOpacity(0.75),
+                        theme.colorScheme.surface,
+                      ],
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                    ),
+                    border: Border(
+                      bottom: BorderSide(
+                        color: theme.colorScheme.outlineVariant,
+                      ),
+                    ),
+                  ),
                   child: Row(
                     children: [
                       Expanded(
-                        child: Text(
-                          'Предпросмотр • ${widget.title}',
-                          style: Theme.of(context).textTheme.titleMedium,
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              widget.title,
+                              style: theme.textTheme.titleMedium?.copyWith(
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                            const SizedBox(height: 2),
+                            Text(
+                              'Редактирование упражнений',
+                              style: theme.textTheme.bodySmall?.copyWith(
+                                color: theme.colorScheme.onSurfaceVariant,
+                              ),
+                            ),
+                          ],
                         ),
                       ),
                       IconButton(
+                        onPressed: _refresh,
+                        tooltip: 'Обновить',
+                        icon: const Icon(Icons.refresh),
+                      ),
+                      IconButton(
                         onPressed: () => Navigator.pop(context),
+                        tooltip: 'Закрыть',
                         icon: const Icon(Icons.close),
                       ),
                     ],
                   ),
                 ),
-                const Divider(height: 1),
+
                 Expanded(
                   child: FutureBuilder<List<WorkoutExerciseVm>>(
                     future: _future,
@@ -581,7 +753,7 @@ class _WorkoutPreviewSheetState extends State<WorkoutPreviewSheet> {
                           padding: const EdgeInsets.all(16),
                           child: SingleChildScrollView(
                             child: Text(
-                              'Ошибка: ${snap.error}\n\n${snap.stackTrace ?? ''}',
+                              'Ошибка: ${snap.error}${snap.stackTrace ?? ''}',
                             ),
                           ),
                         );
@@ -589,38 +761,129 @@ class _WorkoutPreviewSheetState extends State<WorkoutPreviewSheet> {
 
                       final exercises =
                           snap.data ?? const <WorkoutExerciseVm>[];
-                      if (exercises.isEmpty) {
-                        return const Center(child: Text('Упражнений нет'));
-                      }
 
                       return ListView.separated(
                         controller: scrollController,
-                        padding: const EdgeInsets.all(12),
+                        padding: const EdgeInsets.fromLTRB(12, 12, 12, 120),
                         itemCount: exercises.length,
-                        separatorBuilder: (_, __) => const SizedBox(height: 8),
+                        separatorBuilder: (_, __) => const SizedBox(height: 10),
                         itemBuilder: (context, i) {
                           final e = exercises[i];
 
-                          final lastKg = e.lastWeightKg;
-                          final lastReps = e.lastReps;
+                          final lastText =
+                              (e.lastWeightKg != null || e.lastReps != null)
+                              ? '${e.lastWeightKg?.toStringAsFixed(1) ?? '—'} кг • ${e.lastReps ?? '—'} повт.'
+                              : 'Нет истории';
 
-                          final lastText = (lastKg != null || lastReps != null)
-                              ? '${lastKg?.toStringAsFixed(1) ?? '—'} кг • ${lastReps ?? '—'} повт.'
-                              : 'нет истории';
-
-                          return Card(
-                            child: ListTile(
-                              title: Text(e.name),
-                              subtitle: Text('Последнее: $lastText'),
-                              trailing: e.supersetGroup != null
-                                  ? const Icon(Icons.link)
-                                  : null,
+                          return Container(
+                            decoration: BoxDecoration(
+                              color: theme.colorScheme.surfaceContainerHighest
+                                  .withOpacity(0.45),
+                              borderRadius: BorderRadius.circular(16),
+                              border: Border.all(
+                                color: theme.colorScheme.outlineVariant,
+                              ),
+                            ),
+                            child: Padding(
+                              padding: const EdgeInsets.fromLTRB(
+                                12,
+                                10,
+                                10,
+                                10,
+                              ),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Row(
+                                    children: [
+                                      Expanded(
+                                        child: Text(
+                                          e.name,
+                                          style: theme.textTheme.titleSmall
+                                              ?.copyWith(
+                                                fontWeight: FontWeight.w700,
+                                              ),
+                                        ),
+                                      ),
+                                      if (e.supersetGroup != null)
+                                        Container(
+                                          padding: const EdgeInsets.symmetric(
+                                            horizontal: 8,
+                                            vertical: 4,
+                                          ),
+                                          decoration: BoxDecoration(
+                                            color: theme
+                                                .colorScheme
+                                                .tertiaryContainer,
+                                            borderRadius: BorderRadius.circular(
+                                              999,
+                                            ),
+                                          ),
+                                          child: Text(
+                                            'Суперсет',
+                                            style: theme.textTheme.labelSmall,
+                                          ),
+                                        ),
+                                    ],
+                                  ),
+                                  const SizedBox(height: 6),
+                                  Text(
+                                    lastText,
+                                    style: theme.textTheme.bodySmall?.copyWith(
+                                      color: theme.colorScheme.onSurfaceVariant,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 8),
+                                  Wrap(
+                                    spacing: 8,
+                                    runSpacing: 8,
+                                    children: [
+                                      FilledButton.tonalIcon(
+                                        onPressed: () => _renameExercise(e),
+                                        icon: const Icon(Icons.edit),
+                                        label: const Text('Название'),
+                                      ),
+                                      FilledButton.tonalIcon(
+                                        onPressed: () => _toggleSuperset(e),
+                                        icon: const Icon(Icons.link),
+                                        label: Text(
+                                          e.supersetGroup != null
+                                              ? 'Убрать суперсет'
+                                              : 'Суперсет +',
+                                        ),
+                                      ),
+                                      FilledButton.tonalIcon(
+                                        onPressed: () => _deleteExercise(e),
+                                        icon: const Icon(Icons.delete_outline),
+                                        label: const Text('Удалить'),
+                                      ),
+                                    ],
+                                  ),
+                                ],
+                              ),
                             ),
                           );
                         },
                       );
                     },
                   ),
+                ),
+                FutureBuilder<List<WorkoutExerciseVm>>(
+                  future: _future,
+                  builder: (context, snap) {
+                    final current = snap.data ?? const <WorkoutExerciseVm>[];
+                    return Padding(
+                      padding: const EdgeInsets.fromLTRB(12, 8, 12, 12),
+                      child: SizedBox(
+                        width: double.infinity,
+                        child: FilledButton.icon(
+                          onPressed: () => _addExercise(current),
+                          icon: const Icon(Icons.add),
+                          label: const Text('Добавить упражнение'),
+                        ),
+                      ),
+                    );
+                  },
                 ),
               ],
             ),

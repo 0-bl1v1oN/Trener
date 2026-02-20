@@ -2502,6 +2502,23 @@ class AppDb extends _$AppDb {
         .write(WorkoutTemplateExercisesCompanion(name: Value(normalized)));
   }
 
+  Future<int?> getTemplateIdForClientTemplateIdx({
+    required String clientId,
+    required int templateIdx,
+  }) async {
+    final c = await getClientById(clientId);
+    if (c == null) return null;
+
+    final gender = _programTrackByClient(c);
+    final t =
+        await (select(workoutTemplates)..where(
+              (x) => x.gender.equals(gender) & x.idx.equals(templateIdx),
+            ))
+            .getSingleOrNull();
+
+    return t?.id;
+  }
+
   Future<void> addWorkoutTemplateExercise({
     required int templateId,
     required String name,
