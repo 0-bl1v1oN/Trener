@@ -1613,8 +1613,14 @@ class AppDb extends _$AppDb {
 
     final gender = _programTrackByClient(c);
     final cycleLen = _cycleLenByGender(gender);
+    final defaultIdx = _mod(st.cycleStartIndex + st.nextOffset, cycleLen);
 
-    return _mod(st.cycleStartIndex + st.nextOffset, cycleLen);
+    final overrides = await _getProgramDayOverrides(
+      clientId: clientId,
+      planInstance: st.planInstance,
+    );
+
+    return overrides[st.completedInPlan] ?? defaultIdx;
   }
 
   Future<WorkoutDayInfo> getWorkoutInfoForClientOnDay({
