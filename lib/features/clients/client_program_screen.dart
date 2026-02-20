@@ -67,12 +67,23 @@ class _ClientProgramScreenState extends State<ClientProgramScreen> {
     if (source.isDone) return;
 
     final sourceTitle = _templateTitleForIdx(source.templateIdx, gender);
-    final candidates = overview.slots
+    final db = AppDbScope.of(context);
+    final extraSlots = await db.getUpcomingPlannedSlots(
+      clientId: widget.clientId,
+      fromAbsoluteIndexExclusive: overview.slots.last.absoluteIndex,
+      count: gender == 'М' ? 9 : 8,
+    );
+
+    final combinedSlots = <ProgramSlotVm>[...overview.slots, ...extraSlots];
+
+    final seenAbs = <int>{};
+    final candidates = combinedSlots
         .where(
           (s) =>
               !s.isDone &&
               s.absoluteIndex != source.absoluteIndex &&
-              _templateTitleForIdx(s.templateIdx, gender) == sourceTitle,
+              _templateTitleForIdx(s.templateIdx, gender) == sourceTitle &&
+              seenAbs.add(s.absoluteIndex),
         )
         .toList();
 
@@ -86,8 +97,6 @@ class _ClientProgramScreenState extends State<ClientProgramScreen> {
       );
       return;
     }
-
-    final db = AppDbScope.of(context);
 
     Future<List<WorkoutExerciseVm>> loadPreview(ProgramSlotVm slot) {
       return db

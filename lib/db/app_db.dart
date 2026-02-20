@@ -2550,6 +2550,51 @@ class AppDb extends _$AppDb {
     });
   }
 
+  Future<List<ProgramSlotVm>> getUpcomingPlannedSlots({
+    required String clientId,
+    required int fromAbsoluteIndexExclusive,
+    required int count,
+  }) async {
+    await _ensureTemplateDefaultsPatched();
+    await ensureProgramStateForClient(clientId);
+
+    final c = await getClientById(clientId);
+    final gender = c == null ? 'М' : _programTrackByClient(c);
+    final cycleLen = _cycleLenByGender(gender);
+
+    final st = await (select(
+      clientProgramStates,
+    )..where((t) => t.clientId.equals(clientId))).getSingleOrNull();
+
+    if (st == null || st.planSize <= 0 || count <= 0) {
+      return const <ProgramSlotVm>[];
+    }
+
+    final overrides = await _getProgramDayOverrides(
+      clientId: clientId,
+      planInstance: st.planInstance,
+    );
+
+    final slots = <ProgramSlotVm>[];
+    for (var i = 1; i <= count; i++) {
+      final absoluteIndex = fromAbsoluteIndexExclusive + i;
+      if (absoluteIndex < st.completedInPlan) continue;
+
+      final defaultIdx = _mod(st.cycleStartIndex + absoluteIndex, cycleLen);
+      final templateIdx = overrides[absoluteIndex] ?? defaultIdx;
+
+      slots.add(
+        ProgramSlotVm(
+          slotIndex: absoluteIndex + 1,
+          absoluteIndex: absoluteIndex,
+          templateIdx: templateIdx,
+        ),
+      );
+    }
+
+    return slots;
+  }
+
   Future<ProgramOverviewVm> getProgramOverview(String clientId) async {
     await _ensureTemplateDefaultsPatched();
     await ensureProgramStateForClient(clientId);
@@ -2657,6 +2702,21 @@ class AppDb extends _$AppDb {
 
     final cycleLen = _cycleLenByGender(gender);
     final newStart = _mod(st.cycleStartIndex + delta, cycleLen);
+
+    final overrides = await _getProgramDayOverrides(
+      clientId: clientId,
+      planInstance: st.planInstance,
+    );
+
+    for (final entry in overrides.entries) {
+      final shiftedIdx = _mod(entry.value + delta, cycleLen);
+      await _setProgramDayOverride(
+        clientId: clientId,
+        planInstance: st.planInstance,
+        absoluteIndex: entry.key,
+        templateIdx: shiftedIdx,
+      );
+    }
 
     await (update(clientProgramStates)
           ..where((t) => t.clientId.equals(clientId)))
