@@ -2612,10 +2612,10 @@ class _CalendarScreenState extends State<CalendarScreen>
                                 onLongPress: () => _openAppointmentActions(it),
                                 child: Container(
                                   padding: const EdgeInsets.fromLTRB(
-                                    14,
-                                    14,
                                     12,
-                                    14,
+                                    12,
+                                    8,
+                                    12,
                                   ),
                                   decoration: BoxDecoration(
                                     borderRadius: BorderRadius.circular(18),
@@ -2636,9 +2636,9 @@ class _CalendarScreenState extends State<CalendarScreen>
                                     ),
                                     boxShadow: [
                                       BoxShadow(
-                                        color: colors.shadow.withOpacity(0.05),
-                                        blurRadius: 12,
-                                        offset: const Offset(0, 4),
+                                        color: colors.shadow.withOpacity(0.03),
+                                        blurRadius: 8,
+                                        offset: const Offset(0, 2),
                                       ),
                                     ],
                                   ),
@@ -2807,11 +2807,13 @@ class _CalendarScreenState extends State<CalendarScreen>
                                           ],
                                         ),
                                       ),
-                                      const SizedBox(width: 8),
-                                      Column(
+                                      const SizedBox(width: 6),
+                                      Row(
                                         mainAxisSize: MainAxisSize.min,
                                         children: [
                                           IconButton.filledTonal(
+                                            visualDensity:
+                                                VisualDensity.compact,
                                             tooltip: done
                                                 ? 'Снять отметку выполнения'
                                                 : 'Проверить и отметить выполненной',
@@ -2843,18 +2845,39 @@ class _CalendarScreenState extends State<CalendarScreen>
                                               await _openQuickWorkoutCheck(it);
                                             },
                                           ),
-                                          const SizedBox(height: 6),
-                                          IconButton.filledTonal(
-                                            tooltip: 'Удалить запись',
-                                            icon: Icon(
-                                              Icons.delete_outline,
-                                              color: colors.error,
-                                            ),
-                                            onPressed: () async {
-                                              await db.deleteAppointmentById(
-                                                it.appointment.id,
-                                              );
+                                          PopupMenuButton<String>(
+                                            tooltip: 'Действия',
+                                            itemBuilder: (context) => [
+                                              PopupMenuItem(
+                                                value: 'delete',
+                                                child: Row(
+                                                  children: [
+                                                    Icon(
+                                                      Icons.delete_outline,
+                                                      size: 18,
+                                                      color: colors.error,
+                                                    ),
+                                                    const SizedBox(width: 8),
+                                                    Text(
+                                                      'Удалить запись',
+                                                      style: TextStyle(
+                                                        color: colors.error,
+                                                      ),
+                                                    ),
+                                                  ],
+                                                ),
+                                              ),
+                                            ],
+                                            onSelected: (value) async {
+                                              if (value == 'delete') {
+                                                await db.deleteAppointmentById(
+                                                  it.appointment.id,
+                                                );
+                                              }
                                             },
+                                            icon: const Icon(
+                                              Icons.more_horiz_rounded,
+                                            ),
                                           ),
                                         ],
                                       ),
