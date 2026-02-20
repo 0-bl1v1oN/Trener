@@ -1598,6 +1598,25 @@ class AppDb extends _$AppDb {
     }
   }
 
+  Future<int?> getNextPlannedTemplateIdxForClient(String clientId) async {
+    final c = await getClientById(clientId);
+    if (c == null) return null;
+
+    final planSize = _parsePlanSize(c.plan);
+    if (planSize <= 0) return null;
+
+    await ensureProgramStateForClient(clientId);
+
+    final st = await (select(
+      clientProgramStates,
+    )..where((t) => t.clientId.equals(clientId))).getSingle();
+
+    final gender = _programTrackByClient(c);
+    final cycleLen = _cycleLenByGender(gender);
+
+    return _mod(st.cycleStartIndex + st.nextOffset, cycleLen);
+  }
+
   Future<WorkoutDayInfo> getWorkoutInfoForClientOnDay({
     required String clientId,
     required DateTime day,

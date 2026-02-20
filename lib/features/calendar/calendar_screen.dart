@@ -2028,21 +2028,24 @@ class _CalendarScreenState extends State<CalendarScreen>
   }
 
   Future<void> _openQuickWorkoutCheck(AppointmentWithClient item) async {
-    final details = await db.getWorkoutDetailsForClientOnDay(
-      clientId: item.client.id,
-      day: _selectedDay,
+    final nextTemplateIdx = await db.getNextPlannedTemplateIdxForClient(
+      item.client.id,
     );
 
-    final info = details.$1;
-    final exercises = details.$3;
-
-    if (!info.hasPlan) {
+    if (nextTemplateIdx == null) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('У клиента нет активной программы.')),
       );
       return;
     }
+    final details = await db.getWorkoutDetailsForClientOnDayForcedTemplateIdx(
+      clientId: item.client.id,
+      day: _selectedDay,
+      templateIdx: nextTemplateIdx,
+    );
+
+    final exercises = details.$3;
 
     final kgControllers = <int, TextEditingController>{};
     final repsControllers = <int, TextEditingController>{};
@@ -2154,15 +2157,17 @@ class _CalendarScreenState extends State<CalendarScreen>
       now.microsecond,
     );
 
-    await db.completeWorkoutForClient(
+    await db.completeWorkoutForClientWithTemplateIdx(
       clientId: item.client.id,
       when: completeAt,
+      templateIdx: nextTemplateIdx,
     );
 
     await db.saveWorkoutResultsAndMarkDone(
       clientId: item.client.id,
       day: _selectedDay,
       resultsByTemplateExerciseId: results,
+      templateIdx: nextTemplateIdx,
     );
 
     await db.updateAppointmentNote(
