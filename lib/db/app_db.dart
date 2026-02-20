@@ -2496,6 +2496,60 @@ class AppDb extends _$AppDb {
         .write(WorkoutTemplateExercisesCompanion(name: Value(normalized)));
   }
 
+  Future<void> addWorkoutTemplateExercise({
+    required int templateId,
+    required String name,
+  }) async {
+    final normalized = name.trim();
+    if (normalized.isEmpty) return;
+
+    final last =
+        await (select(workoutTemplateExercises)
+              ..where((e) => e.templateId.equals(templateId))
+              ..orderBy([(e) => OrderingTerm.desc(e.orderIndex)])
+              ..limit(1))
+            .getSingleOrNull();
+
+    final nextOrder = (last?.orderIndex ?? -1) + 1;
+
+    await into(workoutTemplateExercises).insert(
+      WorkoutTemplateExercisesCompanion.insert(
+        templateId: templateId,
+        orderIndex: nextOrder,
+        name: normalized,
+      ),
+    );
+  }
+
+  Future<void> deleteWorkoutTemplateExercise(int templateExerciseId) async {
+    await transaction(() async {
+      final row = await (select(
+        workoutTemplateExercises,
+      )..where((e) => e.id.equals(templateExerciseId))).getSingleOrNull();
+      if (row == null) return;
+
+      await (delete(
+        clientTemplateExerciseOverrides,
+      )..where((o) => o.templateExerciseId.equals(templateExerciseId))).go();
+
+      await (delete(
+        workoutExerciseResults,
+      )..where((r) => r.templateExerciseId.equals(templateExerciseId))).go();
+
+      await (delete(
+        workoutTemplateExercises,
+      )..where((e) => e.id.equals(templateExerciseId))).go();
+
+      await customStatement(
+        'UPDATE ${workoutTemplateExercises.actualTableName} '
+        'SET ${workoutTemplateExercises.orderIndex.name} = ${workoutTemplateExercises.orderIndex.name} - 1 '
+        'WHERE ${workoutTemplateExercises.templateId.name} = ? '
+        'AND ${workoutTemplateExercises.orderIndex.name} > ?',
+        [row.templateId, row.orderIndex],
+      );
+    });
+  }
+
   Future<ProgramOverviewVm> getProgramOverview(String clientId) async {
     await _ensureTemplateDefaultsPatched();
     await ensureProgramStateForClient(clientId);

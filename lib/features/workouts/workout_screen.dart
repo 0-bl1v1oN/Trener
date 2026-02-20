@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:intl/intl.dart';
 
 import '../../app/app_db_scope.dart';
 import '../../db/app_db.dart';
@@ -24,8 +23,13 @@ class WorkoutScreen extends StatefulWidget {
 class _WorkoutScreenData {
   final WorkoutDayInfo info;
   final List<WorkoutExerciseVm> exercises;
+  final String clientName;
 
-  const _WorkoutScreenData({required this.info, required this.exercises});
+  const _WorkoutScreenData({
+    required this.info,
+    required this.exercises,
+    required this.clientName,
+  });
 }
 
 class _WorkoutScreenState extends State<WorkoutScreen> {
@@ -209,7 +213,71 @@ class _WorkoutScreenState extends State<WorkoutScreen> {
     }
   }
 
+  Future<void> _addExercise(int templateId) async {
+    final ctrl = TextEditingController();
+    final name = await showDialog<String>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Новое упражнение'),
+        content: TextField(
+          controller: ctrl,
+          autofocus: true,
+          decoration: const InputDecoration(
+            labelText: 'Название упражнения',
+            border: OutlineInputBorder(),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Отмена'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, ctrl.text.trim()),
+            child: const Text('Добавить'),
+          ),
+        ],
+      ),
+    );
+
+    if (name == null || name.trim().isEmpty) return;
+
+    await db.addWorkoutTemplateExercise(templateId: templateId, name: name);
+    if (!mounted) return;
+    setState(() {});
+  }
+
+  Future<void> _deleteExercise(WorkoutExerciseVm e) async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Удалить упражнение?'),
+        content: Text(
+          'Упражнение "${e.name}" будет удалено из этого дня программы.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Отмена'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Удалить'),
+          ),
+        ],
+      ),
+    );
+
+    if (ok != true) return;
+
+    await db.deleteWorkoutTemplateExercise(e.templateExerciseId);
+    if (!mounted) return;
+    setState(() {});
+  }
+
   Future<_WorkoutScreenData> _loadScreenData() async {
+    final client = await db.getClientById(widget.clientId);
+
     final data = widget.templateIdx == null
         ? await db.getWorkoutDetailsForClientOnDay(
             clientId: widget.clientId,
@@ -241,17 +309,30 @@ class _WorkoutScreenState extends State<WorkoutScreen> {
       );
     }).toList();
 
-    return _WorkoutScreenData(info: data.$1, exercises: exercises);
+    return _WorkoutScreenData(
+      info: data.$1,
+      exercises: exercises,
+      clientName: client?.name ?? 'Тренировка',
+    );
   }
 
   @override
   Widget build(BuildContext context) {
-    final dayLabel = DateFormat('d MMMM y', 'ru_RU').format(widget.day);
+    final screenFuture = _loadScreenData();
 
     return Scaffold(
-      appBar: AppBar(title: Text('Тренировка • $dayLabel')),
+      appBar: AppBar(
+        title: FutureBuilder<_WorkoutScreenData>(
+          future: screenFuture,
+          builder: (context, snap) => Text(
+            snap.data?.clientName ?? 'Тренировка',
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+          ),
+        ),
+      ),
       body: FutureBuilder<_WorkoutScreenData>(
-        future: _loadScreenData(),
+        future: screenFuture,
 
         builder: (context, snap) {
           if (snap.connectionState == ConnectionState.waiting) {
@@ -318,7 +399,14 @@ class _WorkoutScreenState extends State<WorkoutScreen> {
               Expanded(
                 child: ListView(
                   padding: const EdgeInsets.fromLTRB(12, 12, 12, 96),
-                  children: _buildExerciseWidgets(exercises),
+                  children: [
+                    _EditorToolbar(
+                      onAdd: exercises.isEmpty
+                          ? null
+                          : () => _addExercise(exercises.first.templateId),
+                    ),
+                    ..._buildExerciseWidgets(exercises),
+                  ],
                 ),
               ),
               _BottomBar(
@@ -460,6 +548,15 @@ class _WorkoutScreenState extends State<WorkoutScreen> {
                       ),
                     )
                   : const SizedBox.shrink(),
+            ),
+            const SizedBox(width: 8),
+            SizedBox(
+              height: 40,
+              child: IconButton.filledTonal(
+                tooltip: 'Удалить упражнение',
+                onPressed: ex.length <= 1 ? null : () => _deleteExercise(e),
+                icon: const Icon(Icons.delete_outline),
+              ),
             ),
           ],
         ),
@@ -662,6 +759,46 @@ class _BottomBar extends StatelessWidget {
             ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+class _EditorToolbar extends StatelessWidget {
+  final VoidCallback? onAdd;
+
+  const _EditorToolbar({required this.onAdd});
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    return Container(
+      margin: const EdgeInsets.only(bottom: 10),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: BoxDecoration(
+        color: colors.primary.withOpacity(0.06),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: colors.primary.withOpacity(0.2)),
+      ),
+      child: Row(
+        children: [
+          Icon(Icons.tune, size: 18, color: colors.primary),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              'Редактор дня',
+              style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                fontWeight: FontWeight.w600,
+                color: colors.primary,
+              ),
+            ),
+          ),
+          FilledButton.tonalIcon(
+            onPressed: onAdd,
+            icon: const Icon(Icons.add),
+            label: const Text('Добавить упражнение'),
+          ),
+        ],
       ),
     );
   }
