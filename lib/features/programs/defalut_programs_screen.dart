@@ -53,12 +53,15 @@ class _DefaultProgramsScreenState extends State<DefaultProgramsScreen> {
               tooltip: 'Обновить',
             ),
           ],
-          bottom: const TabBar(
-            tabs: [
+          bottom: TabBar(
+            tabs: const [
               Tab(text: 'Мужчины'),
               Tab(text: 'Женщины'),
               Tab(text: 'Пробная'),
             ],
+            indicatorSize: TabBarIndicatorSize.tab,
+            indicatorWeight: 3,
+            labelStyle: const TextStyle(fontWeight: FontWeight.w700),
           ),
         ),
         body: TabBarView(
@@ -481,11 +484,32 @@ class _TrialProgramTab extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final colors = Theme.of(context).colorScheme;
+    final theme = Theme.of(context);
+    final colors = theme.colorScheme;
 
     return ListView(
       padding: const EdgeInsets.all(12),
       children: [
+        Container(
+          margin: const EdgeInsets.only(bottom: 12),
+          padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(14),
+            gradient: LinearGradient(
+              colors: [
+                colors.tertiaryContainer.withOpacity(0.55),
+                colors.surface,
+              ],
+            ),
+            border: Border.all(color: colors.outlineVariant),
+          ),
+          child: Text(
+            'Пробная тренировка оформлена в том же стиле: компактно, наглядно и без перегруза.',
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: colors.onSurfaceVariant,
+            ),
+          ),
+        ),
         Card(
           elevation: 0,
           shape: RoundedRectangleBorder(
@@ -493,13 +517,41 @@ class _TrialProgramTab extends StatelessWidget {
             side: BorderSide(color: colors.outlineVariant.withOpacity(0.7)),
           ),
           child: Theme(
-            data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
+            data: theme.copyWith(dividerColor: Colors.transparent),
             child: ExpansionTile(
               initiallyExpanded: true,
-              tilePadding: const EdgeInsets.fromLTRB(14, 6, 10, 6),
+              tilePadding: const EdgeInsets.fromLTRB(12, 8, 10, 8),
               childrenPadding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
-              title: const Text('Пробная тренировка'),
-              subtitle: const Text('Тренировка 1'),
+              title: Row(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 9,
+                      vertical: 4,
+                    ),
+                    decoration: BoxDecoration(
+                      color: colors.tertiaryContainer,
+                      borderRadius: BorderRadius.circular(999),
+                    ),
+                    child: Text(
+                      '#1',
+                      style: theme.textTheme.labelSmall?.copyWith(
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      'Пробная тренировка',
+                      style: theme.textTheme.titleMedium?.copyWith(
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              subtitle: const Text('Быстрый сценарий на знакомство с клиентом'),
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(16),
               ),
@@ -507,7 +559,7 @@ class _TrialProgramTab extends StatelessWidget {
                 borderRadius: BorderRadius.circular(16),
               ),
               children: [
-                for (final e in exercises)
+                for (var i = 0; i < exercises.length; i++)
                   Container(
                     margin: const EdgeInsets.only(bottom: 8),
                     padding: const EdgeInsets.symmetric(
@@ -515,10 +567,26 @@ class _TrialProgramTab extends StatelessWidget {
                       vertical: 10,
                     ),
                     decoration: BoxDecoration(
-                      color: colors.surfaceContainerHighest.withOpacity(0.35),
+                      color: colors.surfaceContainerHighest.withOpacity(0.30),
                       borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: colors.outlineVariant),
                     ),
-                    child: Text(e),
+                    child: Row(
+                      children: [
+                        CircleAvatar(
+                          radius: 12,
+                          backgroundColor: colors.primaryContainer,
+                          child: Text(
+                            '${i + 1}',
+                            style: theme.textTheme.labelSmall?.copyWith(
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 10),
+                        Expanded(child: Text(exercises[i])),
+                      ],
+                    ),
                   ),
               ],
             ),
