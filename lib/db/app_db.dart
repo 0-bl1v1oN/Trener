@@ -2490,6 +2490,70 @@ class AppDb extends _$AppDb {
     });
   }
 
+  Future<void> toggleTemplateSupersetWithNext({
+    required int templateId,
+    required int orderIndex,
+  }) async {
+    await transaction(() async {
+      Future<WorkoutTemplateExercise?> _exAt(int idx) {
+        return (select(workoutTemplateExercises)
+              ..where(
+                (e) =>
+                    e.templateId.equals(templateId) & e.orderIndex.equals(idx),
+              )
+              ..limit(1))
+            .getSingleOrNull();
+      }
+
+      Future<void> _setGroup(int exId, int? group) async {
+        await (update(
+          workoutTemplateExercises,
+        )..where((e) => e.id.equals(exId))).write(
+          WorkoutTemplateExercisesCompanion(
+            groupId: group == null ? const Value.absent() : Value(group),
+          ),
+        );
+      }
+
+      final a = await _exAt(orderIndex);
+      if (a == null) return;
+
+      final ga = a.groupId;
+      if (ga != null) {
+        final right = await _exAt(orderIndex + 1);
+        if (right?.groupId == ga) {
+          await _setGroup(a.id, null);
+          await _setGroup(right!.id, null);
+          return;
+        }
+
+        final left = await _exAt(orderIndex - 1);
+        if (left?.groupId == ga) {
+          await _setGroup(a.id, null);
+          await _setGroup(left!.id, null);
+          return;
+        }
+
+        await _setGroup(a.id, null);
+        return;
+      }
+
+      final b = await _exAt(orderIndex + 1);
+      if (b == null) return;
+
+      final maxRow = await customSelect(
+        'SELECT MAX(group_id) AS m FROM ${workoutTemplateExercises.actualTableName} WHERE template_id = ?',
+        variables: [Variable.withInt(templateId)],
+        readsFrom: {workoutTemplateExercises},
+      ).getSingle();
+
+      final nextGroup = ((maxRow.data['m'] as int?) ?? 0) + 1;
+
+      await _setGroup(a.id, nextGroup);
+      await _setGroup(b.id, nextGroup);
+    });
+  }
+
   Future<void> renameWorkoutTemplateExercise({
     required int templateExerciseId,
     required String newName,
