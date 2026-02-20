@@ -2612,29 +2612,35 @@ class _CalendarScreenState extends State<CalendarScreen>
                                 onLongPress: () => _openAppointmentActions(it),
                                 child: Container(
                                   padding: const EdgeInsets.fromLTRB(
+                                    14,
+                                    14,
                                     12,
-                                    12,
-                                    10,
-                                    12,
+                                    14,
                                   ),
                                   decoration: BoxDecoration(
                                     borderRadius: BorderRadius.circular(18),
                                     gradient: LinearGradient(
                                       colors: [
                                         colors.surface,
-                                        colors.surfaceContainerHighest
-                                            .withOpacity(0.35),
+                                        colors.surfaceContainerLow,
                                       ],
                                       begin: Alignment.topLeft,
                                       end: Alignment.bottomRight,
                                     ),
                                     border: Border.all(
                                       color: done
-                                          ? colors.primary.withOpacity(0.22)
+                                          ? colors.primary.withOpacity(0.28)
                                           : colors.outlineVariant.withOpacity(
-                                              0.75,
+                                              0.6,
                                             ),
                                     ),
+                                    boxShadow: [
+                                      BoxShadow(
+                                        color: colors.shadow.withOpacity(0.05),
+                                        blurRadius: 12,
+                                        offset: const Offset(0, 4),
+                                      ),
+                                    ],
                                   ),
                                   child: Row(
                                     crossAxisAlignment:
@@ -2650,13 +2656,13 @@ class _CalendarScreenState extends State<CalendarScreen>
                                                 Container(
                                                   padding:
                                                       const EdgeInsets.symmetric(
-                                                        horizontal: 8,
-                                                        vertical: 4,
+                                                        horizontal: 10,
+                                                        vertical: 6,
                                                       ),
                                                   decoration: BoxDecoration(
                                                     color: colors
                                                         .primaryContainer
-                                                        .withOpacity(0.75),
+                                                        .withOpacity(0.6),
                                                     borderRadius:
                                                         BorderRadius.circular(
                                                           999,
@@ -2675,7 +2681,7 @@ class _CalendarScreenState extends State<CalendarScreen>
                                                         ),
                                                   ),
                                                 ),
-                                                const SizedBox(width: 8),
+                                                const SizedBox(width: 10),
                                                 Expanded(
                                                   child: Text(
                                                     it.client.name,
@@ -2685,12 +2691,13 @@ class _CalendarScreenState extends State<CalendarScreen>
                                                         ?.copyWith(
                                                           fontWeight:
                                                               FontWeight.w700,
+                                                          letterSpacing: 0.1,
                                                         ),
                                                   ),
                                                 ),
                                               ],
                                             ),
-                                            const SizedBox(height: 8),
+                                            const SizedBox(height: 10),
                                             Wrap(
                                               spacing: 8,
                                               runSpacing: 8,
@@ -2700,29 +2707,46 @@ class _CalendarScreenState extends State<CalendarScreen>
                                                     padding:
                                                         const EdgeInsets.symmetric(
                                                           horizontal: 10,
-                                                          vertical: 5,
+                                                          vertical: 6,
                                                         ),
                                                     decoration: BoxDecoration(
                                                       color: colors
                                                           .secondaryContainer
-                                                          .withOpacity(0.8),
+                                                          .withOpacity(0.65),
                                                       borderRadius:
                                                           BorderRadius.circular(
                                                             999,
                                                           ),
                                                     ),
-                                                    child: Text(
-                                                      'Абонемент: ${it.client.plan}',
-                                                      style: Theme.of(
-                                                        context,
-                                                      ).textTheme.labelMedium,
+                                                    child: Row(
+                                                      mainAxisSize:
+                                                          MainAxisSize.min,
+                                                      children: [
+                                                        Icon(
+                                                          Icons
+                                                              .confirmation_number_outlined,
+                                                          size: 15,
+                                                          color: colors
+                                                              .onSecondaryContainer,
+                                                        ),
+                                                        const SizedBox(
+                                                          width: 4,
+                                                        ),
+                                                        Text(
+                                                          'Абонемент ${it.client.plan}',
+                                                          style:
+                                                              Theme.of(context)
+                                                                  .textTheme
+                                                                  .labelMedium,
+                                                        ),
+                                                      ],
                                                     ),
                                                   ),
                                                 Container(
                                                   padding:
                                                       const EdgeInsets.symmetric(
                                                         horizontal: 10,
-                                                        vertical: 5,
+                                                        vertical: 6,
                                                       ),
                                                   decoration: BoxDecoration(
                                                     color: done
@@ -2737,23 +2761,45 @@ class _CalendarScreenState extends State<CalendarScreen>
                                                           999,
                                                         ),
                                                   ),
-                                                  child: Text(
-                                                    done
-                                                        ? '✅ Было'
-                                                        : '⏳ Не выполнено',
-                                                    style: Theme.of(context)
-                                                        .textTheme
-                                                        .labelMedium
-                                                        ?.copyWith(
-                                                          fontWeight:
-                                                              FontWeight.w600,
-                                                          color: done
-                                                              ? Colors
-                                                                    .green
-                                                                    .shade800
-                                                              : colors
-                                                                    .onErrorContainer,
-                                                        ),
+                                                  child: Row(
+                                                    mainAxisSize:
+                                                        MainAxisSize.min,
+                                                    children: [
+                                                      Icon(
+                                                        done
+                                                            ? Icons
+                                                                  .check_rounded
+                                                            : Icons
+                                                                  .hourglass_bottom_rounded,
+                                                        size: 15,
+                                                        color: done
+                                                            ? Colors
+                                                                  .green
+                                                                  .shade800
+                                                            : colors
+                                                                  .onErrorContainer,
+                                                      ),
+                                                      const SizedBox(width: 4),
+                                                      Text(
+                                                        done
+                                                            ? 'Выполнено'
+                                                            : 'Не выполнено',
+                                                        style: Theme.of(context)
+                                                            .textTheme
+                                                            .labelMedium
+                                                            ?.copyWith(
+                                                              fontWeight:
+                                                                  FontWeight
+                                                                      .w600,
+                                                              color: done
+                                                                  ? Colors
+                                                                        .green
+                                                                        .shade800
+                                                                  : colors
+                                                                        .onErrorContainer,
+                                                            ),
+                                                      ),
+                                                    ],
                                                   ),
                                                 ),
                                               ],
@@ -2763,6 +2809,7 @@ class _CalendarScreenState extends State<CalendarScreen>
                                       ),
                                       const SizedBox(width: 8),
                                       Column(
+                                        mainAxisSize: MainAxisSize.min,
                                         children: [
                                           IconButton.filledTonal(
                                             tooltip: done
@@ -2796,8 +2843,8 @@ class _CalendarScreenState extends State<CalendarScreen>
                                               await _openQuickWorkoutCheck(it);
                                             },
                                           ),
-                                          const SizedBox(height: 4),
-                                          IconButton(
+                                          const SizedBox(height: 6),
+                                          IconButton.filledTonal(
                                             tooltip: 'Удалить запись',
                                             icon: Icon(
                                               Icons.delete_outline,
