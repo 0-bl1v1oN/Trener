@@ -1621,6 +1621,13 @@ class AppDb extends _$AppDb {
     return overrides[st.completedInPlan] ?? defaultIdx;
   }
 
+  /// Backward-compatible alias for older callers.
+  ///
+  /// Returns the template index for the next planned workout slot.
+  Future<int?> getNextPlannedProgramSlotForClient(String clientId) {
+    return getNextPlannedTemplateIdxForClient(clientId);
+  }
+
   Future<WorkoutDayInfo> getWorkoutInfoForClientOnDay({
     required String clientId,
     required DateTime day,
