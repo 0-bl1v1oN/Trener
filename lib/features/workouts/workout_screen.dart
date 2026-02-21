@@ -98,15 +98,22 @@ class _WorkoutScreenState extends State<WorkoutScreen> {
     return int.tryParse(t);
   }
 
-  Map<int, (double? kg, int? reps)> _collectCurrentResults() {
-    final ids = <int>{..._kgCtrls.keys, ..._repsCtrls.keys};
-    return {
-      for (final id in ids)
-        id: (
-          _parseKg(_kgCtrls[id]?.text ?? ''),
-          _parseInt(_repsCtrls[id]?.text ?? ''),
-        ),
-    };
+  Map<int, (double? kg, int? reps)> _collectCurrentResults(
+    List<WorkoutExerciseVm> exercises,
+  ) {
+    final map = <int, (double? kg, int? reps)>{};
+
+    for (final e in exercises) {
+      final kg = _parseKg(
+        _kgController(e.templateExerciseId, e.lastWeightKg).text,
+      );
+      final reps = _parseInt(
+        _repsController(e.templateExerciseId, e.lastReps).text,
+      );
+      map[e.templateExerciseId] = (kg, reps);
+    }
+
+    return map;
   }
 
   Future<void> _renameExercise(WorkoutExerciseVm e) async {
@@ -204,7 +211,9 @@ class _WorkoutScreenState extends State<WorkoutScreen> {
     }
   }
 
-  Future<void> _cancelWorkout() async {
+  Future<void> _cancelWorkout({
+    required Map<int, (double? kg, int? reps)> results,
+  }) async {
     if (_saving) return;
     setState(() => _saving = true);
 
@@ -212,7 +221,7 @@ class _WorkoutScreenState extends State<WorkoutScreen> {
       await db.saveWorkoutDraftResults(
         clientId: widget.clientId,
         day: widget.day,
-        resultsByTemplateExerciseId: _collectCurrentResults(),
+        resultsByTemplateExerciseId: results,
         templateIdx: widget.templateIdx,
         absoluteIndex: widget.absoluteIndex,
       );
@@ -425,15 +434,7 @@ class _WorkoutScreenState extends State<WorkoutScreen> {
 
           // Собираем results для сохранения из контроллеров
           Map<int, (double? kg, int? reps)> buildResults() {
-            final map = <int, (double? kg, int? reps)>{};
-            for (final e in exercises) {
-              final kg = _parseKg(_kgCtrls[e.templateExerciseId]?.text ?? '');
-              final reps = _parseInt(
-                _repsCtrls[e.templateExerciseId]?.text ?? '',
-              );
-              map[e.templateExerciseId] = (kg, reps);
-            }
-            return map;
+            return _collectCurrentResults(exercises);
           }
 
           return Column(
@@ -458,7 +459,7 @@ class _WorkoutScreenState extends State<WorkoutScreen> {
                 done: info.doneToday,
                 onSaveDraft: () => _saveDraft(results: buildResults()),
                 onMarkDone: () => _markDone(results: buildResults()),
-                onCancel: _cancelWorkout,
+                onCancel: () => _cancelWorkout(results: buildResults()),
               ),
             ],
           );
