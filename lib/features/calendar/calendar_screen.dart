@@ -2028,19 +2028,18 @@ class _CalendarScreenState extends State<CalendarScreen>
   }
 
   Future<void> _openQuickWorkoutCheck(AppointmentWithClient item) async {
-    final nextTemplateIdx = await db.getNextPlannedTemplateIdxForClient(
-      item.client.id,
-    );
+    final overview = await db.getProgramOverview(item.client.id);
+    final nextAbsoluteIndex = overview.st.completedInPlan;
 
-    if (nextTemplateIdx == null) {
+    if (nextAbsoluteIndex < 0 || nextAbsoluteIndex >= overview.slots.length) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('У клиента нет активной программы.')),
       );
       return;
     }
-    final overview = await db.getProgramOverview(item.client.id);
-    final nextAbsoluteIndex = overview.st.completedInPlan;
+    final nextSlot = overview.slots[nextAbsoluteIndex];
+    final nextTemplateIdx = nextSlot.templateIdx;
 
     final details = await db.getWorkoutDetailsForClientProgramSlot(
       clientId: item.client.id,
@@ -2166,24 +2165,6 @@ class _CalendarScreenState extends State<CalendarScreen>
     for (final c in [...kgControllers.values, ...repsControllers.values]) {
       c.dispose();
     }
-
-    final now = DateTime.now();
-    final completeAt = DateTime(
-      _selectedDay.year,
-      _selectedDay.month,
-      _selectedDay.day,
-      12,
-      0,
-      0,
-      now.millisecond,
-      now.microsecond,
-    );
-
-    await db.completeWorkoutForClientWithTemplateIdx(
-      clientId: item.client.id,
-      when: completeAt,
-      templateIdx: nextTemplateIdx,
-    );
 
     await db.saveWorkoutResultsAndMarkDone(
       clientId: item.client.id,
