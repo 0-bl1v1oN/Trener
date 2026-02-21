@@ -2028,20 +2028,23 @@ class _CalendarScreenState extends State<CalendarScreen>
   }
 
   Future<void> _openQuickWorkoutCheck(AppointmentWithClient item) async {
-    final nextTemplateIdx = await db.getNextPlannedTemplateIdxForClient(
+    final nextSlot = await db.getNextPlannedProgramSlotForClient(
       item.client.id,
     );
 
-    if (nextTemplateIdx == null) {
+    if (nextSlot == null) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('У клиента нет активной программы.')),
       );
       return;
     }
-    final details = await db.getWorkoutDetailsForClientOnDayForcedTemplateIdx(
+    final nextAbsoluteIndex = nextSlot.$1;
+    final nextTemplateIdx = nextSlot.$2;
+
+    final details = await db.getWorkoutDetailsForClientProgramSlot(
       clientId: item.client.id,
-      day: _selectedDay,
+      absoluteIndex: nextAbsoluteIndex,
       templateIdx: nextTemplateIdx,
     );
 
@@ -2049,6 +2052,7 @@ class _CalendarScreenState extends State<CalendarScreen>
       clientId: item.client.id,
       day: _selectedDay,
       templateIdx: nextTemplateIdx,
+      absoluteIndex: nextAbsoluteIndex,
     );
 
     final exercises = details.$3.map((e) {
@@ -2186,6 +2190,7 @@ class _CalendarScreenState extends State<CalendarScreen>
       day: _selectedDay,
       resultsByTemplateExerciseId: results,
       templateIdx: nextTemplateIdx,
+      absoluteIndex: nextAbsoluteIndex,
     );
 
     await db.updateAppointmentNote(

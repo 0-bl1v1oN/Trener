@@ -300,8 +300,11 @@ class _ClientDetailScreenState extends State<ClientDetailScreen> {
               SizedBox(
                 width: double.infinity,
                 child: FilledButton.icon(
-                  onPressed: () =>
-                      context.push('/clients/${widget.clientId}/program'),
+                  onPressed: () async {
+                    await context.push('/clients/${widget.clientId}/program');
+                    if (!mounted) return;
+                    await _load();
+                  },
                   icon: const Icon(Icons.view_list),
                   label: const Text('Программа'),
                 ),
