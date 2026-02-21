@@ -9,6 +9,7 @@ class WorkoutScreen extends StatefulWidget {
   final int?
   templateIdx; // ✅ выбранная тренировка 0..8 (если null — обычная логика)
   final String? displayTitle;
+  final int? absoluteIndex;
 
   const WorkoutScreen({
     super.key,
@@ -16,6 +17,7 @@ class WorkoutScreen extends StatefulWidget {
     required this.day,
     this.templateIdx,
     this.displayTitle,
+    this.absoluteIndex,
   });
 
   @override
@@ -167,6 +169,7 @@ class _WorkoutScreenState extends State<WorkoutScreen> {
         day: widget.day,
         resultsByTemplateExerciseId: results,
         templateIdx: widget.templateIdx,
+        absoluteIndex: widget.absoluteIndex,
       );
 
       if (!mounted) return;
@@ -190,6 +193,7 @@ class _WorkoutScreenState extends State<WorkoutScreen> {
         day: widget.day,
         resultsByTemplateExerciseId: results,
         templateIdx: widget.templateIdx,
+        absoluteIndex: widget.absoluteIndex,
       );
 
       if (!mounted) return;
@@ -210,8 +214,22 @@ class _WorkoutScreenState extends State<WorkoutScreen> {
         day: widget.day,
         resultsByTemplateExerciseId: _collectCurrentResults(),
         templateIdx: widget.templateIdx,
+        absoluteIndex: widget.absoluteIndex,
       );
-      if (widget.templateIdx != null) {
+      if (widget.templateIdx != null && widget.absoluteIndex != null) {
+        await db.toggleWorkoutForClientAtAbsoluteIndex(
+          clientId: widget.clientId,
+          absoluteIndex: widget.absoluteIndex!,
+          templateIdx: widget.templateIdx!,
+          when: DateTime(
+            widget.day.year,
+            widget.day.month,
+            widget.day.day,
+            12,
+            0,
+          ),
+        );
+      } else if (widget.templateIdx != null) {
         await db.toggleWorkoutForClientOnDayWithTemplateIdx(
           clientId: widget.clientId,
           day: widget.day,
@@ -302,16 +320,23 @@ class _WorkoutScreenState extends State<WorkoutScreen> {
             clientId: widget.clientId,
             day: widget.day,
           )
-        : await db.getWorkoutDetailsForClientOnDayForcedTemplateIdx(
-            clientId: widget.clientId,
-            day: widget.day,
-            templateIdx: widget.templateIdx!,
-          );
+        : (widget.absoluteIndex != null
+              ? await db.getWorkoutDetailsForClientProgramSlot(
+                  clientId: widget.clientId,
+                  absoluteIndex: widget.absoluteIndex!,
+                  templateIdx: widget.templateIdx!,
+                )
+              : await db.getWorkoutDetailsForClientOnDayForcedTemplateIdx(
+                  clientId: widget.clientId,
+                  day: widget.day,
+                  templateIdx: widget.templateIdx!,
+                ));
 
     final drafts = await db.getWorkoutDraftResults(
       clientId: widget.clientId,
       day: widget.day,
       templateIdx: widget.templateIdx,
+      absoluteIndex: widget.absoluteIndex,
     );
 
     final exercises = data.$3.map((e) {

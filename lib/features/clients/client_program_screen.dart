@@ -421,6 +421,7 @@ class _ClientProgramScreenState extends State<ClientProgramScreen> {
                                           templateIdx:
                                               slot.templateIdx, // 🔥 главное
                                           displayTitle: displayTitle,
+                                          absoluteIndex: slot.absoluteIndex,
                                         ),
                                       ),
                                     );
@@ -442,6 +443,7 @@ class _ClientProgramScreenState extends State<ClientProgramScreen> {
                                     day: day,
                                     templateIdx: slot.templateIdx,
                                     displayTitle: displayTitle,
+                                    absoluteIndex: slot.absoluteIndex,
                                   ),
                                 ),
                               );

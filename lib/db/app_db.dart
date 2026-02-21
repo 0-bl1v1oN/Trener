@@ -646,9 +646,13 @@ class AppDb extends _$AppDb {
     required String clientId,
     required DateTime day,
     int? templateIdx,
+    int? absoluteIndex,
   }) async {
     final dayOnly = DateTime(day.year, day.month, day.day);
-    final idx = templateIdx ?? -1;
+    final idx = _draftScopeIdx(
+      templateIdx: templateIdx,
+      absoluteIndex: absoluteIndex,
+    );
 
     final rows =
         await (select(workoutDrafts)..where(
@@ -669,9 +673,13 @@ class AppDb extends _$AppDb {
     required DateTime day,
     required Map<int, (double? kg, int? reps)> resultsByTemplateExerciseId,
     int? templateIdx,
+    int? absoluteIndex,
   }) async {
     final dayOnly = DateTime(day.year, day.month, day.day);
-    final idx = templateIdx ?? -1;
+    final idx = _draftScopeIdx(
+      templateIdx: templateIdx,
+      absoluteIndex: absoluteIndex,
+    );
 
     await transaction(() async {
       for (final entry in resultsByTemplateExerciseId.entries) {
@@ -710,9 +718,13 @@ class AppDb extends _$AppDb {
     required String clientId,
     required DateTime day,
     int? templateIdx,
+    int? absoluteIndex,
   }) async {
     final dayOnly = DateTime(day.year, day.month, day.day);
-    final idx = templateIdx ?? -1;
+    final idx = _draftScopeIdx(
+      templateIdx: templateIdx,
+      absoluteIndex: absoluteIndex,
+    );
 
     await (delete(workoutDrafts)..where(
           (t) =>
@@ -721,6 +733,12 @@ class AppDb extends _$AppDb {
               t.templateIdx.equals(idx),
         ))
         .go();
+  }
+
+  int _draftScopeIdx({int? templateIdx, int? absoluteIndex}) {
+    final baseIdx = templateIdx ?? -1;
+    final slotPart = ((absoluteIndex ?? -1) + 1) * 1000;
+    return slotPart + baseIdx;
   }
 
   Future<bool> appointmentExists({
@@ -1963,6 +1981,71 @@ class AppDb extends _$AppDb {
     return true;
   }
 
+  Future<bool> toggleWorkoutForClientAtAbsoluteIndex({
+    required String clientId,
+    required int absoluteIndex,
+    required int templateIdx,
+    required DateTime when,
+  }) async {
+    final c = await getClientById(clientId);
+    if (c == null) return false;
+
+    await ensureProgramStateForClient(clientId);
+    final st = await (select(
+      clientProgramStates,
+    )..where((t) => t.clientId.equals(clientId))).getSingleOrNull();
+    if (st == null) return false;
+
+    final gender = _programTrackByClient(c);
+    final cycleLen = _cycleLenByGender(gender);
+
+    final sessions =
+        await (select(workoutSessions)
+              ..where(
+                (t) =>
+                    t.clientId.equals(clientId) &
+                    t.planInstance.equals(st.planInstance),
+              )
+              ..orderBy([(t) => OrderingTerm.asc(t.performedAt)]))
+            .get();
+
+    final existing = (absoluteIndex >= 0 && absoluteIndex < sessions.length)
+        ? sessions[absoluteIndex]
+        : null;
+
+    if (existing != null) {
+      await (delete(
+        workoutExerciseResults,
+      )..where((r) => r.sessionId.equals(existing.id))).go();
+
+      await (delete(
+        workoutSessions,
+      )..where((t) => t.id.equals(existing.id))).go();
+
+      final newCompleted = st.completedInPlan > 0 ? st.completedInPlan - 1 : 0;
+      final newNextOffset = _mod(st.nextOffset - 1, cycleLen);
+
+      await (update(
+        clientProgramStates,
+      )..where((t) => t.clientId.equals(clientId))).write(
+        ClientProgramStatesCompanion(
+          completedInPlan: Value(newCompleted),
+          nextOffset: Value(newNextOffset),
+        ),
+      );
+
+      return false;
+    }
+
+    await completeWorkoutForClientWithTemplateIdx(
+      clientId: clientId,
+      when: when,
+      templateIdx: templateIdx,
+    );
+
+    return true;
+  }
+
   Future<
     (WorkoutDayInfo info, int? sessionId, List<WorkoutExerciseVm> exercises)
   >
@@ -2170,6 +2253,115 @@ class AppDb extends _$AppDb {
     return (info, null, preview);
   }
 
+  Future<
+    (WorkoutDayInfo info, int? sessionId, List<WorkoutExerciseVm> exercises)
+  >
+  getWorkoutDetailsForClientProgramSlot({
+    required String clientId,
+    required int absoluteIndex,
+    required int templateIdx,
+  }) async {
+    await _ensureTemplateDefaultsPatched();
+
+    final c = await getClientById(clientId);
+    if (c == null) {
+      return (
+        WorkoutDayInfo(
+          hasPlan: false,
+          doneToday: false,
+          label: '',
+          title: '',
+          planSize: 0,
+          planInstance: 0,
+          completedInPlan: 0,
+        ),
+        null,
+        <WorkoutExerciseVm>[],
+      );
+    }
+
+    await ensureProgramStateForClient(clientId);
+
+    final st = await (select(
+      clientProgramStates,
+    )..where((x) => x.clientId.equals(clientId))).getSingle();
+
+    final gender = _programTrackByClient(c);
+    final sessions =
+        await (select(workoutSessions)
+              ..where(
+                (t) =>
+                    t.clientId.equals(clientId) &
+                    t.planInstance.equals(st.planInstance),
+              )
+              ..orderBy([(t) => OrderingTerm.asc(t.performedAt)]))
+            .get();
+
+    final sess = (absoluteIndex >= 0 && absoluteIndex < sessions.length)
+        ? sessions[absoluteIndex]
+        : null;
+
+    final overrides = await _getProgramDayOverrides(
+      clientId: clientId,
+      planInstance: st.planInstance,
+    );
+
+    final resolvedTemplateIdx =
+        sess?.templateIdx ?? overrides[absoluteIndex] ?? templateIdx;
+
+    final titleRow =
+        await (select(workoutTemplates)..where(
+              (x) =>
+                  x.gender.equals(gender) & x.idx.equals(resolvedTemplateIdx),
+            ))
+            .getSingle();
+
+    final info = WorkoutDayInfo(
+      hasPlan: true,
+      doneToday: sess != null,
+      label: titleRow.label,
+      title: titleRow.title,
+      planSize: st.planSize,
+      planInstance: st.planInstance,
+      completedInPlan: st.completedInPlan,
+    );
+
+    final preview = await getWorkoutPreviewForClient(
+      clientId: clientId,
+      gender: gender,
+      templateIdx: resolvedTemplateIdx,
+    );
+
+    if (sess == null) {
+      return (info, null, preview);
+    }
+
+    final resRows = await (select(
+      workoutExerciseResults,
+    )..where((r) => r.sessionId.equals(sess.id))).get();
+
+    final resMap = {
+      for (final r in resRows)
+        r.templateExerciseId: (r.lastWeightKg, r.lastReps),
+    };
+
+    final list = preview.map((e) {
+      final rr = resMap[e.templateExerciseId];
+      if (rr == null) return e;
+      return WorkoutExerciseVm(
+        templateExerciseId: e.templateExerciseId,
+        templateId: e.templateId,
+        orderIndex: e.orderIndex,
+        supersetGroup: e.supersetGroup,
+        name: e.name,
+        lastWeightKg: rr.$1,
+        lastReps: rr.$2,
+      );
+    }).toList();
+
+    return (info, sess.id, list);
+  }
+
   Future<List<WorkoutExerciseVm>> getWorkoutPreviewForClient({
     required String clientId,
     required String gender, // 'М' / 'Ж'
@@ -2248,6 +2440,7 @@ class AppDb extends _$AppDb {
     required DateTime day,
     required Map<int, (double? kg, int? reps)> resultsByTemplateExerciseId,
     int? templateIdx,
+    int? absoluteIndex,
   }) async {
     await transaction(() async {
       final ds = _dayStart(day);
@@ -2258,50 +2451,23 @@ class AppDb extends _$AppDb {
 
       final activePlanInstance = st?.planInstance;
 
-      // есть ли уже session на этот день?
-      var sess =
-          await (select(workoutSessions)
-                ..where(
-                  (t) =>
-                      t.clientId.equals(clientId) &
-                      (activePlanInstance == null
-                          ? const Constant(true)
-                          : t.planInstance.equals(activePlanInstance)) &
-                      (templateIdx == null
-                          ? const Constant(true)
-                          : t.templateIdx.equals(templateIdx)) &
-                      t.performedAt.isBiggerOrEqualValue(ds) &
-                      t.performedAt.isSmallerThanValue(de),
-                )
-                ..orderBy([(t) => OrderingTerm.desc(t.performedAt)])
-                ..limit(1))
-              .getSingleOrNull();
+      WorkoutSession? sess;
 
-      // если нет — создаём через твою “засчитать тренировку” (она двигает программу)
-      if (sess == null) {
-        final when = DateTime(day.year, day.month, day.day, 12, 0);
+      if (absoluteIndex != null && activePlanInstance != null) {
+        final sessions =
+            await (select(workoutSessions)
+                  ..where(
+                    (t) =>
+                        t.clientId.equals(clientId) &
+                        t.planInstance.equals(activePlanInstance),
+                  )
+                  ..orderBy([(t) => OrderingTerm.asc(t.performedAt)]))
+                .get();
 
-        if (templateIdx == null) {
-          final now = DateTime.now();
-          final when = DateTime(
-            day.year,
-            day.month,
-            day.day,
-            12,
-            0,
-            0,
-            now.millisecond,
-            now.microsecond,
-          );
-          await completeWorkoutForClient(clientId: clientId, when: when);
-        } else {
-          await completeWorkoutForClientWithTemplateIdx(
-            clientId: clientId,
-            when: when,
-            templateIdx: templateIdx,
-          );
+        if (absoluteIndex >= 0 && absoluteIndex < sessions.length) {
+          sess = sessions[absoluteIndex];
         }
-
+      } else {
         sess =
             await (select(workoutSessions)
                   ..where(
@@ -2319,6 +2485,71 @@ class AppDb extends _$AppDb {
                   ..orderBy([(t) => OrderingTerm.desc(t.performedAt)])
                   ..limit(1))
                 .getSingleOrNull();
+      }
+
+      // если нет — создаём через твою “засчитать тренировку” (она двигает программу)
+      if (sess == null) {
+        final now = DateTime.now();
+        final when = DateTime(
+          day.year,
+          day.month,
+          day.day,
+          12,
+          0,
+          0,
+          now.millisecond,
+          now.microsecond,
+        );
+
+        if (templateIdx == null) {
+          await completeWorkoutForClient(clientId: clientId, when: when);
+        } else if (absoluteIndex != null) {
+          await toggleWorkoutForClientAtAbsoluteIndex(
+            clientId: clientId,
+            absoluteIndex: absoluteIndex,
+            templateIdx: templateIdx,
+            when: when,
+          );
+        } else {
+          await completeWorkoutForClientWithTemplateIdx(
+            clientId: clientId,
+            when: when,
+            templateIdx: templateIdx,
+          );
+        }
+
+        if (activePlanInstance != null && absoluteIndex != null) {
+          final sessions =
+              await (select(workoutSessions)
+                    ..where(
+                      (t) =>
+                          t.clientId.equals(clientId) &
+                          t.planInstance.equals(activePlanInstance),
+                    )
+                    ..orderBy([(t) => OrderingTerm.asc(t.performedAt)]))
+                  .get();
+          if (absoluteIndex >= 0 && absoluteIndex < sessions.length) {
+            sess = sessions[absoluteIndex];
+          }
+        } else {
+          sess =
+              await (select(workoutSessions)
+                    ..where(
+                      (t) =>
+                          t.clientId.equals(clientId) &
+                          (activePlanInstance == null
+                              ? const Constant(true)
+                              : t.planInstance.equals(activePlanInstance)) &
+                          (templateIdx == null
+                              ? const Constant(true)
+                              : t.templateIdx.equals(templateIdx)) &
+                          t.performedAt.isBiggerOrEqualValue(ds) &
+                          t.performedAt.isSmallerThanValue(de),
+                    )
+                    ..orderBy([(t) => OrderingTerm.desc(t.performedAt)])
+                    ..limit(1))
+                  .getSingleOrNull();
+        }
       }
 
       if (sess == null) return;
@@ -2374,6 +2605,7 @@ class AppDb extends _$AppDb {
       clientId: clientId,
       day: day,
       templateIdx: templateIdx,
+      absoluteIndex: absoluteIndex,
     );
   }
 
