@@ -701,34 +701,23 @@ class AppDb extends _$AppDb {
     final primaryScopeIdx = scopeIdxes.first;
 
     await transaction(() async {
+      await (delete(workoutDrafts)..where(
+            (t) =>
+                t.clientId.equals(clientId) &
+                t.day.equals(dayOnly) &
+                t.templateIdx.isIn(scopeIdxes),
+          ))
+          .go();
+
+      final now = DateTime.now();
       for (final entry in resultsByTemplateExerciseId.entries) {
         final exId = entry.key;
         final kg = entry.value.$1;
         final reps = entry.value.$2;
 
-        if (kg == null && reps == null) {
-          await (delete(workoutDrafts)..where(
-                (t) =>
-                    t.clientId.equals(clientId) &
-                    t.day.equals(dayOnly) &
-                    t.templateIdx.isIn(scopeIdxes) &
-                    t.templateExerciseId.equals(exId),
-              ))
-              .go();
-          continue;
-        }
+        if (kg == null && reps == null) continue;
 
-        await (delete(workoutDrafts)..where(
-              (t) =>
-                  t.clientId.equals(clientId) &
-                  t.day.equals(dayOnly) &
-                  t.templateIdx.isIn(scopeIdxes) &
-                  t.templateIdx.equals(primaryScopeIdx).not() &
-                  t.templateExerciseId.equals(exId),
-            ))
-            .go();
-
-        await into(workoutDrafts).insertOnConflictUpdate(
+        await into(workoutDrafts).insert(
           WorkoutDraftsCompanion.insert(
             clientId: clientId,
             day: dayOnly,
@@ -736,7 +725,7 @@ class AppDb extends _$AppDb {
             templateExerciseId: exId,
             lastWeightKg: Value(kg),
             lastReps: Value(reps),
-            updatedAt: Value(DateTime.now()),
+            updatedAt: Value(now),
           ),
         );
       }

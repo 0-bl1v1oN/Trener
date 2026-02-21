@@ -212,6 +212,11 @@ class _WorkoutScreenState extends State<WorkoutScreen> {
       ScaffoldMessenger.of(
         context,
       ).showSnackBar(const SnackBar(content: Text('Черновик сохранён')));
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Ошибка сохранения черновика: $e')),
+      );
     } finally {
       if (mounted) setState(() => _saving = false);
     }
@@ -235,6 +240,11 @@ class _WorkoutScreenState extends State<WorkoutScreen> {
       if (!mounted) return;
       Navigator.of(context).pop(true);
       return;
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Ошибка сохранения тренировки: $e')),
+      );
     } finally {
       if (mounted) setState(() => _saving = false);
     }
@@ -283,6 +293,11 @@ class _WorkoutScreenState extends State<WorkoutScreen> {
       if (!mounted) return;
       Navigator.of(context).pop(true);
       return;
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Ошибка при отмене тренировки: $e')),
+      );
     } finally {
       if (mounted) setState(() => _saving = false);
     }
