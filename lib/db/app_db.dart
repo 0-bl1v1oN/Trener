@@ -649,9 +649,10 @@ class AppDb extends _$AppDb {
     int? absoluteIndex,
   }) async {
     final dayOnly = DateTime(day.year, day.month, day.day);
-    final idx = _draftScopeIdx(
+    final scopeIdxes = _draftScopeIdxes(
       templateIdx: templateIdx,
       absoluteIndex: absoluteIndex,
+      includeLegacy: true,
     );
 
     final rows =
@@ -660,10 +661,7 @@ class AppDb extends _$AppDb {
                 (t) =>
                     t.clientId.equals(clientId) &
                     t.day.equals(dayOnly) &
-                    (t.templateIdx.equals(idx) |
-                        (idx == -1
-                            ? const Constant(false)
-                            : t.templateIdx.equals(-1))),
+                    t.templateIdx.isIn(scopeIdxes),
               )
               ..orderBy([(t) => OrderingTerm.desc(t.updatedAt)]))
             .get();
@@ -683,9 +681,10 @@ class AppDb extends _$AppDb {
     int? absoluteIndex,
   }) async {
     final dayOnly = DateTime(day.year, day.month, day.day);
-    final idx = _draftScopeIdx(
+    final scopeIdxes = _draftScopeIdxes(
       templateIdx: templateIdx,
       absoluteIndex: absoluteIndex,
+      includeLegacy: true,
     );
 
     await transaction(() async {
@@ -693,14 +692,13 @@ class AppDb extends _$AppDb {
         final exId = entry.key;
         final kg = entry.value.$1;
         final reps = entry.value.$2;
-        final scopeIdxes = idx == -1 ? <int>{-1} : <int>{idx, -1};
 
         if (kg == null && reps == null) {
           await (delete(workoutDrafts)..where(
                 (t) =>
                     t.clientId.equals(clientId) &
                     t.day.equals(dayOnly) &
-                    t.templateIdx.isIn(scopeIdxes.toList()) &
+                    t.templateIdx.isIn(scopeIdxes) &
                     t.templateExerciseId.equals(exId),
               ))
               .go();
@@ -731,24 +729,47 @@ class AppDb extends _$AppDb {
     int? absoluteIndex,
   }) async {
     final dayOnly = DateTime(day.year, day.month, day.day);
-    final idx = _draftScopeIdx(
+    final scopeIdxes = _draftScopeIdxes(
       templateIdx: templateIdx,
       absoluteIndex: absoluteIndex,
+      includeLegacy: true,
     );
 
     await (delete(workoutDrafts)..where(
           (t) =>
               t.clientId.equals(clientId) &
               t.day.equals(dayOnly) &
-              t.templateIdx.equals(idx),
+              t.templateIdx.isIn(scopeIdxes),
         ))
         .go();
   }
 
-  int _draftScopeIdx({int? templateIdx, int? absoluteIndex}) {
-    final baseIdx = templateIdx ?? -1;
-    final slotPart = ((absoluteIndex ?? -1) + 1) * 1000;
-    return slotPart + baseIdx;
+  List<int> _draftScopeIdxes({
+    int? templateIdx,
+    int? absoluteIndex,
+    bool includeLegacy = false,
+  }) {
+    final idxes = <int>{};
+
+    if (absoluteIndex != null) {
+      // Основной ключ для программного слота: только absoluteIndex.
+      // Это стабильно, даже если templateIdx для того же слота потом пересчитался.
+      final stableSlotIdx = (absoluteIndex + 1) * 1000;
+      idxes.add(stableSlotIdx);
+
+      if (includeLegacy) {
+        // Старый формат, где в ключ добавлялся templateIdx.
+        final legacyTemplatePart = templateIdx ?? -1;
+        idxes.add(stableSlotIdx + legacyTemplatePart);
+        idxes.add(-1);
+      }
+    } else {
+      final baseIdx = templateIdx ?? -1;
+      idxes.add(baseIdx);
+      if (includeLegacy) idxes.add(-1);
+    }
+
+    return idxes.toList();
   }
 
   Future<bool> appointmentExists({
