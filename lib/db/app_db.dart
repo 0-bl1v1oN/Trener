@@ -666,9 +666,21 @@ class AppDb extends _$AppDb {
               ..orderBy([(t) => OrderingTerm.desc(t.updatedAt)]))
             .get();
 
+    final scopePriority = <int, int>{
+      for (var i = 0; i < scopeIdxes.length; i++) scopeIdxes[i]: i,
+    };
+
     final map = <int, (double? kg, int? reps)>{};
+    final bestPriorityByExercise = <int, int>{};
     for (final r in rows) {
-      map.putIfAbsent(r.templateExerciseId, () => (r.lastWeightKg, r.lastReps));
+      final exId = r.templateExerciseId;
+      final priority = scopePriority[r.templateIdx] ?? 999;
+      final prevPriority = bestPriorityByExercise[exId];
+
+      if (prevPriority == null || priority < prevPriority) {
+        bestPriorityByExercise[exId] = priority;
+        map[exId] = (r.lastWeightKg, r.lastReps);
+      }
     }
     return map;
   }
@@ -686,6 +698,7 @@ class AppDb extends _$AppDb {
       absoluteIndex: absoluteIndex,
       includeLegacy: true,
     );
+    final primaryScopeIdx = scopeIdxes.first;
 
     await transaction(() async {
       for (final entry in resultsByTemplateExerciseId.entries) {
@@ -705,19 +718,27 @@ class AppDb extends _$AppDb {
           continue;
         }
 
-        for (final scopeIdx in scopeIdxes) {
-          await into(workoutDrafts).insertOnConflictUpdate(
-            WorkoutDraftsCompanion.insert(
-              clientId: clientId,
-              day: dayOnly,
-              templateIdx: Value(scopeIdx),
-              templateExerciseId: exId,
-              lastWeightKg: kg == null ? const Value.absent() : Value(kg),
-              lastReps: reps == null ? const Value.absent() : Value(reps),
-              updatedAt: Value(DateTime.now()),
-            ),
-          );
-        }
+        await (delete(workoutDrafts)..where(
+              (t) =>
+                  t.clientId.equals(clientId) &
+                  t.day.equals(dayOnly) &
+                  t.templateIdx.isIn(scopeIdxes) &
+                  t.templateIdx.equals(primaryScopeIdx).not() &
+                  t.templateExerciseId.equals(exId),
+            ))
+            .go();
+
+        await into(workoutDrafts).insertOnConflictUpdate(
+          WorkoutDraftsCompanion.insert(
+            clientId: clientId,
+            day: dayOnly,
+            templateIdx: Value(primaryScopeIdx),
+            templateExerciseId: exId,
+            lastWeightKg: Value(kg),
+            lastReps: Value(reps),
+            updatedAt: Value(DateTime.now()),
+          ),
+        );
       }
     });
   }
