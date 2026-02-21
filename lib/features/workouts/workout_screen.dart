@@ -98,22 +98,51 @@ class _WorkoutScreenState extends State<WorkoutScreen> {
     return int.tryParse(t);
   }
 
-  Map<int, (double? kg, int? reps)> _collectCurrentResults(
-    List<WorkoutExerciseVm> exercises,
-  ) {
+  ({
+    Map<int, (double? kg, int? reps)> results,
+    List<String> invalidExerciseNames,
+  })
+  _collectCurrentResults(List<WorkoutExerciseVm> exercises) {
     final map = <int, (double? kg, int? reps)>{};
+    final invalid = <String>[];
 
     for (final e in exercises) {
-      final kg = _parseKg(
-        _kgController(e.templateExerciseId, e.lastWeightKg).text,
-      );
-      final reps = _parseInt(
-        _repsController(e.templateExerciseId, e.lastReps).text,
-      );
+      final kgRaw = _kgController(e.templateExerciseId, e.lastWeightKg).text;
+      final repsRaw = _repsController(e.templateExerciseId, e.lastReps).text;
+
+      final kg = _parseKg(kgRaw);
+      final reps = _parseInt(repsRaw);
+
+      final kgInvalid = kgRaw.trim().isNotEmpty && kg == null;
+      final repsInvalid = repsRaw.trim().isNotEmpty && reps == null;
+
+      if (kgInvalid || repsInvalid) {
+        invalid.add(e.name);
+        continue;
+      }
       map[e.templateExerciseId] = (kg, reps);
     }
 
-    return map;
+    return (results: map, invalidExerciseNames: invalid);
+  }
+
+  Map<int, (double? kg, int? reps)>? _buildResultsOrShowError(
+    List<WorkoutExerciseVm> exercises,
+  ) {
+    final collected = _collectCurrentResults(exercises);
+    if (collected.invalidExerciseNames.isEmpty) {
+      return collected.results;
+    }
+
+    final preview = collected.invalidExerciseNames.take(2).join(', ');
+    final suffix = collected.invalidExerciseNames.length > 2 ? '…' : '';
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text('Проверьте формат чисел в упражнениях: $preview$suffix'),
+      ),
+    );
+    return null;
   }
 
   Future<void> _renameExercise(WorkoutExerciseVm e) async {
@@ -433,8 +462,8 @@ class _WorkoutScreenState extends State<WorkoutScreen> {
           }
 
           // Собираем results для сохранения из контроллеров
-          Map<int, (double? kg, int? reps)> buildResults() {
-            return _collectCurrentResults(exercises);
+          Map<int, (double? kg, int? reps)>? buildResults() {
+            return _buildResultsOrShowError(exercises);
           }
 
           return Column(
@@ -457,9 +486,21 @@ class _WorkoutScreenState extends State<WorkoutScreen> {
               _BottomBar(
                 saving: _saving,
                 done: info.doneToday,
-                onSaveDraft: () => _saveDraft(results: buildResults()),
-                onMarkDone: () => _markDone(results: buildResults()),
-                onCancel: () => _cancelWorkout(results: buildResults()),
+                onSaveDraft: () {
+                  final results = buildResults();
+                  if (results == null) return;
+                  _saveDraft(results: results);
+                },
+                onMarkDone: () {
+                  final results = buildResults();
+                  if (results == null) return;
+                  _markDone(results: results);
+                },
+                onCancel: () {
+                  final results = buildResults();
+                  if (results == null) return;
+                  _cancelWorkout(results: results);
+                },
               ),
             ],
           );
