@@ -8,12 +8,14 @@ class WorkoutScreen extends StatefulWidget {
   final DateTime day;
   final int?
   templateIdx; // ✅ выбранная тренировка 0..8 (если null — обычная логика)
+  final String? displayTitle;
 
   const WorkoutScreen({
     super.key,
     required this.clientId,
     required this.day,
     this.templateIdx,
+    this.displayTitle,
   });
 
   @override
@@ -382,7 +384,7 @@ class _WorkoutScreenState extends State<WorkoutScreen> {
             );
           }
 
-          final header = _Header(info: info);
+          final header = _Header(info: info, displayTitle: widget.displayTitle);
 
           if (exercises.isEmpty) {
             return Column(
@@ -645,11 +647,12 @@ class _WorkoutScreenState extends State<WorkoutScreen> {
 
 class _Header extends StatelessWidget {
   final WorkoutDayInfo info;
-  const _Header({required this.info});
+  final String? displayTitle;
+  const _Header({required this.info, this.displayTitle});
 
   @override
   Widget build(BuildContext context) {
-    final title = '${info.label} — ${info.title}';
+    final title = displayTitle ?? '${info.label} — ${info.title}';
     final done = info.doneToday;
 
     final colors = Theme.of(context).colorScheme;

@@ -47,12 +47,6 @@ class _ClientProgramScreenState extends State<ClientProgramScreen> {
     });
   }
 
-  Future<void> _shiftWindow(int delta) async {
-    final db = AppDbScope.of(context);
-    await db.shiftClientProgramWindow(clientId: widget.clientId, delta: delta);
-    await _reload();
-  }
-
   Future<void> _shiftDays(int delta) async {
     final db = AppDbScope.of(context);
     await db.shiftClientProgramDays(clientId: widget.clientId, delta: delta);
@@ -376,24 +370,6 @@ class _ClientProgramScreenState extends State<ClientProgramScreen> {
                         ),
                       ],
                     ),
-                    if (st.planSize == 4) ...[
-                      const SizedBox(height: 8),
-                      Row(
-                        children: [
-                          OutlinedButton.icon(
-                            onPressed: () => _shiftWindow(-4),
-                            icon: const Icon(Icons.chevron_left),
-                            label: const Text('Пред. 4'),
-                          ),
-                          const SizedBox(width: 8),
-                          OutlinedButton.icon(
-                            onPressed: () => _shiftWindow(4),
-                            icon: const Icon(Icons.chevron_right),
-                            label: const Text('След. 4'),
-                          ),
-                        ],
-                      ),
-                    ],
                   ],
                 ),
               ),
@@ -435,6 +411,8 @@ class _ClientProgramScreenState extends State<ClientProgramScreen> {
                               ? const Icon(Icons.chevron_right)
                               : FilledButton(
                                   onPressed: () async {
+                                    final displayTitle =
+                                        'День ${slot.slotIndex} • $title';
                                     await Navigator.of(context).push(
                                       MaterialPageRoute(
                                         builder: (_) => WorkoutScreen(
@@ -442,6 +420,7 @@ class _ClientProgramScreenState extends State<ClientProgramScreen> {
                                           day: chosenDay,
                                           templateIdx:
                                               slot.templateIdx, // 🔥 главное
+                                          displayTitle: displayTitle,
                                         ),
                                       ),
                                     );
@@ -454,12 +433,15 @@ class _ClientProgramScreenState extends State<ClientProgramScreen> {
                             if (isDone) {
                               // Открываем фактическую тренировку по дате выполнения
                               final day = slot.performedAt!;
+                              final displayTitle =
+                                  'День ${slot.slotIndex} • $title';
                               await Navigator.of(context).push(
                                 MaterialPageRoute(
                                   builder: (_) => WorkoutScreen(
                                     clientId: widget.clientId,
                                     day: day,
                                     templateIdx: slot.templateIdx,
+                                    displayTitle: displayTitle,
                                   ),
                                 ),
                               );

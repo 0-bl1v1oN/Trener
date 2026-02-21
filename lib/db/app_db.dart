@@ -386,27 +386,7 @@ class AppDb extends _$AppDb {
     },
 
     onUpgrade: (m, from, to) async {
-      // Dev-режим: пересоздание таблиц
-      await m.deleteTable(workoutExerciseResults.actualTableName);
-      await m.deleteTable(workoutTemplateExercises.actualTableName);
-      await m.deleteTable(workoutSessions.actualTableName);
-      await m.deleteTable(clientProgramStates.actualTableName);
-      await m.deleteTable(workoutTemplates.actualTableName);
-      await m.deleteTable(appointments.actualTableName);
-      await m.deleteTable(clients.actualTableName);
-      await m.deleteTable(clientTemplateExerciseOverrides.actualTableName);
-      await m.deleteTable(workoutDrafts.actualTableName);
-
-      await m.createTable(clients);
-      await m.createTable(appointments);
-      await m.createTable(workoutTemplates);
-      await m.createTable(clientProgramStates);
-      await m.createTable(workoutSessions);
-      await m.createTable(workoutTemplateExercises);
-      await m.createTable(workoutExerciseResults);
-      await m.createTable(clientTemplateExerciseOverrides);
-
-      await m.createTable(workoutDrafts);
+      // Продовая миграция: без удаления существующих данных клиентов.
       await _ensureProgramDayOverridesTable();
 
       await _seedWorkoutTemplates();
@@ -2722,6 +2702,7 @@ class AppDb extends _$AppDb {
     final completed = st.completedInPlan;
     final bundleStart = (completed ~/ planSize) * planSize;
     final completedInBundle = completed - bundleStart;
+    final bundleSessions = sessions.skip(bundleStart).take(planSize).toList();
     final overrides = await _getProgramDayOverrides(
       clientId: clientId,
       planInstance: st.planInstance,
@@ -2730,12 +2711,10 @@ class AppDb extends _$AppDb {
     final slots = <ProgramSlotVm>[];
 
     for (var k = 0; k < planSize; k++) {
-      final absoluteIndex =
-          bundleStart + (st.planSize == 4 ? st.windowStart : 0) + k;
+      final absoluteIndex = bundleStart + k;
       final defaultIdx = _mod(st.cycleStartIndex + absoluteIndex, cycleLen);
-      final hasSession =
-          k < completedInBundle && absoluteIndex < sessions.length;
-      final s = hasSession ? sessions[absoluteIndex] : null;
+      final hasSession = k < completedInBundle && k < bundleSessions.length;
+      final s = hasSession ? bundleSessions[k] : null;
       final plannedIdx = overrides[absoluteIndex] ?? defaultIdx;
 
       slots.add(
