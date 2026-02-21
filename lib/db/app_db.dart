@@ -655,17 +655,24 @@ class AppDb extends _$AppDb {
     );
 
     final rows =
-        await (select(workoutDrafts)..where(
-              (t) =>
-                  t.clientId.equals(clientId) &
-                  t.day.equals(dayOnly) &
-                  t.templateIdx.equals(idx),
-            ))
+        await (select(workoutDrafts)
+              ..where(
+                (t) =>
+                    t.clientId.equals(clientId) &
+                    t.day.equals(dayOnly) &
+                    (t.templateIdx.equals(idx) |
+                        (idx == -1
+                            ? const Constant(false)
+                            : t.templateIdx.equals(-1))),
+              )
+              ..orderBy([(t) => OrderingTerm.desc(t.updatedAt)]))
             .get();
 
-    return {
-      for (final r in rows) r.templateExerciseId: (r.lastWeightKg, r.lastReps),
-    };
+    final map = <int, (double? kg, int? reps)>{};
+    for (final r in rows) {
+      map.putIfAbsent(r.templateExerciseId, () => (r.lastWeightKg, r.lastReps));
+    }
+    return map;
   }
 
   Future<void> saveWorkoutDraftResults({
@@ -686,30 +693,33 @@ class AppDb extends _$AppDb {
         final exId = entry.key;
         final kg = entry.value.$1;
         final reps = entry.value.$2;
+        final scopeIdxes = idx == -1 ? <int>{-1} : <int>{idx, -1};
 
         if (kg == null && reps == null) {
           await (delete(workoutDrafts)..where(
                 (t) =>
                     t.clientId.equals(clientId) &
                     t.day.equals(dayOnly) &
-                    t.templateIdx.equals(idx) &
+                    t.templateIdx.isIn(scopeIdxes.toList()) &
                     t.templateExerciseId.equals(exId),
               ))
               .go();
           continue;
         }
 
-        await into(workoutDrafts).insertOnConflictUpdate(
-          WorkoutDraftsCompanion.insert(
-            clientId: clientId,
-            day: dayOnly,
-            templateIdx: Value(idx),
-            templateExerciseId: exId,
-            lastWeightKg: kg == null ? const Value.absent() : Value(kg),
-            lastReps: reps == null ? const Value.absent() : Value(reps),
-            updatedAt: Value(DateTime.now()),
-          ),
-        );
+        for (final scopeIdx in scopeIdxes) {
+          await into(workoutDrafts).insertOnConflictUpdate(
+            WorkoutDraftsCompanion.insert(
+              clientId: clientId,
+              day: dayOnly,
+              templateIdx: Value(scopeIdx),
+              templateExerciseId: exId,
+              lastWeightKg: kg == null ? const Value.absent() : Value(kg),
+              lastReps: reps == null ? const Value.absent() : Value(reps),
+              updatedAt: Value(DateTime.now()),
+            ),
+          );
+        }
       }
     });
   }
