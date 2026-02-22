@@ -5,6 +5,70 @@ import 'package:flutter/material.dart';
 import '../../app/app_db_scope.dart';
 import '../../db/app_db.dart';
 
+_PrizeMeta _prizeMetaByTitle(String title) {
+  final key = title.trim().toLowerCase();
+  const map = <String, _PrizeMeta>{
+    'главный приз: абонемент': _PrizeMeta(
+      icon: Icons.workspace_premium_rounded,
+      description:
+          'Полноценный доступ к прогрессу. Ходи месяц бесплатно! (почти)',
+    ),
+    'счастливый день': _PrizeMeta(
+      icon: Icons.auto_awesome,
+      description:
+          'Ты выбираешь 6 упражнений мечты — я строю тренировку вокруг твоих желаний.',
+    ),
+    'протеиновая вкусняшка': _PrizeMeta(
+      icon: Icons.icecream_rounded,
+      description:
+          'Белковый бонус для восстановления и настроения. Вкусно, полезно, по-спортивному.',
+    ),
+    'день ног -50% весов': _PrizeMeta(
+      icon: Icons.fitness_center,
+      description:
+          'Официальная амнистия. Работаем технично, чисто и без геройства.',
+    ),
+    'ревёрс': _PrizeMeta(
+      icon: Icons.swap_calls_rounded,
+      description: 'Сегодня ты — тренер. Команды, темп, контроль. Я выполняю.',
+    ),
+    'доп +2 крутки': _PrizeMeta(
+      icon: Icons.casino_rounded,
+      description: 'Два дополнительных шанса изменить свою судьбу в розыгрыше.',
+    ),
+    'день пп': _PrizeMeta(
+      icon: Icons.spa_rounded,
+      description:
+          'Идеальное питание без компромиссов. Чисто. Дисциплинированно. Под отчёт.',
+    ),
+    'токсичная планка': _PrizeMeta(
+      icon: Icons.hourglass_bottom_rounded,
+      description:
+          '40 секунд настоящей стойкости. Дополнительная нагрузка — в прямом смысле сверху.',
+    ),
+    'случайный день ног': _PrizeMeta(
+      icon: Icons.shuffle_rounded,
+      description:
+          '6 упражнений из 50 — выбирает случай. Ноги скажут спасибо позже.',
+    ),
+    'реклама в сторис': _PrizeMeta(
+      icon: Icons.campaign_rounded,
+      description: 'Репост закрепа в сторис. Поддержка тренера — дело чести.',
+    ),
+    'братский стульчик': _PrizeMeta(
+      icon: Icons.groups_2_rounded,
+      description:
+          'Командная выдержка. Плечо к плечу, минута характера. Если один — 15 кг в руки.',
+    ),
+  };
+
+  return map[key] ??
+      const _PrizeMeta(
+        icon: Icons.card_giftcard_rounded,
+        description: 'Описание приза появится здесь.',
+      );
+}
+
 class ContestsScreen extends StatefulWidget {
   const ContestsScreen({super.key});
 
@@ -200,71 +264,7 @@ class _ContestsScreenState extends State<ContestsScreen>
     return idx < 0 ? 0 : idx;
   }
 
-  _PrizeMeta _metaForPrize(String title) {
-    final key = title.trim().toLowerCase();
-    const map = <String, _PrizeMeta>{
-      'главный приз: абонемент': _PrizeMeta(
-        icon: Icons.workspace_premium_rounded,
-        description:
-            'Полноценный доступ к прогрессу. Ходи месяц бесплатно! (почти)',
-      ),
-      'счастливый день': _PrizeMeta(
-        icon: Icons.auto_awesome,
-        description:
-            'Ты выбираешь 6 упражнений мечты — я строю тренировку вокруг твоих желаний.',
-      ),
-      'протеиновая вкусняшка': _PrizeMeta(
-        icon: Icons.icecream_rounded,
-        description:
-            'Белковый бонус для восстановления и настроения. Вкусно, полезно, по-спортивному.',
-      ),
-      'день ног -50% весов': _PrizeMeta(
-        icon: Icons.fitness_center,
-        description:
-            'Официальная амнистия. Работаем технично, чисто и без геройства.',
-      ),
-      'ревёрс': _PrizeMeta(
-        icon: Icons.swap_calls_rounded,
-        description:
-            'Сегодня ты — тренер. Команды, темп, контроль. Я выполняю.',
-      ),
-      'доп +2 крутки': _PrizeMeta(
-        icon: Icons.casino_rounded,
-        description:
-            'Два дополнительных шанса изменить свою судьбу в розыгрыше.',
-      ),
-      'день пп': _PrizeMeta(
-        icon: Icons.spa_rounded,
-        description:
-            'Идеальное питание без компромиссов. Чисто. Дисциплинированно. Под отчёт.',
-      ),
-      'токсичная планка': _PrizeMeta(
-        icon: Icons.hourglass_bottom_rounded,
-        description:
-            '40 секунд настоящей стойкости. Дополнительная нагрузка — в прямом смысле сверху.',
-      ),
-      'случайный день ног': _PrizeMeta(
-        icon: Icons.shuffle_rounded,
-        description:
-            '6 упражнений из 50 — выбирает случай. Ноги скажут спасибо позже.',
-      ),
-      'реклама в сторис': _PrizeMeta(
-        icon: Icons.campaign_rounded,
-        description: 'Репост закрепа в сторис. Поддержка тренера — дело чести.',
-      ),
-      'братский стульчик': _PrizeMeta(
-        icon: Icons.groups_2_rounded,
-        description:
-            'Командная выдержка. Плечо к плечу, минута характера. Если один — 15 кг в руки.',
-      ),
-    };
-
-    return map[key] ??
-        const _PrizeMeta(
-          icon: Icons.card_giftcard_rounded,
-          description: 'Описание приза появится здесь.',
-        );
-  }
+  _PrizeMeta _metaForPrize(String title) => _prizeMetaByTitle(title);
 
   int _pickWeightedIndex() {
     final total = _prizes.fold<double>(0, (s, p) => s + p.weight);
@@ -832,6 +832,7 @@ class _RouletteCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final colors = Theme.of(context).colorScheme;
+    final prizeLabel = currentPrize;
 
     return Card(
       elevation: 0,
@@ -917,11 +918,22 @@ class _RouletteCard extends StatelessWidget {
             if (!spinning && currentPrize != null && prizes.isNotEmpty)
               Padding(
                 padding: const EdgeInsets.only(top: 6),
-                child: Text(
-                  prizes[selectedIndex].isGood
-                      ? 'Хороший приз ✨'
-                      : 'Не очень приз 😅',
-                  style: Theme.of(context).textTheme.bodySmall,
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(
+                      _prizeMetaByTitle(currentPrize).icon,
+                      size: 16,
+                      color: colors.onSurfaceVariant,
+                    ),
+                    const SizedBox(width: 6),
+                    Text(
+                      prizes[selectedIndex].isGood
+                          ? 'Хороший приз ✨'
+                          : 'Не очень приз 😅',
+                      style: Theme.of(context).textTheme.bodySmall,
+                    ),
+                  ],
                 ),
               ),
           ],
@@ -972,6 +984,40 @@ class _RoulettePainter extends CustomPainter {
         ).createShader(rect);
 
       canvas.drawArc(rect, currentAngle, sweep, true, paint);
+
+      final sectorMid = currentAngle + (sweep / 2);
+      final iconRadius = radius * 0.66;
+      final iconOffset = Offset(
+        center.dx + cos(sectorMid) * iconRadius,
+        center.dy + sin(sectorMid) * iconRadius,
+      );
+      final iconData = _prizeMetaByTitle(item.title).icon;
+      final iconPainter = TextPainter(
+        text: TextSpan(
+          text: String.fromCharCode(iconData.codePoint),
+          style: TextStyle(
+            fontSize: max(11, min(18, sweep * 20)),
+            fontFamily: iconData.fontFamily,
+            package: iconData.fontPackage,
+            color: Colors.white.withOpacity(0.96),
+            shadows: const [
+              Shadow(
+                color: Color(0x55000000),
+                blurRadius: 4,
+                offset: Offset(0, 1),
+              ),
+            ],
+          ),
+        ),
+        textDirection: TextDirection.ltr,
+      )..layout();
+      iconPainter.paint(
+        canvas,
+        Offset(
+          iconOffset.dx - (iconPainter.width / 2),
+          iconOffset.dy - (iconPainter.height / 2),
+        ),
+      );
 
       if (isSuper) {
         final superStripe = Paint()
