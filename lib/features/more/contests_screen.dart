@@ -307,6 +307,13 @@ class _ContestsScreenState extends State<ContestsScreen>
 
   _PrizeMeta _metaForPrize(String title) => _prizeMetaByTitle(title);
 
+  String _fmtDate(DateTime dateTime) {
+    final d = dateTime.day.toString().padLeft(2, '0');
+    final m = dateTime.month.toString().padLeft(2, '0');
+    final y = dateTime.year.toString();
+    return '$d.$m.$y';
+  }
+
   int _pickWeightedIndex() {
     final total = _prizes.fold<double>(0, (s, p) => s + p.weight);
     if (_prizes.isEmpty || total <= 0) return 0;
