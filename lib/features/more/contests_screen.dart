@@ -31,6 +31,7 @@ class _ContestsScreenState extends State<ContestsScreen>
   bool _spinning = false;
   bool _initialized = false;
   String? _currentPrize;
+  final Set<String> _expandedPrizeTitles = <String>{};
 
   double _wheelTurns = 0;
   int _selectedIndex = 0;
@@ -38,59 +39,25 @@ class _ContestsScreenState extends State<ContestsScreen>
   static const List<_PrizeItem> _defaultPrizes = [
     _PrizeItem(
       id: 0,
-      title: 'Суперприз: абонемент на месяц 🎉',
+      title: 'Главный приз: Абонемент',
       weight: 0.02,
       isGood: true,
     ),
+    _PrizeItem(id: 0, title: 'Счастливый день', weight: 0.12, isGood: true),
     _PrizeItem(
       id: 0,
-      title: 'Скидка 50% на следующий абонемент',
-      weight: 0.14,
+      title: 'Протеиновая вкусняшка',
+      weight: 0.11,
       isGood: true,
     ),
-    _PrizeItem(
-      id: 0,
-      title: 'Бесплатная персональная тренировка',
-      weight: 0.14,
-      isGood: true,
-    ),
-    _PrizeItem(
-      id: 0,
-      title: 'Спортивный шейкер в подарок',
-      weight: 0.14,
-      isGood: true,
-    ),
-    _PrizeItem(
-      id: 0,
-      title: 'Протеиновый батончик + вода',
-      weight: 0.12,
-      isGood: true,
-    ),
-    _PrizeItem(
-      id: 0,
-      title: 'Доп. разминка 5 минут 😅',
-      weight: 0.088,
-      isGood: false,
-    ),
-    _PrizeItem(
-      id: 0,
-      title: '10 бурпи после тренировки',
-      weight: 0.088,
-      isGood: false,
-    ),
-    _PrizeItem(id: 0, title: 'Планка +60 секунд', weight: 0.088, isGood: false),
-    _PrizeItem(
-      id: 0,
-      title: '5 приседаний с паузой',
-      weight: 0.088,
-      isGood: false,
-    ),
-    _PrizeItem(
-      id: 0,
-      title: 'Селфи с тренером для архива 😄',
-      weight: 0.088,
-      isGood: false,
-    ),
+    _PrizeItem(id: 0, title: 'День ног -50% весов', weight: 0.10, isGood: true),
+    _PrizeItem(id: 0, title: 'Ревёрс', weight: 0.10, isGood: true),
+    _PrizeItem(id: 0, title: 'Доп +2 крутки', weight: 0.09, isGood: true),
+    _PrizeItem(id: 0, title: 'День ПП', weight: 0.10, isGood: false),
+    _PrizeItem(id: 0, title: 'Токсичная планка', weight: 0.10, isGood: false),
+    _PrizeItem(id: 0, title: 'Случайный день ног', weight: 0.09, isGood: false),
+    _PrizeItem(id: 0, title: 'Реклама в сторис', weight: 0.09, isGood: false),
+    _PrizeItem(id: 0, title: 'Братский стульчик', weight: 0.09, isGood: false),
   ];
 
   @override
@@ -114,7 +81,12 @@ class _ContestsScreenState extends State<ContestsScreen>
 
   Future<void> _ensurePrizesSeeded() async {
     final existing = await _db.getContestPrizes(eventKey: _eventKey);
-    if (existing.isNotEmpty) return;
+    final hasAny = existing.isNotEmpty;
+    final hasNewMainPrize = existing.any(
+      (p) => p.title.trim().toLowerCase() == 'главный приз: абонемент',
+    );
+
+    if (hasAny && hasNewMainPrize) return;
 
     await _db.replaceContestPrizes(
       eventKey: _eventKey,
@@ -226,6 +198,72 @@ class _ContestsScreenState extends State<ContestsScreen>
     if (prize == null) return 0;
     final idx = _prizes.indexWhere((p) => p.title == prize);
     return idx < 0 ? 0 : idx;
+  }
+
+  _PrizeMeta _metaForPrize(String title) {
+    final key = title.trim().toLowerCase();
+    const map = <String, _PrizeMeta>{
+      'главный приз: абонемент': _PrizeMeta(
+        icon: Icons.workspace_premium_rounded,
+        description:
+            'Полноценный доступ к прогрессу. Ходи месяц бесплатно! (почти)',
+      ),
+      'счастливый день': _PrizeMeta(
+        icon: Icons.auto_awesome,
+        description:
+            'Ты выбираешь 6 упражнений мечты — я строю тренировку вокруг твоих желаний.',
+      ),
+      'протеиновая вкусняшка': _PrizeMeta(
+        icon: Icons.icecream_rounded,
+        description:
+            'Белковый бонус для восстановления и настроения. Вкусно, полезно, по-спортивному.',
+      ),
+      'день ног -50% весов': _PrizeMeta(
+        icon: Icons.fitness_center,
+        description:
+            'Официальная амнистия. Работаем технично, чисто и без геройства.',
+      ),
+      'ревёрс': _PrizeMeta(
+        icon: Icons.swap_calls_rounded,
+        description:
+            'Сегодня ты — тренер. Команды, темп, контроль. Я выполняю.',
+      ),
+      'доп +2 крутки': _PrizeMeta(
+        icon: Icons.casino_rounded,
+        description:
+            'Два дополнительных шанса изменить свою судьбу в розыгрыше.',
+      ),
+      'день пп': _PrizeMeta(
+        icon: Icons.spa_rounded,
+        description:
+            'Идеальное питание без компромиссов. Чисто. Дисциплинированно. Под отчёт.',
+      ),
+      'токсичная планка': _PrizeMeta(
+        icon: Icons.hourglass_bottom_rounded,
+        description:
+            '40 секунд настоящей стойкости. Дополнительная нагрузка — в прямом смысле сверху.',
+      ),
+      'случайный день ног': _PrizeMeta(
+        icon: Icons.shuffle_rounded,
+        description:
+            '6 упражнений из 50 — выбирает случай. Ноги скажут спасибо позже.',
+      ),
+      'реклама в сторис': _PrizeMeta(
+        icon: Icons.campaign_rounded,
+        description: 'Репост закрепа в сторис. Поддержка тренера — дело чести.',
+      ),
+      'братский стульчик': _PrizeMeta(
+        icon: Icons.groups_2_rounded,
+        description:
+            'Командная выдержка. Плечо к плечу, минута характера. Если один — 15 кг в руки.',
+      ),
+    };
+
+    return map[key] ??
+        const _PrizeMeta(
+          icon: Icons.card_giftcard_rounded,
+          description: 'Описание приза появится здесь.',
+        );
   }
 
   int _pickWeightedIndex() {
@@ -609,18 +647,86 @@ class _ContestsScreenState extends State<ContestsScreen>
                             Column(
                               children: List.generate(_prizes.length, (i) {
                                 final p = _prizes[i];
-                                return ListTile(
-                                  contentPadding: EdgeInsets.zero,
-                                  title: Text(p.title),
-                                  subtitle: Text(
-                                    p.isGood ? 'Хороший приз' : 'Плохой приз',
-                                  ),
-                                  trailing: IconButton(
-                                    icon: const Icon(Icons.edit_outlined),
-                                    onPressed: () => _openPrizeEditor(
-                                      prize: p,
-                                      sortOrder: i,
+                                final meta = _metaForPrize(p.title);
+                                final opened = _expandedPrizeTitles.contains(
+                                  p.title,
+                                );
+                                return Container(
+                                  margin: const EdgeInsets.only(bottom: 8),
+                                  decoration: BoxDecoration(
+                                    borderRadius: BorderRadius.circular(14),
+                                    border: Border.all(
+                                      color: colors.outlineVariant.withOpacity(
+                                        0.6,
+                                      ),
                                     ),
+                                  ),
+                                  child: ExpansionTile(
+                                    initiallyExpanded: opened,
+                                    onExpansionChanged: (v) {
+                                      setState(() {
+                                        if (v) {
+                                          _expandedPrizeTitles.add(p.title);
+                                        } else {
+                                          _expandedPrizeTitles.remove(p.title);
+                                        }
+                                      });
+                                    },
+                                    leading: CircleAvatar(
+                                      radius: 16,
+                                      backgroundColor: p.isGood
+                                          ? colors.primaryContainer
+                                          : colors.errorContainer,
+                                      child: Icon(
+                                        meta.icon,
+                                        size: 18,
+                                        color: p.isGood
+                                            ? colors.onPrimaryContainer
+                                            : colors.onErrorContainer,
+                                      ),
+                                    ),
+                                    tilePadding: const EdgeInsets.symmetric(
+                                      horizontal: 10,
+                                    ),
+                                    childrenPadding: const EdgeInsets.fromLTRB(
+                                      14,
+                                      0,
+                                      14,
+                                      12,
+                                    ),
+                                    title: Text(p.title),
+                                    subtitle: Text(
+                                      p.isGood ? 'Приз' : 'Анти-приз',
+                                    ),
+                                    trailing: Row(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        IconButton(
+                                          tooltip: 'Редактировать приз',
+                                          icon: const Icon(Icons.edit_outlined),
+                                          onPressed: () => _openPrizeEditor(
+                                            prize: p,
+                                            sortOrder: i,
+                                          ),
+                                        ),
+                                        Icon(
+                                          opened
+                                              ? Icons.expand_less
+                                              : Icons.expand_more,
+                                        ),
+                                      ],
+                                    ),
+                                    children: [
+                                      Align(
+                                        alignment: Alignment.centerLeft,
+                                        child: Text(
+                                          meta.description,
+                                          style: Theme.of(
+                                            context,
+                                          ).textTheme.bodyMedium,
+                                        ),
+                                      ),
+                                    ],
                                   ),
                                 );
                               }),
@@ -816,7 +922,7 @@ class _RoulettePainter extends CustomPainter {
 
     for (var i = 0; i < prizes.length; i++) {
       final item = prizes[i];
-      final isSuper = item.title.toLowerCase().contains('суперприз');
+      final isSuper = item.title.toLowerCase().contains('главный приз');
       final colors = isSuper
           ? [const Color(0xFFFFE082), const Color(0xFFFFB300)]
           : (item.isGood
@@ -899,6 +1005,13 @@ class _PointerPainter extends CustomPainter {
   @override
   bool shouldRepaint(covariant _PointerPainter oldDelegate) =>
       oldDelegate.color != color;
+}
+
+class _PrizeMeta {
+  final IconData icon;
+  final String description;
+
+  const _PrizeMeta({required this.icon, required this.description});
 }
 
 class _PrizeItem {
