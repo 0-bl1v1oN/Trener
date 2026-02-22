@@ -173,11 +173,19 @@ class _ContestsScreenState extends State<ContestsScreen>
 
     await _db.ensureContestTables();
     await _ensurePrizesSeeded();
-    final clients = await _db.getAllClients();
+
     final winners = await _db.getContestWinners(eventKey: _eventKey);
+    final winnerIds = winners.map((w) => w.clientId).toSet();
+
+    final clients = (await _db.getAllClients())
+        .where((c) => c.gender == 'М' && !winnerIds.contains(c.id))
+        .toList(growable: false);
     final prizeRows = await _db.getContestPrizes(eventKey: _eventKey);
 
     String? selected = _selectedClientId;
+    if (selected != null && !clients.any((c) => c.id == selected)) {
+      selected = null;
+    }
     if (selected == null && clients.isNotEmpty) {
       selected = clients.first.id;
     }
