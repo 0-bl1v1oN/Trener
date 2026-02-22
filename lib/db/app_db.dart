@@ -974,18 +974,25 @@ class AppDb extends _$AppDb {
   }) async {
     await _ensurePlanEndAlertOverridesTable();
     final normalized = DateTime(alertOn.year, alertOn.month, alertOn.day);
-    await customStatement(
+    await customUpdate(
       'INSERT OR REPLACE INTO client_plan_end_alert_overrides (client_id, alert_on) VALUES (?, ?)',
-      [clientId, normalized],
+      variables: [
+        Variable.withString(clientId),
+        Variable<DateTime>(normalized),
+      ],
+      updates: {clients},
+      updateKind: UpdateKind.insert,
     );
     notifyUpdates({TableUpdate.onTable(clients)});
   }
 
   Future<void> clearClientPlanEndAlertOverride(String clientId) async {
     await _ensurePlanEndAlertOverridesTable();
-    await customStatement(
+    await customUpdate(
       'DELETE FROM client_plan_end_alert_overrides WHERE client_id = ?',
-      [clientId],
+      variables: [Variable.withString(clientId)],
+      updates: {clients},
+      updateKind: UpdateKind.delete,
     );
     notifyUpdates({TableUpdate.onTable(clients)});
   }
