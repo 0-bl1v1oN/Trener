@@ -79,6 +79,7 @@ class ContestsScreen extends StatefulWidget {
 class _ContestsScreenState extends State<ContestsScreen>
     with SingleTickerProviderStateMixin {
   static const _eventKey = '2026-02-23';
+  static const _extraSpinsPrizeTitle = 'Доп +2 крутки';
 
   late final AppDb _db;
   late final AnimationController _spinController;
@@ -104,24 +105,24 @@ class _ContestsScreenState extends State<ContestsScreen>
     _PrizeItem(
       id: 0,
       title: 'Главный приз: Абонемент',
-      weight: 0.02,
+      weight: 0.01,
       isGood: true,
     ),
+    _PrizeItem(id: 0, title: 'День ПП', weight: 0.10, isGood: false),
     _PrizeItem(id: 0, title: 'Счастливый день', weight: 0.12, isGood: true),
+    _PrizeItem(id: 0, title: 'Токсичная планка', weight: 0.10, isGood: false),
     _PrizeItem(
       id: 0,
       title: 'Протеиновая вкусняшка',
       weight: 0.11,
       isGood: true,
     ),
-    _PrizeItem(id: 0, title: 'День ног -50% весов', weight: 0.10, isGood: true),
-    _PrizeItem(id: 0, title: 'Ревёрс', weight: 0.10, isGood: true),
-    _PrizeItem(id: 0, title: 'Доп +2 крутки', weight: 0.09, isGood: true),
-    _PrizeItem(id: 0, title: 'День ПП', weight: 0.10, isGood: false),
-    _PrizeItem(id: 0, title: 'Токсичная планка', weight: 0.10, isGood: false),
     _PrizeItem(id: 0, title: 'Случайный день ног', weight: 0.09, isGood: false),
+    _PrizeItem(id: 0, title: 'День ног -50% весов', weight: 0.10, isGood: true),
     _PrizeItem(id: 0, title: 'Реклама в сторис', weight: 0.09, isGood: false),
+    _PrizeItem(id: 0, title: 'Ревёрс', weight: 0.10, isGood: true),
     _PrizeItem(id: 0, title: 'Братский стульчик', weight: 0.09, isGood: false),
+    _PrizeItem(id: 0, title: 'Доп +2 крутки', weight: 0.09, isGood: true),
   ];
 
   @override
@@ -189,16 +190,18 @@ class _ContestsScreenState extends State<ContestsScreen>
       );
     }
 
-    final prizes = prizeRows
-        .map(
-          (p) => _PrizeItem(
-            id: p.id,
-            title: p.title,
-            weight: p.weight,
-            isGood: p.isGood,
-          ),
-        )
-        .toList(growable: false);
+    final prizes = _arrangeForWheel(
+      prizeRows
+          .map(
+            (p) => _PrizeItem(
+              id: p.id,
+              title: p.title,
+              weight: p.weight,
+              isGood: p.isGood,
+            ),
+          )
+          .toList(growable: false),
+    );
 
     if (!mounted) return;
     setState(() {
@@ -262,6 +265,33 @@ class _ContestsScreenState extends State<ContestsScreen>
     if (prize == null) return 0;
     final idx = _prizes.indexWhere((p) => p.title == prize);
     return idx < 0 ? 0 : idx;
+  }
+
+  List<_PrizeItem> _arrangeForWheel(List<_PrizeItem> source) {
+    if (source.length <= 2) return source;
+
+    final items = List<_PrizeItem>.from(source);
+    final superIdx = items.indexWhere(
+      (p) => p.title.toLowerCase().contains('главный приз'),
+    );
+
+    _PrizeItem? superPrize;
+    if (superIdx >= 0) {
+      superPrize = items.removeAt(superIdx);
+    }
+
+    final goods = items.where((p) => p.isGood).toList();
+    final bads = items.where((p) => !p.isGood).toList();
+
+    final arranged = <_PrizeItem>[];
+    if (superPrize != null) arranged.add(superPrize);
+
+    while (goods.isNotEmpty || bads.isNotEmpty) {
+      if (bads.isNotEmpty) arranged.add(bads.removeAt(0));
+      if (goods.isNotEmpty) arranged.add(goods.removeAt(0));
+    }
+
+    return arranged;
   }
 
   _PrizeMeta _metaForPrize(String title) => _prizeMetaByTitle(title);
@@ -364,12 +394,25 @@ class _ContestsScreenState extends State<ContestsScreen>
     _spinController.forward(from: 0);
     await Future<void>.delayed(_spinController.duration!);
 
-    final updated = await _db.recordContestSpin(
+    final effectiveMaxAttempts = max(
+      _allowedAttempts,
+      _entry?.maxAttempts ?? _allowedAttempts,
+    );
+
+    var updated = await _db.recordContestSpin(
       eventKey: _eventKey,
       clientId: _selectedClientId!,
-      maxAttempts: _allowedAttempts,
+      maxAttempts: effectiveMaxAttempts,
       prize: _prizes[prizeIndex].title,
     );
+
+    if (_prizes[prizeIndex].title == _extraSpinsPrizeTitle) {
+      updated = await _db.addContestExtraAttempts(
+        eventKey: _eventKey,
+        clientId: _selectedClientId!,
+        delta: 2,
+      );
+    }
 
     if (!mounted) return;
     setState(() {
@@ -378,6 +421,12 @@ class _ContestsScreenState extends State<ContestsScreen>
       _selectedIndex = _indexForPrize(updated.currentPrize);
       _spinning = false;
     });
+
+    if (_prizes[prizeIndex].title == _extraSpinsPrizeTitle) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Бонус: +2 попытки крутки!')),
+      );
+    }
   }
 
   Future<void> _takePrize() async {

@@ -3758,6 +3758,25 @@ class AppDb extends _$AppDb {
     return (await getContestEntry(eventKey: eventKey, clientId: clientId))!;
   }
 
+  Future<ContestEntryVm> addContestExtraAttempts({
+    required String eventKey,
+    required String clientId,
+    required int delta,
+  }) async {
+    await ensureContestTables();
+
+    await customStatement(
+      '''
+      UPDATE app_contest_entries
+      SET max_attempts = max_attempts + ?
+      WHERE event_key = ? AND client_id = ?
+      ''',
+      [delta, eventKey, clientId],
+    );
+
+    return (await getContestEntry(eventKey: eventKey, clientId: clientId))!;
+  }
+
   Future<ContestEntryVm> finalizeContestPrize({
     required String eventKey,
     required String clientId,
