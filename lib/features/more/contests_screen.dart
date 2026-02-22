@@ -342,8 +342,18 @@ class _ContestsScreenState extends State<ContestsScreen>
     final rounds = 4 + _rng.nextInt(3);
     final sectors = _weightedSectors();
     final selected = sectors[prizeIndex];
-    final targetCenter = selected.start + (selected.sweep / 2);
-    final nextTurns = _wheelTurns + rounds + (targetCenter / (2 * pi));
+    final targetCenterTurns =
+        (selected.start + (selected.sweep / 2)) / (2 * pi);
+
+    final currentFraction = _wheelTurns - _wheelTurns.floorToDouble();
+    final targetFractionRaw = 0.75 - targetCenterTurns;
+    final targetFraction =
+        targetFractionRaw - targetFractionRaw.floorToDouble();
+
+    var alignDelta = targetFraction - currentFraction;
+    if (alignDelta < 0) alignDelta += 1;
+
+    final nextTurns = _wheelTurns + rounds + alignDelta;
 
     setState(() {
       _spinning = true;
