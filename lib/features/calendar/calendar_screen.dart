@@ -1981,6 +1981,7 @@ class _CalendarScreenState extends State<CalendarScreen>
     );
 
     await db.syncProgramStateFromClient(client.id);
+    await db.clearClientPlanEndAlertOverride(client.id);
 
     if (!mounted) return;
     final fmt = DateFormat('dd.MM.yyyy', 'ru_RU').format(nextEnd);
@@ -1989,114 +1990,25 @@ class _CalendarScreenState extends State<CalendarScreen>
     );
   }
 
-  Future<void> _setClientPlanDates({
-    required Client client,
-    DateTime? planStart,
-    DateTime? planEnd,
-    required String successText,
-  }) async {
-    final currentStart = client.planStart ?? _selectedDay;
-    final currentEnd =
-        client.planEnd ?? currentStart.add(const Duration(days: 28));
-
-    final nextStart = planStart == null
-        ? DateTime(currentStart.year, currentStart.month, currentStart.day)
-        : DateTime(planStart.year, planStart.month, planStart.day);
-    final nextEnd = planEnd == null
-        ? DateTime(currentEnd.year, currentEnd.month, currentEnd.day)
-        : DateTime(planEnd.year, planEnd.month, planEnd.day);
-
-    await db.upsertClient(
-      ClientsCompanion(
-        id: Value(client.id),
-        name: Value(client.name),
-        gender: Value(client.gender),
-        plan: Value(client.plan),
-        planStart: Value(nextStart),
-        planEnd: Value(nextEnd),
-      ),
+  Future<void> _postponePlanAlert(Client client) async {
+    final initial = client.planEnd ?? _selectedDay;
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: initial,
+      firstDate: DateTime(2020, 1, 1),
+      lastDate: DateTime(2035, 12, 31),
+      locale: const Locale('ru', 'RU'),
     );
 
-    await db.syncProgramStateFromClient(client.id);
+    if (picked == null) return;
+
+    await db.postponeClientPlanEndAlert(clientId: client.id, alertOn: picked);
 
     if (!mounted) return;
-    ScaffoldMessenger.of(
-      context,
-    ).showSnackBar(SnackBar(content: Text(successText)));
-  }
-
-  Future<void> _openPlanDateActions(Client client) async {
-    final colors = Theme.of(context).colorScheme;
-    await showModalBottomSheet(
-      context: context,
-      showDragHandle: true,
-      builder: (context) => SafeArea(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            ListTile(
-              leading: const Icon(Icons.event_repeat),
-              title: const Text('Продлить на +28 дней'),
-              subtitle: const Text('Быстрое продление абонемента'),
-              onTap: () async {
-                Navigator.pop(context);
-                await _extendClientPlan(client);
-              },
-            ),
-            ListTile(
-              leading: const Icon(Icons.event_busy_outlined),
-              title: const Text('Перенести дату окончания'),
-              subtitle: const Text('Указать новую дату окончания'),
-              onTap: () async {
-                Navigator.pop(context);
-                final initial = client.planEnd ?? _selectedDay;
-                final picked = await showDatePicker(
-                  context: this.context,
-                  initialDate: initial,
-                  firstDate: DateTime(2020, 1, 1),
-                  lastDate: DateTime(2035, 12, 31),
-                  locale: const Locale('ru', 'RU'),
-                );
-                if (picked == null) return;
-                await _setClientPlanDates(
-                  client: client,
-                  planEnd: picked,
-                  successText:
-                      'Дата окончания для ${client.name} перенесена на ${DateFormat('dd.MM.yyyy', 'ru_RU').format(picked)}',
-                );
-              },
-            ),
-            ListTile(
-              leading: Icon(Icons.payments_outlined, color: colors.primary),
-              title: const Text('Перенести дату оплаты'),
-              subtitle: const Text('Сдвинуть старт на новую дату (+28 дней)'),
-              onTap: () async {
-                Navigator.pop(context);
-                final initial = client.planStart ?? _selectedDay;
-                final picked = await showDatePicker(
-                  context: this.context,
-                  initialDate: initial,
-                  firstDate: DateTime(2020, 1, 1),
-                  lastDate: DateTime(2035, 12, 31),
-                  locale: const Locale('ru', 'RU'),
-                );
-                if (picked == null) return;
-                final nextEnd = DateTime(
-                  picked.year,
-                  picked.month,
-                  picked.day,
-                ).add(const Duration(days: 28));
-                await _setClientPlanDates(
-                  client: client,
-                  planStart: picked,
-                  planEnd: nextEnd,
-                  successText:
-                      'Дата оплаты для ${client.name} перенесена на ${DateFormat('dd.MM.yyyy', 'ru_RU').format(picked)}',
-                );
-              },
-            ),
-          ],
-        ),
+    final fmt = DateFormat('dd.MM.yyyy', 'ru_RU').format(picked);
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text('Напоминание для ${client.name} перенесено на $fmt'),
       ),
     );
   }
@@ -2322,7 +2234,7 @@ class _CalendarScreenState extends State<CalendarScreen>
             final items = snap.data ?? const <AppointmentWithClient>[];
 
             return StreamBuilder<List<Client>>(
-              stream: db.watchClientsWithPlanEndForDay(_selectedDay),
+              stream: db.watchClientsWithPlanAlertForDay(_selectedDay),
               builder: (context, planSnap) {
                 final expiringClients = planSnap.data ?? const <Client>[];
                 final hasAnyItems =
@@ -2621,24 +2533,22 @@ class _CalendarScreenState extends State<CalendarScreen>
                                   ),
                                 ),
                                 child: ListTile(
-                                  onLongPress: () =>
-                                      _openPlanDateActions(client),
+                                  dense: true,
+                                  onLongPress: () => _postponePlanAlert(client),
                                   leading: Icon(
                                     Icons.warning_amber_rounded,
                                     color: colors.error,
                                   ),
-                                  title: Text(
-                                    'Заканчивается абонемент • ${client.name}',
-                                  ),
+                                  title: Text(client.name),
                                   subtitle: Text(
                                     planEnd.isEmpty
-                                        ? 'Проверьте дату окончания'
-                                        : 'Дата окончания: $planEnd\nУдерживайте карточку для переноса дат',
+                                        ? 'Абонемент заканчивается'
+                                        : 'Абонемент до $planEnd',
                                   ),
                                   trailing: FilledButton.tonalIcon(
                                     onPressed: () => _extendClientPlan(client),
                                     icon: const Icon(Icons.event_repeat),
-                                    label: const Text('+28 дней'),
+                                    label: const Text('+28'),
                                   ),
                                 ),
                               ),

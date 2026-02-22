@@ -381,6 +381,7 @@ class AppDb extends _$AppDb {
     onCreate: (m) async {
       await m.createAll();
       await _ensureProgramDayOverridesTable();
+      await _ensurePlanEndAlertOverridesTable();
       await _seedWorkoutTemplates();
       await _seedWorkoutTemplateExercises();
     },
@@ -388,6 +389,7 @@ class AppDb extends _$AppDb {
     onUpgrade: (m, from, to) async {
       // Продовая миграция: без удаления существующих данных клиентов.
       await _ensureProgramDayOverridesTable();
+      await _ensurePlanEndAlertOverridesTable();
 
       await _seedWorkoutTemplates();
       await _seedWorkoutTemplateExercises();
@@ -402,6 +404,15 @@ class AppDb extends _$AppDb {
         absolute_index INTEGER NOT NULL,
         template_idx INTEGER NOT NULL,
         PRIMARY KEY (client_id, plan_instance, absolute_index)
+      )
+    ''');
+  }
+
+  Future<void> _ensurePlanEndAlertOverridesTable() async {
+    await customStatement('''
+      CREATE TABLE IF NOT EXISTS client_plan_end_alert_overrides (
+        client_id TEXT NOT NULL PRIMARY KEY,
+        alert_on INTEGER NOT NULL
       )
     ''');
   }
