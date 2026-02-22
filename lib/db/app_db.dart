@@ -930,6 +930,60 @@ class AppDb extends _$AppDb {
 
     return q.watch();
   }
+
+  Stream<List<Client>> watchClientsWithPlanAlertForDay(DateTime day) async* {
+    await _ensurePlanEndAlertOverridesTable();
+
+    final dayStart = DateTime(day.year, day.month, day.day);
+    final dayEnd = dayStart.add(const Duration(days: 1));
+
+    final q = customSelect(
+      'SELECT c.id AS client_id '
+      'FROM ${clients.actualTableName} c '
+      'LEFT JOIN client_plan_end_alert_overrides o '
+      'ON o.client_id = c.${clients.id.name} '
+      'WHERE c.${clients.planEnd.name} IS NOT NULL '
+      "AND COALESCE(c.${clients.plan.name}, '') != 'Пробный' "
+      'AND COALESCE(o.alert_on, c.${clients.planEnd.name}) >= ? '
+      'AND COALESCE(o.alert_on, c.${clients.planEnd.name}) < ? '
+      'ORDER BY c.${clients.name.name} ASC',
+      variables: [Variable<DateTime>(dayStart), Variable<DateTime>(dayEnd)],
+      readsFrom: {clients},
+    );
+
+    yield* q.watch().asyncMap((rows) async {
+      final ids = rows.map((r) => r.read<String>('client_id')).toList();
+      if (ids.isEmpty) return <Client>[];
+
+      final rowsById = await (select(
+        clients,
+      )..where((t) => t.id.isIn(ids))).get();
+      final map = {for (final c in rowsById) c.id: c};
+      return ids.map((id) => map[id]).whereType<Client>().toList();
+    });
+  }
+
+  Future<void> postponeClientPlanEndAlert({
+    required String clientId,
+    required DateTime alertOn,
+  }) async {
+    await _ensurePlanEndAlertOverridesTable();
+    final normalized = DateTime(alertOn.year, alertOn.month, alertOn.day);
+    await customStatement(
+      'INSERT OR REPLACE INTO client_plan_end_alert_overrides (client_id, alert_on) VALUES (?, ?)',
+      [clientId, normalized],
+    );
+    notifyUpdates({TableUpdate.onTable(clients)});
+  }
+
+  Future<void> clearClientPlanEndAlertOverride(String clientId) async {
+    await _ensurePlanEndAlertOverridesTable();
+    await customStatement(
+      'DELETE FROM client_plan_end_alert_overrides WHERE client_id = ?',
+      [clientId],
+    );
+    notifyUpdates({TableUpdate.onTable(clients)});
+  }
   // ===== Programs / Workouts =====
 
   int _parsePlanSize(String? plan) {
