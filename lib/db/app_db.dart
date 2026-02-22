@@ -891,11 +891,14 @@ class AppDb extends _$AppDb {
     required DateTime to,
   }) {
     final q = customSelect(
-      "SELECT date(datetime(CASE WHEN ${clients.planEnd.name} > 20000000000 THEN ${clients.planEnd.name} / 1000 ELSE ${clients.planEnd.name} END, 'unixepoch', 'localtime')) AS d, COUNT(*) AS c "
-      'FROM ${clients.actualTableName} '
-      'WHERE ${clients.planEnd.name} IS NOT NULL '
-      'AND ${clients.planEnd.name} >= ? AND ${clients.planEnd.name} < ? '
-      "AND COALESCE(${clients.plan.name}, '') != 'Пробный' "
+      "SELECT date(datetime(CASE WHEN COALESCE(o.alert_on, ${clients.planEnd.name}) > 20000000000 THEN COALESCE(o.alert_on, ${clients.planEnd.name}) / 1000 ELSE COALESCE(o.alert_on, ${clients.planEnd.name}) END, 'unixepoch', 'localtime')) AS d, COUNT(*) AS c "
+      'FROM ${clients.actualTableName} c '
+      'LEFT JOIN client_plan_end_alert_overrides o '
+      'ON o.client_id = c.${clients.id.name} '
+      'WHERE c.${clients.planEnd.name} IS NOT NULL '
+      'AND COALESCE(o.alert_on, c.${clients.planEnd.name}) >= ? '
+      'AND COALESCE(o.alert_on, c.${clients.planEnd.name}) < ? '
+      "AND COALESCE(c.${clients.plan.name}, '') != 'Пробный' "
       'GROUP BY d',
       variables: [Variable<DateTime>(from), Variable<DateTime>(to)],
       readsFrom: {clients},
