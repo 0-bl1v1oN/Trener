@@ -244,8 +244,11 @@ class _ContestsScreenState extends State<ContestsScreen>
 
   int get _usedAttempts => _entry?.usedAttempts ?? 0;
 
+  int get _effectiveMaxAttempts =>
+      max(_allowedAttempts, _entry?.maxAttempts ?? 0);
+
   int get _remainingAttempts =>
-      (_allowedAttempts - _usedAttempts).clamp(0, _allowedAttempts);
+      (_effectiveMaxAttempts - _usedAttempts).clamp(0, _effectiveMaxAttempts);
 
   bool get _isFinalized => (_entry?.finalPrize ?? '').isNotEmpty;
 
@@ -343,7 +346,7 @@ class _ContestsScreenState extends State<ContestsScreen>
       );
       return;
     }
-    if (_allowedAttempts <= 0) {
+    if (_effectiveMaxAttempts <= 0) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text('У клиента нет активного абонемента 4/8/12.'),
@@ -394,15 +397,10 @@ class _ContestsScreenState extends State<ContestsScreen>
     _spinController.forward(from: 0);
     await Future<void>.delayed(_spinController.duration!);
 
-    final effectiveMaxAttempts = max(
-      _allowedAttempts,
-      _entry?.maxAttempts ?? _allowedAttempts,
-    );
-
     var updated = await _db.recordContestSpin(
       eventKey: _eventKey,
       clientId: _selectedClientId!,
-      maxAttempts: effectiveMaxAttempts,
+      maxAttempts: _effectiveMaxAttempts,
       prize: _prizes[prizeIndex].title,
     );
 
@@ -614,7 +612,7 @@ class _ContestsScreenState extends State<ContestsScreen>
                           const SizedBox(height: 10),
                           if (_selectedClient != null)
                             Text(
-                              'Абонемент: ${_selectedClient!.plan ?? '—'} • Попыток: $_allowedAttempts • Осталось: $_remainingAttempts',
+                              'Абонемент: ${_selectedClient!.plan ?? '—'} • Попыток: $_effectiveMaxAttempts • Осталось: $_remainingAttempts',
                               style: Theme.of(context).textTheme.bodyMedium,
                             ),
                           if (_selectedClient != null && !_isMaleClient)
