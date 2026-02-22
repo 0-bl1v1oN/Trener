@@ -153,6 +153,7 @@ class _ClientsScreenState extends State<ClientsScreen> {
                     const SizedBox(height: 10),
                     InkWell(
                       onTap: pickStartDate,
+                      borderRadius: BorderRadius.circular(14),
                       child: InputDecorator(
                         decoration: const InputDecoration(
                           labelText: 'Начало абонемента',
@@ -164,8 +165,8 @@ class _ClientsScreenState extends State<ClientsScreen> {
                     const SizedBox(height: 10),
                     InputDecorator(
                       decoration: fieldDecor(
-                        label: 'Начало абонемента',
-                        icon: Icons.calendar_today_outlined,
+                        label: 'Конец абонемента (+28 дней)',
+                        icon: Icons.event_available_outlined,
                       ),
                       child: Text(_fmtDate(end)),
                     ),
