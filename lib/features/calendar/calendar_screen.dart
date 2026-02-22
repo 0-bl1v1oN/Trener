@@ -1990,6 +1990,52 @@ class _CalendarScreenState extends State<CalendarScreen>
     );
   }
 
+  Future<void> _openPlanAlertActions(Client client) async {
+    final colors = Theme.of(context).colorScheme;
+
+    await showModalBottomSheet(
+      context: context,
+      showDragHandle: true,
+      backgroundColor: colors.surface,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      builder: (context) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(10, 0, 10, 10),
+          child: Wrap(
+            children: [
+              ListTile(
+                contentPadding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 2,
+                ),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(14),
+                ),
+                leading: Container(
+                  width: 34,
+                  height: 34,
+                  decoration: BoxDecoration(
+                    color: colors.primary.withOpacity(0.14),
+                    shape: BoxShape.circle,
+                  ),
+                  child: Icon(Icons.event, color: colors.primary),
+                ),
+                title: const Text('Перенести дату напоминания'),
+                subtitle: const Text('Двигает только красную плашку'),
+                onTap: () async {
+                  Navigator.pop(context);
+                  await _postponePlanAlert(client);
+                },
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
   Future<void> _postponePlanAlert(Client client) async {
     final initial = client.planEnd ?? _selectedDay;
     final picked = await showDatePicker(
@@ -2003,6 +2049,7 @@ class _CalendarScreenState extends State<CalendarScreen>
     if (picked == null) return;
 
     await db.postponeClientPlanEndAlert(clientId: client.id, alertOn: picked);
+    if (mounted) setState(() {});
 
     if (!mounted) return;
     final fmt = DateFormat('dd.MM.yyyy', 'ru_RU').format(picked);
@@ -2534,7 +2581,8 @@ class _CalendarScreenState extends State<CalendarScreen>
                                 ),
                                 child: ListTile(
                                   dense: true,
-                                  onLongPress: () => _postponePlanAlert(client),
+                                  onLongPress: () =>
+                                      _openPlanAlertActions(client),
                                   leading: Icon(
                                     Icons.warning_amber_rounded,
                                     color: colors.error,
