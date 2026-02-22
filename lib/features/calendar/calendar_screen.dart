@@ -427,33 +427,7 @@ class _CalendarScreenState extends State<CalendarScreen>
 
   // --- UI Entry points ---
   Future<void> _openAddMenu({TimeOfDay? prefillTime}) async {
-    await showModalBottomSheet(
-      context: context,
-      showDragHandle: true,
-      builder: (context) => SafeArea(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            ListTile(
-              leading: const Icon(Icons.person_add_alt_1),
-              title: const Text('Новый клиент'),
-              onTap: () async {
-                Navigator.pop(context);
-                await _addNewClientAndAppointment(prefillTime: prefillTime);
-              },
-            ),
-            ListTile(
-              leading: const Icon(Icons.person_search),
-              title: const Text('Существующий клиент'),
-              onTap: () async {
-                Navigator.pop(context);
-                await _addExistingClientAppointment(prefillTime: prefillTime);
-              },
-            ),
-          ],
-        ),
-      ),
-    );
+    await _addExistingClientAppointment(prefillTime: prefillTime);
   }
 
   bool _isCategoryVisible(String id) {
