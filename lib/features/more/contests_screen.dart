@@ -915,14 +915,14 @@ class _RouletteCard extends StatelessWidget {
               textAlign: TextAlign.center,
               style: Theme.of(context).textTheme.bodyMedium,
             ),
-            if (!spinning && currentPrize != null && prizes.isNotEmpty)
+            if (!spinning && prizeLabel != null && prizes.isNotEmpty)
               Padding(
                 padding: const EdgeInsets.only(top: 6),
                 child: Row(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
                     Icon(
-                      _prizeMetaByTitle(currentPrize).icon,
+                      _prizeMetaByTitle(prizeLabel).icon,
                       size: 16,
                       color: colors.onSurfaceVariant,
                     ),
@@ -986,24 +986,30 @@ class _RoulettePainter extends CustomPainter {
       canvas.drawArc(rect, currentAngle, sweep, true, paint);
 
       final sectorMid = currentAngle + (sweep / 2);
-      final iconRadius = radius * 0.66;
+      final iconRadius = radius * 0.64;
       final iconOffset = Offset(
         center.dx + cos(sectorMid) * iconRadius,
         center.dy + sin(sectorMid) * iconRadius,
+      );
+
+      final sectorArcLen = max(1.0, sweep * iconRadius);
+      final iconSize = min(
+        34.0,
+        max(14.0, min(sectorArcLen * 0.62, radius * 0.22)),
       );
       final iconData = _prizeMetaByTitle(item.title).icon;
       final iconPainter = TextPainter(
         text: TextSpan(
           text: String.fromCharCode(iconData.codePoint),
           style: TextStyle(
-            fontSize: max(11, min(18, sweep * 20)),
+            fontSize: iconSize,
             fontFamily: iconData.fontFamily,
             package: iconData.fontPackage,
-            color: Colors.white.withOpacity(0.96),
+            color: Colors.white.withOpacity(0.98),
             shadows: const [
               Shadow(
-                color: Color(0x55000000),
-                blurRadius: 4,
+                color: Color(0x66000000),
+                blurRadius: 5,
                 offset: Offset(0, 1),
               ),
             ],
