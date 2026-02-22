@@ -483,6 +483,18 @@ class _ContestsScreenState extends State<ContestsScreen>
     await _load();
   }
 
+  Future<void> _toggleWinnerCompleted(ContestWinnerVm winner) async {
+    await _db.setContestWinnerCompleted(
+      eventKey: _eventKey,
+      clientId: winner.clientId,
+      isCompleted: !winner.isCompleted,
+    );
+
+    final winners = await _db.getContestWinners(eventKey: _eventKey);
+    if (!mounted) return;
+    setState(() => _winners = winners);
+  }
+
   Future<void> _openPrizeEditor({
     _PrizeItem? prize,
     required int sortOrder,
@@ -833,9 +845,18 @@ class _ContestsScreenState extends State<ContestsScreen>
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Text(
-                            'Архив выдачи призов',
-                            style: Theme.of(context).textTheme.titleMedium,
+                          Row(
+                            children: [
+                              Text(
+                                'Архив выдачи призов',
+                                style: Theme.of(context).textTheme.titleMedium,
+                              ),
+                              const Spacer(),
+                              Text(
+                                'Выполнено: ${_winners.where((w) => w.isCompleted).length}/${_winners.length}',
+                                style: Theme.of(context).textTheme.bodySmall,
+                              ),
+                            ],
                           ),
                           const SizedBox(height: 8),
                           if (_winners.isEmpty)
@@ -844,15 +865,84 @@ class _ContestsScreenState extends State<ContestsScreen>
                             Column(
                               children: _winners
                                   .map(
-                                    (w) => ListTile(
-                                      contentPadding: EdgeInsets.zero,
-                                      title: Text(w.clientName),
-                                      subtitle: Text(w.prize),
-                                      trailing: IconButton(
-                                        tooltip: 'Удалить из архива (тест)',
-                                        onPressed: () =>
-                                            _removeWinnerForTest(w),
-                                        icon: const Icon(Icons.delete_outline),
+                                    (w) => Container(
+                                      margin: const EdgeInsets.only(bottom: 8),
+                                      decoration: BoxDecoration(
+                                        borderRadius: BorderRadius.circular(14),
+                                        color: w.isCompleted
+                                            ? colors.surfaceContainerHighest
+                                            : colors.surface,
+                                        border: Border.all(
+                                          color: w.isCompleted
+                                              ? colors.outline.withOpacity(0.35)
+                                              : colors.primary.withOpacity(
+                                                  0.35,
+                                                ),
+                                        ),
+                                      ),
+                                      child: ListTile(
+                                        contentPadding:
+                                            const EdgeInsets.symmetric(
+                                              horizontal: 10,
+                                              vertical: 2,
+                                            ),
+                                        leading: CircleAvatar(
+                                          backgroundColor: w.isCompleted
+                                              ? Colors.green.withOpacity(0.16)
+                                              : colors.primaryContainer,
+                                          child: Icon(
+                                            w.isCompleted
+                                                ? Icons.verified_rounded
+                                                : Icons.redeem_rounded,
+                                            color: w.isCompleted
+                                                ? Colors.green.shade700
+                                                : colors.onPrimaryContainer,
+                                          ),
+                                        ),
+                                        title: Text(
+                                          w.clientName,
+                                          style: w.isCompleted
+                                              ? Theme.of(context)
+                                                    .textTheme
+                                                    .titleSmall
+                                                    ?.copyWith(
+                                                      decoration: TextDecoration
+                                                          .lineThrough,
+                                                      color: colors
+                                                          .onSurfaceVariant,
+                                                    )
+                                              : null,
+                                        ),
+                                        subtitle: Text(
+                                          '${w.prize} • ${_fmtDate(w.finalizedAt)}',
+                                        ),
+                                        trailing: Row(
+                                          mainAxisSize: MainAxisSize.min,
+                                          children: [
+                                            IconButton.filledTonal(
+                                              tooltip: w.isCompleted
+                                                  ? 'Отметить как не выполнено'
+                                                  : 'Отметить как выполнено',
+                                              onPressed: () =>
+                                                  _toggleWinnerCompleted(w),
+                                              icon: Icon(
+                                                w.isCompleted
+                                                    ? Icons.check_circle
+                                                    : Icons
+                                                          .check_circle_outline,
+                                              ),
+                                            ),
+                                            IconButton(
+                                              tooltip:
+                                                  'Удалить из архива (тест)',
+                                              onPressed: () =>
+                                                  _removeWinnerForTest(w),
+                                              icon: const Icon(
+                                                Icons.delete_outline,
+                                              ),
+                                            ),
+                                          ],
+                                        ),
                                       ),
                                     ),
                                   )

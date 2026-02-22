@@ -355,12 +355,14 @@ class ContestWinnerVm {
   final String clientName;
   final String prize;
   final DateTime finalizedAt;
+  final bool isCompleted;
 
   const ContestWinnerVm({
     required this.clientId,
     required this.clientName,
     required this.prize,
     required this.finalizedAt,
+    required this.isCompleted,
   });
 }
 
@@ -3591,6 +3593,16 @@ class AppDb extends _$AppDb {
         sort_order INTEGER NOT NULL DEFAULT 0
       )
     ''');
+
+    await customStatement('''
+      CREATE TABLE IF NOT EXISTS app_contest_winner_status (
+        event_key TEXT NOT NULL,
+        client_id TEXT NOT NULL,
+        is_completed INTEGER NOT NULL DEFAULT 0,
+        completed_at INTEGER,
+        PRIMARY KEY (event_key, client_id)
+      )
+    ''');
   }
 
   Future<List<ContestPrizeVm>> getContestPrizes({
@@ -3699,6 +3711,10 @@ class AppDb extends _$AppDb {
       'DELETE FROM app_contest_entries WHERE event_key = ? AND client_id = ?',
       [eventKey, clientId],
     );
+    await customStatement(
+      'DELETE FROM app_contest_winner_status WHERE event_key = ? AND client_id = ?',
+      [eventKey, clientId],
+    );
   }
 
   Future<ContestEntryVm?> getContestEntry({
@@ -3799,6 +3815,33 @@ class AppDb extends _$AppDb {
     return (await getContestEntry(eventKey: eventKey, clientId: clientId))!;
   }
 
+  Future<void> setContestWinnerCompleted({
+    required String eventKey,
+    required String clientId,
+    required bool isCompleted,
+  }) async {
+    await ensureContestTables();
+
+    if (!isCompleted) {
+      await customStatement(
+        'DELETE FROM app_contest_winner_status WHERE event_key = ? AND client_id = ?',
+        [eventKey, clientId],
+      );
+      return;
+    }
+
+    final now = DateTime.now().millisecondsSinceEpoch;
+    await customStatement(
+      '''
+      INSERT INTO app_contest_winner_status (event_key, client_id, is_completed, completed_at)
+      VALUES (?, ?, 1, ?)
+      ON CONFLICT(event_key, client_id)
+      DO UPDATE SET is_completed = 1, completed_at = excluded.completed_at
+      ''',
+      [eventKey, clientId, now],
+    );
+  }
+
   Future<List<ContestWinnerVm>> getContestWinners({
     required String eventKey,
   }) async {
@@ -3806,12 +3849,16 @@ class AppDb extends _$AppDb {
 
     final rows = await customSelect(
       '''
-      SELECT e.client_id, c.name, e.final_prize, e.finalized_at
+      SELECT e.client_id, c.name, e.final_prize, e.finalized_at,
+             COALESCE(s.is_completed, 0) AS is_completed
       FROM app_contest_entries e
       LEFT JOIN clients c ON c.id = e.client_id
+      LEFT JOIN app_contest_winner_status s
+        ON s.event_key = e.event_key AND s.client_id = e.client_id
       WHERE e.event_key = ?
         AND e.final_prize IS NOT NULL
       ORDER BY e.finalized_at DESC
+      ORDER BY COALESCE(s.is_completed, 0) ASC, e.finalized_at DESC
       ''',
       variables: [Variable.withString(eventKey)],
       readsFrom: {clients},
@@ -3826,6 +3873,7 @@ class AppDb extends _$AppDb {
             finalizedAt: DateTime.fromMillisecondsSinceEpoch(
               (r.data['finalized_at'] as int?) ?? 0,
             ),
+            isCompleted: ((r.data['is_completed'] as int?) ?? 0) == 1,
           ),
         )
         .toList(growable: false);
