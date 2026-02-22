@@ -3857,7 +3857,6 @@ class AppDb extends _$AppDb {
         ON s.event_key = e.event_key AND s.client_id = e.client_id
       WHERE e.event_key = ?
         AND e.final_prize IS NOT NULL
-      ORDER BY e.finalized_at DESC
       ORDER BY COALESCE(s.is_completed, 0) ASC, e.finalized_at DESC
       ''',
       variables: [Variable.withString(eventKey)],
