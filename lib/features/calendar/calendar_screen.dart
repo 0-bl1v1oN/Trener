@@ -1989,6 +1989,118 @@ class _CalendarScreenState extends State<CalendarScreen>
     );
   }
 
+  Future<void> _setClientPlanDates({
+    required Client client,
+    DateTime? planStart,
+    DateTime? planEnd,
+    required String successText,
+  }) async {
+    final currentStart = client.planStart ?? _selectedDay;
+    final currentEnd =
+        client.planEnd ?? currentStart.add(const Duration(days: 28));
+
+    final nextStart = planStart == null
+        ? DateTime(currentStart.year, currentStart.month, currentStart.day)
+        : DateTime(planStart.year, planStart.month, planStart.day);
+    final nextEnd = planEnd == null
+        ? DateTime(currentEnd.year, currentEnd.month, currentEnd.day)
+        : DateTime(planEnd.year, planEnd.month, planEnd.day);
+
+    await db.upsertClient(
+      ClientsCompanion(
+        id: Value(client.id),
+        name: Value(client.name),
+        gender: Value(client.gender),
+        plan: Value(client.plan),
+        planStart: Value(nextStart),
+        planEnd: Value(nextEnd),
+      ),
+    );
+
+    await db.syncProgramStateFromClient(client.id);
+
+    if (!mounted) return;
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text(successText)));
+  }
+
+  Future<void> _openPlanDateActions(Client client) async {
+    final colors = Theme.of(context).colorScheme;
+    await showModalBottomSheet(
+      context: context,
+      showDragHandle: true,
+      builder: (context) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
+              leading: const Icon(Icons.event_repeat),
+              title: const Text('Продлить на +28 дней'),
+              subtitle: const Text('Быстрое продление абонемента'),
+              onTap: () async {
+                Navigator.pop(context);
+                await _extendClientPlan(client);
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.event_busy_outlined),
+              title: const Text('Перенести дату окончания'),
+              subtitle: const Text('Указать новую дату окончания'),
+              onTap: () async {
+                Navigator.pop(context);
+                final initial = client.planEnd ?? _selectedDay;
+                final picked = await showDatePicker(
+                  context: this.context,
+                  initialDate: initial,
+                  firstDate: DateTime(2020, 1, 1),
+                  lastDate: DateTime(2035, 12, 31),
+                  locale: const Locale('ru', 'RU'),
+                );
+                if (picked == null) return;
+                await _setClientPlanDates(
+                  client: client,
+                  planEnd: picked,
+                  successText:
+                      'Дата окончания для ${client.name} перенесена на ${DateFormat('dd.MM.yyyy', 'ru_RU').format(picked)}',
+                );
+              },
+            ),
+            ListTile(
+              leading: Icon(Icons.payments_outlined, color: colors.primary),
+              title: const Text('Перенести дату оплаты'),
+              subtitle: const Text('Сдвинуть старт на новую дату (+28 дней)'),
+              onTap: () async {
+                Navigator.pop(context);
+                final initial = client.planStart ?? _selectedDay;
+                final picked = await showDatePicker(
+                  context: this.context,
+                  initialDate: initial,
+                  firstDate: DateTime(2020, 1, 1),
+                  lastDate: DateTime(2035, 12, 31),
+                  locale: const Locale('ru', 'RU'),
+                );
+                if (picked == null) return;
+                final nextEnd = DateTime(
+                  picked.year,
+                  picked.month,
+                  picked.day,
+                ).add(const Duration(days: 28));
+                await _setClientPlanDates(
+                  client: client,
+                  planStart: picked,
+                  planEnd: nextEnd,
+                  successText:
+                      'Дата оплаты для ${client.name} перенесена на ${DateFormat('dd.MM.yyyy', 'ru_RU').format(picked)}',
+                );
+              },
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   double? _parseWeight(String raw) {
     final s = raw.trim().replaceAll(',', '.');
     if (s.isEmpty) return null;
@@ -2509,6 +2621,8 @@ class _CalendarScreenState extends State<CalendarScreen>
                                   ),
                                 ),
                                 child: ListTile(
+                                  onLongPress: () =>
+                                      _openPlanDateActions(client),
                                   leading: Icon(
                                     Icons.warning_amber_rounded,
                                     color: colors.error,
@@ -2519,7 +2633,7 @@ class _CalendarScreenState extends State<CalendarScreen>
                                   subtitle: Text(
                                     planEnd.isEmpty
                                         ? 'Проверьте дату окончания'
-                                        : 'Дата окончания: $planEnd',
+                                        : 'Дата окончания: $planEnd\nУдерживайте карточку для переноса дат',
                                   ),
                                   trailing: FilledButton.tonalIcon(
                                     onPressed: () => _extendClientPlan(client),
