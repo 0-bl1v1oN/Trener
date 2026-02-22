@@ -35,6 +35,7 @@ class _ClientsScreenState extends State<ClientsScreen> {
     final ok = await showDialog<bool>(
       context: context,
       builder: (context) {
+        final colors = Theme.of(context).colorScheme;
         return StatefulBuilder(
           builder: (context, setLocalState) {
             Future<void> pickStartDate() async {
@@ -54,18 +55,61 @@ class _ClientsScreenState extends State<ClientsScreen> {
               });
             }
 
+            InputDecoration fieldDecor({
+              required String label,
+              IconData? icon,
+            }) {
+              return InputDecoration(
+                labelText: label,
+                prefixIcon: icon == null ? null : Icon(icon, size: 18),
+                filled: true,
+                fillColor: colors.surfaceContainerHighest.withOpacity(0.35),
+                isDense: true,
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(14),
+                ),
+              );
+            }
+
             return AlertDialog(
-              title: const Text('Новый клиент'),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(24),
+              ),
+              titlePadding: const EdgeInsets.fromLTRB(20, 18, 20, 8),
+              contentPadding: const EdgeInsets.fromLTRB(20, 6, 20, 8),
+              actionsPadding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
+              title: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Новый клиент',
+                    style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                  const SizedBox(height: 6),
+                  Text(
+                    'Заполните данные клиента',
+                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                      color: colors.onSurfaceVariant,
+                    ),
+                  ),
+                ],
+              ),
               content: SingleChildScrollView(
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     TextField(
                       controller: nameController,
-                      decoration: const InputDecoration(labelText: 'Имя'),
+                      decoration: fieldDecor(
+                        label: 'Имя клиента',
+                        icon: Icons.person_outline,
+                      ),
+                      textInputAction: TextInputAction.next,
                       autofocus: true,
                     ),
-                    const SizedBox(height: 12),
+                    const SizedBox(height: 10),
                     DropdownButtonFormField<String>(
                       value: gender,
                       items: const [
@@ -73,16 +117,16 @@ class _ClientsScreenState extends State<ClientsScreen> {
                           value: 'Не указано',
                           child: Text('Не указано'),
                         ),
-                        DropdownMenuItem(value: 'М', child: Text('М')),
-                        DropdownMenuItem(value: 'Ж', child: Text('Ж')),
+                        DropdownMenuItem(value: 'М', child: Text('Мужчина')),
+                        DropdownMenuItem(value: 'Ж', child: Text('Женщина')),
                       ],
                       onChanged: (v) {
                         if (v == null) return;
                         setLocalState(() => gender = v);
                       },
-                      decoration: const InputDecoration(labelText: 'Пол'),
+                      decoration: fieldDecor(label: 'Пол', icon: Icons.wc),
                     ),
-                    const SizedBox(height: 12),
+                    const SizedBox(height: 10),
                     DropdownButtonFormField<String>(
                       value: plan,
                       items: const [
@@ -90,17 +134,23 @@ class _ClientsScreenState extends State<ClientsScreen> {
                           value: 'Пробный',
                           child: Text('Пробный'),
                         ),
-                        DropdownMenuItem(value: '4', child: Text('4')),
-                        DropdownMenuItem(value: '8', child: Text('8')),
-                        DropdownMenuItem(value: '12', child: Text('12')),
+                        DropdownMenuItem(value: '4', child: Text('4 занятия')),
+                        DropdownMenuItem(value: '8', child: Text('8 занятий')),
+                        DropdownMenuItem(
+                          value: '12',
+                          child: Text('12 занятий'),
+                        ),
                       ],
                       onChanged: (v) {
                         if (v == null) return;
                         setLocalState(() => plan = v);
                       },
-                      decoration: const InputDecoration(labelText: 'Абонемент'),
+                      decoration: fieldDecor(
+                        label: 'Абонемент',
+                        icon: Icons.workspace_premium_outlined,
+                      ),
                     ),
-                    const SizedBox(height: 12),
+                    const SizedBox(height: 10),
                     InkWell(
                       onTap: pickStartDate,
                       child: InputDecorator(
@@ -111,11 +161,11 @@ class _ClientsScreenState extends State<ClientsScreen> {
                         child: Text(_fmtDate(start)),
                       ),
                     ),
-                    const SizedBox(height: 12),
+                    const SizedBox(height: 10),
                     InputDecorator(
-                      decoration: const InputDecoration(
-                        labelText: 'Конец абонемента (+28 дней)',
-                        border: OutlineInputBorder(),
+                      decoration: fieldDecor(
+                        label: 'Начало абонемента',
+                        icon: Icons.calendar_today_outlined,
                       ),
                       child: Text(_fmtDate(end)),
                     ),
@@ -127,9 +177,10 @@ class _ClientsScreenState extends State<ClientsScreen> {
                   onPressed: () => Navigator.pop(context, false),
                   child: const Text('Отмена'),
                 ),
-                FilledButton(
+                FilledButton.icon(
                   onPressed: () => Navigator.pop(context, true),
-                  child: const Text('Сохранить'),
+                  icon: const Icon(Icons.check),
+                  label: const Text('Сохранить'),
                 ),
               ],
             );
@@ -377,10 +428,6 @@ class _ClientCard extends StatelessWidget {
     final colors = Theme.of(context).colorScheme;
     final now = DateTime.now();
 
-    final trimmedName = client.name.trim();
-    final titleLetter = trimmedName.isEmpty
-        ? 'К'
-        : trimmedName[0].toUpperCase();
     final subtitleParts = <String>[];
 
     final gender = client.gender ?? '—';
@@ -438,23 +485,6 @@ class _ClientCard extends StatelessWidget {
             child: Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Container(
-                  width: 44,
-                  height: 44,
-                  decoration: BoxDecoration(
-                    color: colors.primary.withOpacity(0.13),
-                    borderRadius: BorderRadius.circular(13),
-                  ),
-                  alignment: Alignment.center,
-                  child: Text(
-                    titleLetter,
-                    style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                      color: colors.primary,
-                      fontWeight: FontWeight.w700,
-                    ),
-                  ),
-                ),
-                const SizedBox(width: 10),
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
