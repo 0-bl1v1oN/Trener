@@ -2049,6 +2049,7 @@ class _CalendarScreenState extends State<CalendarScreen>
     if (picked == null) return;
 
     await db.postponeClientPlanEndAlert(clientId: client.id, alertOn: picked);
+    _setCountsWindow(_focusedDay);
     if (mounted) setState(() {});
 
     if (!mounted) return;

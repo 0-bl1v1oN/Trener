@@ -889,7 +889,9 @@ class AppDb extends _$AppDb {
   Stream<Map<DateTime, int>> watchPlanEndCountsByDay({
     required DateTime from,
     required DateTime to,
-  }) {
+  }) async* {
+    await _ensurePlanEndAlertOverridesTable();
+
     final q = customSelect(
       "SELECT date(datetime(CASE WHEN COALESCE(o.alert_on, ${clients.planEnd.name}) > 20000000000 THEN COALESCE(o.alert_on, ${clients.planEnd.name}) / 1000 ELSE COALESCE(o.alert_on, ${clients.planEnd.name}) END, 'unixepoch', 'localtime')) AS d, COUNT(*) AS c "
       'FROM ${clients.actualTableName} c '
@@ -904,7 +906,7 @@ class AppDb extends _$AppDb {
       readsFrom: {clients},
     );
 
-    return q.watch().map((rows) {
+    yield* q.watch().map((rows) {
       final map = <DateTime, int>{};
       for (final r in rows) {
         final dayStr = r.read<String>('d');
