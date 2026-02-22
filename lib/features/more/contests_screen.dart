@@ -1057,37 +1057,88 @@ class _RouletteCard extends StatelessWidget {
                 ),
               ),
             ),
-            const SizedBox(height: 10),
-            Text(
-              spinning
-                  ? 'Крутим...'
-                  : (currentPrize == null
-                        ? 'Сделайте вращение'
-                        : 'Текущий приз: $currentPrize'),
-              textAlign: TextAlign.center,
-              style: Theme.of(context).textTheme.bodyMedium,
-            ),
-            if (!spinning && prizeLabel != null && prizes.isNotEmpty)
-              Padding(
-                padding: const EdgeInsets.only(top: 6),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Icon(
-                      _prizeMetaByTitle(prizeLabel).icon,
-                      size: 16,
-                      color: colors.onSurfaceVariant,
-                    ),
-                    const SizedBox(width: 6),
-                    Text(
-                      prizes[selectedIndex].isGood
-                          ? 'Хороший приз ✨'
-                          : 'Не очень приз 😅',
-                      style: Theme.of(context).textTheme.bodySmall,
-                    ),
-                  ],
+            const SizedBox(height: 12),
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(14),
+                color: colors.surfaceContainerHighest.withOpacity(0.5),
+                border: Border.all(
+                  color: colors.outlineVariant.withOpacity(0.55),
                 ),
               ),
+              child: Column(
+                children: [
+                  Row(
+                    mainAxisSize: MainAxisSize.min,
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(
+                        spinning
+                            ? Icons.autorenew_rounded
+                            : (prizeLabel == null
+                                  ? Icons.casino_outlined
+                                  : _prizeMetaByTitle(prizeLabel).icon),
+                        size: 18,
+                        color: spinning
+                            ? colors.primary
+                            : colors.onSurfaceVariant,
+                      ),
+                      const SizedBox(width: 8),
+                      Flexible(
+                        child: Text(
+                          spinning
+                              ? 'Вращаем рулетку...'
+                              : (prizeLabel == null
+                                    ? 'Нажмите «Крутить рулетку», чтобы получить приз'
+                                    : prizeLabel),
+                          textAlign: TextAlign.center,
+                          style: Theme.of(context).textTheme.titleSmall
+                              ?.copyWith(fontWeight: FontWeight.w600),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 10,
+                      vertical: 4,
+                    ),
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(999),
+                      color: spinning
+                          ? colors.primary.withOpacity(0.14)
+                          : (prizeLabel == null
+                                ? colors.secondaryContainer
+                                : prizes[selectedIndex].isGood
+                                ? Colors.green.withOpacity(0.15)
+                                : colors.tertiaryContainer),
+                    ),
+                    child: Text(
+                      spinning
+                          ? 'Идет розыгрыш'
+                          : (prizeLabel == null
+                                ? 'Ожидание результата'
+                                : (prizes[selectedIndex].isGood
+                                      ? 'Отличный шанс ✨'
+                                      : 'Испытание характера 😅')),
+                      style: Theme.of(context).textTheme.labelMedium?.copyWith(
+                        color: spinning
+                            ? colors.primary
+                            : (prizeLabel == null
+                                  ? colors.onSecondaryContainer
+                                  : prizes[selectedIndex].isGood
+                                  ? Colors.green.shade700
+                                  : colors.onTertiaryContainer),
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
           ],
         ),
       ),
