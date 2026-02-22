@@ -279,6 +279,23 @@ class _ContestsScreenState extends State<ContestsScreen>
     return _prizes.length - 1;
   }
 
+  List<({double start, double sweep})> _weightedSectors() {
+    if (_prizes.isEmpty) return const [];
+
+    final rawTotal = _prizes.fold<double>(0, (s, p) => s + p.weight);
+    final safeTotal = rawTotal > 0 ? rawTotal : _prizes.length.toDouble();
+
+    var current = -pi / 2;
+    final out = <({double start, double sweep})>[];
+    for (final p in _prizes) {
+      final safeWeight = rawTotal > 0 ? p.weight : 1.0;
+      final sweep = (safeWeight / safeTotal) * 2 * pi;
+      out.add((start: current, sweep: sweep));
+      current += sweep;
+    }
+    return out;
+  }
+
   Future<void> _spinRoulette() async {
     if (_spinning) return;
     if (_selectedClientId == null) return;
@@ -323,8 +340,10 @@ class _ContestsScreenState extends State<ContestsScreen>
 
     final prizeIndex = _pickWeightedIndex();
     final rounds = 4 + _rng.nextInt(3);
-    final targetSector = (2 * pi / _prizes.length) * prizeIndex;
-    final nextTurns = _wheelTurns + rounds + (targetSector / (2 * pi));
+    final sectors = _weightedSectors();
+    final selected = sectors[prizeIndex];
+    final targetCenter = selected.start + (selected.sweep / 2);
+    final nextTurns = _wheelTurns + rounds + (targetCenter / (2 * pi));
 
     setState(() {
       _spinning = true;
@@ -912,7 +931,6 @@ class _RoulettePainter extends CustomPainter {
     final center = Offset(size.width / 2, size.height / 2);
     final radius = size.width / 2;
     final rect = Rect.fromCircle(center: center, radius: radius);
-    final sweep = (2 * pi) / prizes.length;
 
     final bgPaint = Paint()
       ..shader = const RadialGradient(
@@ -920,14 +938,21 @@ class _RoulettePainter extends CustomPainter {
       ).createShader(rect);
     canvas.drawCircle(center, radius, bgPaint);
 
+    final rawTotal = prizes.fold<double>(0, (s, p) => s + p.weight);
+    final safeTotal = rawTotal > 0 ? rawTotal : prizes.length.toDouble();
+
+    var currentAngle = -pi / 2;
+
     for (var i = 0; i < prizes.length; i++) {
       final item = prizes[i];
+      final safeWeight = rawTotal > 0 ? item.weight : 1.0;
+      final sweep = (safeWeight / safeTotal) * 2 * pi;
       final isSuper = item.title.toLowerCase().contains('главный приз');
       final colors = isSuper
           ? [const Color(0xFFFFE082), const Color(0xFFFFB300)]
           : (item.isGood
-                ? [const Color(0xFF64B5F6), const Color(0xFF1976D2)]
-                : [const Color(0xFFFF8A80), const Color(0xFFE53935)]);
+                ? [const Color(0xFFFF8A80), const Color(0xFFE53935)]
+                : [const Color(0xFF64B5F6), const Color(0xFF1976D2)]);
       final paint = Paint()
         ..style = PaintingStyle.fill
         ..shader = LinearGradient(
@@ -936,8 +961,7 @@ class _RoulettePainter extends CustomPainter {
           end: Alignment.bottomRight,
         ).createShader(rect);
 
-      final startAngle = (-pi / 2) + (i * sweep);
-      canvas.drawArc(rect, startAngle, sweep, true, paint);
+      canvas.drawArc(rect, currentAngle, sweep, true, paint);
 
       if (isSuper) {
         final superStripe = Paint()
@@ -946,7 +970,7 @@ class _RoulettePainter extends CustomPainter {
           ..color = const Color(0xFFFFD54F).withOpacity(0.95);
         canvas.drawArc(
           rect.deflate(10),
-          startAngle + (sweep * 0.08),
+          currentAngle + (sweep * 0.08),
           sweep * 0.84,
           false,
           superStripe,
@@ -957,13 +981,23 @@ class _RoulettePainter extends CustomPainter {
         ..style = PaintingStyle.stroke
         ..strokeWidth = 2
         ..color = Colors.white.withOpacity(0.8);
-      final angle = startAngle;
+
       canvas.drawLine(
         center,
-        center + Offset(cos(angle) * radius, sin(angle) * radius),
+        center + Offset(cos(currentAngle) * radius, sin(currentAngle) * radius),
         sep,
       );
+      currentAngle += sweep;
     }
+    final sep = Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 2
+      ..color = Colors.white.withOpacity(0.8);
+    canvas.drawLine(
+      center,
+      center + Offset(cos(currentAngle) * radius, sin(currentAngle) * radius),
+      sep,
+    );
 
     final outer = Paint()
       ..style = PaintingStyle.stroke
