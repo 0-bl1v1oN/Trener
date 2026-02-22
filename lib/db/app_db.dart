@@ -156,6 +156,18 @@ class AppointmentWithClient {
   AppointmentWithClient(this.appointment, this.client);
 }
 
+class PaymentReminderWithClient {
+  final Client client;
+  final DateTime remindOn;
+  final String? note;
+
+  PaymentReminderWithClient({
+    required this.client,
+    required this.remindOn,
+    this.note,
+  });
+}
+
 class WorkoutDayInfo {
   final bool hasPlan;
   final bool doneToday;
@@ -382,6 +394,7 @@ class AppDb extends _$AppDb {
       await m.createAll();
       await _ensureProgramDayOverridesTable();
       await _ensurePlanEndAlertOverridesTable();
+      await _ensureClientPaymentRemindersTable();
       await _seedWorkoutTemplates();
       await _seedWorkoutTemplateExercises();
     },
@@ -390,6 +403,7 @@ class AppDb extends _$AppDb {
       // Продовая миграция: без удаления существующих данных клиентов.
       await _ensureProgramDayOverridesTable();
       await _ensurePlanEndAlertOverridesTable();
+      await _ensureClientPaymentRemindersTable();
 
       await _seedWorkoutTemplates();
       await _seedWorkoutTemplateExercises();
@@ -413,6 +427,16 @@ class AppDb extends _$AppDb {
       CREATE TABLE IF NOT EXISTS client_plan_end_alert_overrides (
         client_id TEXT NOT NULL PRIMARY KEY,
         alert_on INTEGER NOT NULL
+      )
+    ''');
+  }
+
+  Future<void> _ensureClientPaymentRemindersTable() async {
+    await customStatement('''
+      CREATE TABLE IF NOT EXISTS client_payment_reminders (
+        client_id TEXT NOT NULL PRIMARY KEY,
+        remind_on INTEGER NOT NULL,
+        note TEXT
       )
     ''');
   }
@@ -916,6 +940,113 @@ class AppDb extends _$AppDb {
       }
       return map;
     });
+  }
+
+  Stream<Map<DateTime, int>> watchPaymentReminderCountsByDay({
+    required DateTime from,
+    required DateTime to,
+  }) async* {
+    await _ensureClientPaymentRemindersTable();
+
+    final q = customSelect(
+      "SELECT date(datetime(CASE WHEN remind_on > 20000000000 THEN remind_on / 1000 ELSE remind_on END, 'unixepoch', 'localtime')) AS d, COUNT(*) AS c "
+      'FROM client_payment_reminders '
+      'WHERE remind_on >= ? AND remind_on < ? '
+      'GROUP BY d',
+      variables: [Variable<DateTime>(from), Variable<DateTime>(to)],
+      readsFrom: {clients},
+    );
+
+    yield* q.watch().map((rows) {
+      final map = <DateTime, int>{};
+      for (final r in rows) {
+        final dayStr = r.read<String>('d');
+        final cnt = r.read<int>('c');
+        final dt = DateTime.parse(dayStr);
+        map[DateTime(dt.year, dt.month, dt.day)] = cnt;
+      }
+      return map;
+    });
+  }
+
+  Stream<List<PaymentReminderWithClient>> watchClientsWithPaymentReminderForDay(
+    DateTime day,
+  ) async* {
+    await _ensureClientPaymentRemindersTable();
+
+    final dayStart = DateTime(day.year, day.month, day.day);
+    final dayEnd = dayStart.add(const Duration(days: 1));
+
+    final q = customSelect(
+      'SELECT c.id AS client_id, r.remind_on AS remind_on, r.note AS note '
+      'FROM client_payment_reminders r '
+      'INNER JOIN ${clients.actualTableName} c '
+      'ON c.${clients.id.name} = r.client_id '
+      'WHERE r.remind_on >= ? AND r.remind_on < ? '
+      'ORDER BY c.${clients.name.name} ASC',
+      variables: [Variable<DateTime>(dayStart), Variable<DateTime>(dayEnd)],
+      readsFrom: {clients},
+    );
+
+    yield* q.watch().asyncMap((rows) async {
+      if (rows.isEmpty) return <PaymentReminderWithClient>[];
+
+      final ids = rows.map((r) => r.read<String>('client_id')).toList();
+      final clientsRows = await (select(
+        clients,
+      )..where((t) => t.id.isIn(ids))).get();
+      final byId = {for (final c in clientsRows) c.id: c};
+
+      final out = <PaymentReminderWithClient>[];
+      for (final row in rows) {
+        final clientId = row.read<String>('client_id');
+        final client = byId[clientId];
+        if (client == null) continue;
+        final remindOn = row.read<DateTime>('remind_on');
+        final note = row.readNullable<String>('note');
+        out.add(
+          PaymentReminderWithClient(
+            client: client,
+            remindOn: DateTime(remindOn.year, remindOn.month, remindOn.day),
+            note: note,
+          ),
+        );
+      }
+      return out;
+    });
+  }
+
+  Future<void> setClientPaymentReminder({
+    required String clientId,
+    required DateTime remindOn,
+    String? note,
+  }) async {
+    await _ensureClientPaymentRemindersTable();
+    final normalized = DateTime(remindOn.year, remindOn.month, remindOn.day);
+    final cleanNote = note?.trim();
+
+    await customUpdate(
+      "INSERT OR REPLACE INTO client_payment_reminders (client_id, remind_on, note) VALUES (?, ?, NULLIF(?, ''))",
+      variables: [
+        Variable.withString(clientId),
+        Variable<DateTime>(normalized),
+        Variable.withString(cleanNote ?? ''),
+      ],
+      updates: {clients},
+      updateKind: UpdateKind.insert,
+    );
+    notifyUpdates({TableUpdate.onTable(clients)});
+  }
+
+  Future<void> clearClientPaymentReminder(String clientId) async {
+    await _ensureClientPaymentRemindersTable();
+    await customUpdate(
+      'DELETE FROM client_payment_reminders WHERE client_id = ?',
+      variables: [Variable.withString(clientId)],
+      updates: {clients},
+      updateKind: UpdateKind.delete,
+    );
+    notifyUpdates({TableUpdate.onTable(clients)});
   }
 
   Stream<List<Client>> watchClientsWithPlanEndForDay(DateTime day) {
