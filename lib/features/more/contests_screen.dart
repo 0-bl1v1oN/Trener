@@ -1092,7 +1092,9 @@ class _RouletteCard extends StatelessWidget {
                               ? 'Вращаем рулетку...'
                               : (prizeLabel == null
                                     ? 'Нажмите «Крутить рулетку», чтобы получить приз'
-                                    : prizeLabel),
+                                    : (prizes[selectedIndex].isGood
+                                          ? 'Приз 🏆'
+                                          : 'Антиприз☠️')),
                           textAlign: TextAlign.center,
                           style: Theme.of(context).textTheme.titleSmall
                               ?.copyWith(fontWeight: FontWeight.w600),
@@ -1122,8 +1124,8 @@ class _RouletteCard extends StatelessWidget {
                           : (prizeLabel == null
                                 ? 'Ожидание результата'
                                 : (prizes[selectedIndex].isGood
-                                      ? 'Отличный шанс ✨'
-                                      : 'Испытание характера 😅')),
+                                      ? 'Приз 🏆'
+                                      : 'Антиприз☠️')),
                       style: Theme.of(context).textTheme.labelMedium?.copyWith(
                         color: spinning
                             ? colors.primary
