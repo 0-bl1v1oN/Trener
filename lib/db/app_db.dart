@@ -996,6 +996,21 @@ class AppDb extends _$AppDb {
     );
     notifyUpdates({TableUpdate.onTable(clients)});
   }
+
+  Future<DateTime?> getClientEffectivePlanAlertDate(Client client) async {
+    if (client.planEnd == null) return null;
+
+    await _ensurePlanEndAlertOverridesTable();
+    final row = await customSelect(
+      'SELECT alert_on FROM client_plan_end_alert_overrides WHERE client_id = ? LIMIT 1',
+      variables: [Variable.withString(client.id)],
+    ).getSingleOrNull();
+
+    final overrideDate = row?.readNullable<DateTime>('alert_on');
+    final effective = overrideDate ?? client.planEnd;
+    if (effective == null) return null;
+    return DateTime(effective.year, effective.month, effective.day);
+  }
   // ===== Programs / Workouts =====
 
   int _parsePlanSize(String? plan) {

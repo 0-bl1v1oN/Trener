@@ -1957,7 +1957,8 @@ class _CalendarScreenState extends State<CalendarScreen>
   Future<void> _extendClientPlan(Client client, {int days = 28}) async {
     if (client.plan == null || client.plan == 'Пробный') return;
 
-    final base = client.planEnd ?? _selectedDay;
+    final effectiveAlertDate = await db.getClientEffectivePlanAlertDate(client);
+    final base = effectiveAlertDate ?? client.planEnd ?? _selectedDay;
     final baseDate = DateTime(base.year, base.month, base.day);
     final nextEnd = baseDate.add(Duration(days: days));
 
@@ -1967,15 +1968,7 @@ class _CalendarScreenState extends State<CalendarScreen>
         name: Value(client.name),
         gender: Value(client.gender),
         plan: Value(client.plan),
-        planStart: client.planStart == null
-            ? Value(
-                DateTime(
-                  _selectedDay.year,
-                  _selectedDay.month,
-                  _selectedDay.day,
-                ),
-              )
-            : Value(client.planStart!),
+        planStart: Value(baseDate),
         planEnd: Value(nextEnd),
       ),
     );
@@ -1984,9 +1977,12 @@ class _CalendarScreenState extends State<CalendarScreen>
     await db.clearClientPlanEndAlertOverride(client.id);
 
     if (!mounted) return;
-    final fmt = DateFormat('dd.MM.yyyy', 'ru_RU').format(nextEnd);
+    final startFmt = DateFormat('dd.MM.yyyy', 'ru_RU').format(baseDate);
+    final endFmt = DateFormat('dd.MM.yyyy', 'ru_RU').format(nextEnd);
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('Абонемент ${client.name} продлён до $fmt')),
+      SnackBar(
+        content: Text('Абонемент ${client.name}: с $startFmt до $endFmt'),
+      ),
     );
   }
 
