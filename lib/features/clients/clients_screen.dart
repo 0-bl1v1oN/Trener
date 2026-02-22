@@ -237,28 +237,123 @@ class _ClientsScreenState extends State<ClientsScreen> {
               );
             }
 
-            return ListView.separated(
+            final maleCount = clients.where((c) => c.gender == 'М').length;
+            final femaleCount = clients.where((c) => c.gender == 'Ж').length;
+
+            return ListView(
               padding: const EdgeInsets.fromLTRB(12, 12, 12, 20),
-              itemCount: clients.length,
-              separatorBuilder: (_, __) => const SizedBox(height: 10),
-              itemBuilder: (context, index) {
-                final c = clients[index];
-                return _ClientCard(
-                  client: c,
-                  dateText: (c.planStart != null && c.planEnd != null)
+              children: [
+                _ClientsSummaryCard(
+                  total: clients.length,
+                  male: maleCount,
+                  female: femaleCount,
+                ),
+                const SizedBox(height: 12),
+                ...clients.map((c) {
+                  final dateText = (c.planStart != null && c.planEnd != null)
                       ? '${_fmtDate(c.planStart!)} – ${_fmtDate(c.planEnd!)}'
-                      : null,
-                  onTap: () async {
-                    await context.push('/clients/${c.id}');
-                    if (!mounted) return;
-                    setState(() {});
-                  },
-                  onDelete: () => _deleteClient(c.id),
-                );
-              },
+                      : null;
+                  return Padding(
+                    padding: const EdgeInsets.only(bottom: 10),
+                    child: _ClientCard(
+                      client: c,
+                      dateText: dateText,
+                      onTap: () async {
+                        await context.push('/clients/${c.id}');
+                        if (!mounted) return;
+                        setState(() {});
+                      },
+                      onDelete: () => _deleteClient(c.id),
+                    ),
+                  );
+                }),
+              ],
             );
           },
         ),
+      ),
+    );
+  }
+}
+
+class _ClientsSummaryCard extends StatelessWidget {
+  const _ClientsSummaryCard({
+    required this.total,
+    required this.male,
+    required this.female,
+  });
+
+  final int total;
+  final int male;
+  final int female;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(20),
+        gradient: LinearGradient(
+          colors: [
+            colors.primary.withOpacity(0.16),
+            colors.secondary.withOpacity(0.08),
+          ],
+        ),
+        border: Border.all(color: colors.primary.withOpacity(0.24)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'База клиентов',
+            style: Theme.of(
+              context,
+            ).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w700),
+          ),
+          const SizedBox(height: 10),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              _SummaryChip(
+                icon: Icons.groups_2_outlined,
+                label: 'Всего: $total',
+              ),
+              _SummaryChip(icon: Icons.male, label: 'М: $male'),
+              _SummaryChip(icon: Icons.female, label: 'Ж: $female'),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _SummaryChip extends StatelessWidget {
+  const _SummaryChip({required this.icon, required this.label});
+
+  final IconData icon;
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+      decoration: BoxDecoration(
+        color: colors.surface.withOpacity(0.75),
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: colors.outlineVariant.withOpacity(0.5)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 16, color: colors.primary),
+          const SizedBox(width: 6),
+          Text(label),
+        ],
       ),
     );
   }
@@ -280,69 +375,174 @@ class _ClientCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final colors = Theme.of(context).colorScheme;
+    final now = DateTime.now();
+
+    final trimmedName = client.name.trim();
+    final titleLetter = trimmedName.isEmpty
+        ? 'К'
+        : trimmedName[0].toUpperCase();
     final subtitleParts = <String>[];
 
-    if (client.gender != null) {
-      subtitleParts.add('Пол: ${client.gender}');
+    final gender = client.gender ?? '—';
+    final plan = client.plan ?? '—';
+
+    int? daysLeft;
+    if (client.planEnd != null) {
+      final end = DateTime(
+        client.planEnd!.year,
+        client.planEnd!.month,
+        client.planEnd!.day,
+      );
+      final today = DateTime(now.year, now.month, now.day);
+      daysLeft = end.difference(today).inDays;
     }
-    if (client.plan != null) {
-      subtitleParts.add('Абонемент: ${client.plan}');
+    Color statusColor = colors.primary;
+    String statusText = 'Без даты';
+    if (daysLeft != null) {
+      if (daysLeft < 0) {
+        statusColor = colors.error;
+        statusText = 'Истёк';
+      } else if (daysLeft <= 3) {
+        statusColor = colors.tertiary;
+        statusText = 'Скоро конец';
+      } else {
+        statusColor = colors.primary;
+        statusText = 'Активен';
+      }
     }
 
-    return Card(
-      elevation: 0,
-      color: colors.surface,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(16),
-        side: BorderSide(color: colors.outlineVariant.withOpacity(0.7)),
-      ),
+    return Material(
+      color: Colors.transparent,
       child: InkWell(
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(20),
         onTap: onTap,
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(14, 12, 8, 12),
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      client.name,
-                      style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                    const SizedBox(height: 4),
-                    if (subtitleParts.isNotEmpty)
-                      Text(
-                        subtitleParts.join(' • '),
-                        style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                          color: colors.onSurfaceVariant,
-                        ),
-                      ),
-                    if (dateText != null) ...[
-                      const SizedBox(height: 2),
-                      Text(
-                        dateText!,
-                        style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                          color: colors.onSurfaceVariant,
-                        ),
-                      ),
-                    ],
-                  ],
-                ),
-              ),
-              IconButton(
-                icon: const Icon(Icons.delete_outline),
-                tooltip: 'Удалить',
-                color: colors.error,
-                onPressed: onDelete,
+        child: Ink(
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(20),
+            border: Border.all(color: colors.outlineVariant.withOpacity(0.5)),
+            gradient: LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: [colors.surface, colors.primary.withOpacity(0.03)],
+            ),
+            boxShadow: [
+              BoxShadow(
+                color: colors.shadow.withOpacity(0.04),
+                blurRadius: 12,
+                offset: const Offset(0, 6),
               ),
             ],
           ),
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(12, 12, 10, 12),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Container(
+                  width: 44,
+                  height: 44,
+                  decoration: BoxDecoration(
+                    color: colors.primary.withOpacity(0.13),
+                    borderRadius: BorderRadius.circular(13),
+                  ),
+                  alignment: Alignment.center,
+                  child: Text(
+                    titleLetter,
+                    style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                      color: colors.primary,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        client.name,
+                        style: Theme.of(context).textTheme.titleMedium
+                            ?.copyWith(fontWeight: FontWeight.w700),
+                      ),
+                      const SizedBox(height: 8),
+                      Wrap(
+                        spacing: 8,
+                        runSpacing: 8,
+                        children: [
+                          _MetaChip(icon: Icons.wc, label: 'Пол: $gender'),
+                          _MetaChip(
+                            icon: Icons.workspace_premium,
+                            label: 'Абонемент: $plan',
+                          ),
+                          _MetaChip(
+                            icon: Icons.circle,
+                            iconColor: statusColor,
+                            label: statusText,
+                          ),
+                        ],
+                      ),
+                      if (dateText != null) ...[
+                        const SizedBox(height: 8),
+                        Row(
+                          children: [
+                            Icon(
+                              Icons.event_available,
+                              size: 16,
+                              color: colors.onSurfaceVariant,
+                            ),
+                            const SizedBox(width: 6),
+                            Expanded(
+                              child: Text(
+                                dateText!,
+                                style: Theme.of(context).textTheme.bodyMedium
+                                    ?.copyWith(color: colors.onSurfaceVariant),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ],
+                  ),
+                ),
+                IconButton(
+                  icon: const Icon(Icons.delete_outline),
+                  tooltip: 'Удалить',
+                  color: colors.error,
+                  onPressed: onDelete,
+                ),
+              ],
+            ),
+          ),
         ),
+      ),
+    );
+  }
+}
+
+class _MetaChip extends StatelessWidget {
+  const _MetaChip({required this.icon, required this.label, this.iconColor});
+
+  final IconData icon;
+  final String label;
+  final Color? iconColor;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 6),
+      decoration: BoxDecoration(
+        color: colors.surfaceContainerHighest.withOpacity(0.45),
+        borderRadius: BorderRadius.circular(999),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 14, color: iconColor ?? colors.primary),
+          const SizedBox(width: 6),
+          Text(label, style: Theme.of(context).textTheme.labelMedium),
+        ],
       ),
     );
   }
