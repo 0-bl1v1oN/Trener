@@ -191,7 +191,7 @@ class AppShell extends StatelessWidget {
               fallback: Icons.menu_rounded,
               size: 30,
             ),
-            label: '',
+            label: 'Меню',
           ),
           NavigationDestination(
             icon: _NavPngIcon(

@@ -3115,11 +3115,8 @@ class _CalendarScreenState extends State<CalendarScreen>
                                                 tooltip: done
                                                     ? 'Снять отметку выполнения'
                                                     : 'Проверить и отметить выполненной',
-                                                icon: Icon(
-                                                  done
-                                                      ? Icons.check_circle
-                                                      : Icons
-                                                            .radio_button_unchecked,
+                                                icon: _DoneTogglePngIcon(
+                                                  done: done,
                                                 ),
                                                 onPressed: () async {
                                                   if (done) {
@@ -3203,6 +3200,26 @@ class _CalendarScreenState extends State<CalendarScreen>
           },
         ),
       ),
+    );
+  }
+}
+
+class _DoneTogglePngIcon extends StatelessWidget {
+  const _DoneTogglePngIcon({required this.done});
+
+  final bool done;
+
+  @override
+  Widget build(BuildContext context) {
+    return Image.asset(
+      done
+          ? 'assets/calendar/check_done.png'
+          : 'assets/calendar/check_default.png',
+      width: 22,
+      height: 22,
+      fit: BoxFit.contain,
+      errorBuilder: (_, __, ___) =>
+          Icon(done ? Icons.check_circle : Icons.radio_button_unchecked),
     );
   }
 }
