@@ -595,7 +595,10 @@ class _WorkoutPreviewSheetState extends State<WorkoutPreviewSheet> {
     if (ok != true) return;
 
     final db = AppDbScope.of(context);
-    await db.deleteWorkoutTemplateExercise(e.templateExerciseId);
+    await db.deleteWorkoutExerciseForClient(
+      clientId: widget.clientId,
+      templateExerciseId: e.templateExerciseId,
+    );
     if (!mounted) return;
     await _refresh();
   }
@@ -645,7 +648,11 @@ class _WorkoutPreviewSheetState extends State<WorkoutPreviewSheet> {
       return;
     }
 
-    await db.addWorkoutTemplateExercise(templateId: templateId, name: name);
+    await db.addWorkoutExerciseForClient(
+      clientId: widget.clientId,
+      templateId: templateId,
+      name: name,
+    );
     if (!mounted) return;
     await _refresh();
   }

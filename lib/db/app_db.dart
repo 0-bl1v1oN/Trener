@@ -398,6 +398,8 @@ class AppDb extends _$AppDb {
       await _ensurePlanEndAlertOverridesTable();
       await _ensureClientPaymentRemindersTable();
       await _ensureClientExerciseNameOverridesTable();
+      await _ensureClientHiddenExercisesTable();
+      await _ensureClientAddedExercisesTable();
       await _seedWorkoutTemplates();
       await _seedWorkoutTemplateExercises();
     },
@@ -408,6 +410,8 @@ class AppDb extends _$AppDb {
       await _ensurePlanEndAlertOverridesTable();
       await _ensureClientPaymentRemindersTable();
       await _ensureClientExerciseNameOverridesTable();
+      await _ensureClientHiddenExercisesTable();
+      await _ensureClientAddedExercisesTable();
 
       await _seedWorkoutTemplates();
       await _seedWorkoutTemplateExercises();
@@ -454,6 +458,109 @@ class AppDb extends _$AppDb {
         PRIMARY KEY (client_id, template_exercise_id)
       )
     ''');
+  }
+
+  Future<void> _ensureClientHiddenExercisesTable() async {
+    await customStatement('''
+      CREATE TABLE IF NOT EXISTS client_hidden_exercises (
+        client_id TEXT NOT NULL,
+        template_exercise_id INTEGER NOT NULL,
+        PRIMARY KEY (client_id, template_exercise_id)
+      )
+    ''');
+  }
+
+  Future<void> _ensureClientAddedExercisesTable() async {
+    await customStatement('''
+      CREATE TABLE IF NOT EXISTS client_added_exercises (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        client_id TEXT NOT NULL,
+        template_id INTEGER NOT NULL,
+        order_index INTEGER NOT NULL,
+        name TEXT NOT NULL
+      )
+    ''');
+  }
+
+  Future<List<({int id, int templateId, int orderIndex, String name})>>
+  _getEffectiveExercisesForClientTemplate({
+    required String clientId,
+    required int templateId,
+  }) async {
+    await _ensureClientExerciseNameOverridesTable();
+    await _ensureClientHiddenExercisesTable();
+    await _ensureClientAddedExercisesTable();
+
+    final baseExercises =
+        await (select(workoutTemplateExercises)
+              ..where((e) => e.templateId.equals(templateId))
+              ..orderBy([(e) => OrderingTerm.asc(e.orderIndex)]))
+            .get();
+
+    final hiddenRows = await customSelect(
+      '''
+      SELECT template_exercise_id
+      FROM client_hidden_exercises
+      WHERE client_id = ?
+      ''',
+      variables: [Variable.withString(clientId)],
+    ).get();
+    final hiddenIds = {
+      for (final r in hiddenRows) (r.data['template_exercise_id'] as int?) ?? 0,
+    }..remove(0);
+
+    final nameOverrideRows = await customSelect(
+      '''
+      SELECT template_exercise_id, custom_name
+      FROM client_exercise_name_overrides
+      WHERE client_id = ?
+      ''',
+      variables: [Variable.withString(clientId)],
+    ).get();
+    final nameOverrides = {
+      for (final r in nameOverrideRows)
+        (r.data['template_exercise_id'] as int?) ?? 0:
+            (r.data['custom_name'] as String?) ?? '',
+    }..remove(0);
+
+    final addedRows = await customSelect(
+      '''
+      SELECT id, template_id, order_index, name
+      FROM client_added_exercises
+      WHERE client_id = ? AND template_id = ?
+      ORDER BY order_index ASC, id ASC
+      ''',
+      variables: [Variable.withString(clientId), Variable.withInt(templateId)],
+    ).get();
+
+    final merged = <({int id, int templateId, int orderIndex, String name})>[];
+
+    for (final e in baseExercises) {
+      if (hiddenIds.contains(e.id)) continue;
+      merged.add((
+        id: e.id,
+        templateId: e.templateId,
+        orderIndex: e.orderIndex,
+        name: nameOverrides[e.id] ?? e.name,
+      ));
+    }
+
+    for (final r in addedRows) {
+      merged.add((
+        id: -((r.data['id'] as int?) ?? 0),
+        templateId: (r.data['template_id'] as int?) ?? templateId,
+        orderIndex: (r.data['order_index'] as int?) ?? 0,
+        name: (r.data['name'] as String?) ?? 'Упражнение',
+      ));
+    }
+
+    merged.sort((a, b) {
+      final byOrder = a.orderIndex.compareTo(b.orderIndex);
+      if (byOrder != 0) return byOrder;
+      return a.id.compareTo(b.id);
+    });
+
+    return merged;
   }
 
   Future<Map<int, int>> _getProgramDayOverrides({
@@ -2386,11 +2493,10 @@ class AppDb extends _$AppDb {
             ))
             .getSingle();
 
-    final ex =
-        await (select(workoutTemplateExercises)
-              ..where((e) => e.templateId.equals(t.id))
-              ..orderBy([(e) => OrderingTerm.asc(e.orderIndex)]))
-            .get();
+    final ex = await _getEffectiveExercisesForClientTemplate(
+      clientId: clientId,
+      templateId: t.id,
+    );
 
     // результаты (если есть session)
     Map<int, (double? kg, int? reps)> resMap = {};
@@ -2411,25 +2517,10 @@ class AppDb extends _$AppDb {
     final overrideMap = {
       for (final o in overrideRows) o.templateExerciseId: o.supersetGroup,
     };
-    await _ensureClientExerciseNameOverridesTable();
-    final nameOverrideRows = await customSelect(
-      '''
-      SELECT template_exercise_id, custom_name
-      FROM client_exercise_name_overrides
-      WHERE client_id = ?
-      ''',
-      variables: [Variable.withString(clientId)],
-    ).get();
-    final nameOverrides = {
-      for (final r in nameOverrideRows)
-        (r.data['template_exercise_id'] as int?) ?? 0:
-            (r.data['custom_name'] as String?) ?? '',
-    }..remove(0);
 
     final list = ex.map((e) {
       final rr = resMap[e.id]; // (kg, reps)
       final sg = overrideMap[e.id]; // supersetGroup (для клиента)
-      final name = nameOverrides[e.id] ?? e.name;
 
       return WorkoutExerciseVm(
         templateExerciseId: e.id,
@@ -2441,7 +2532,7 @@ class AppDb extends _$AppDb {
         // ✅ суперсет берём ТОЛЬКО из overrides
         supersetGroup: sg,
 
-        name: name,
+        name: e.name,
         lastWeightKg: rr?.$1,
         lastReps: rr?.$2,
       );
@@ -2676,12 +2767,11 @@ class AppDb extends _$AppDb {
             ))
             .getSingle();
 
-    // упражнения шаблона
-    final ex =
-        await (select(workoutTemplateExercises)
-              ..where((e) => e.templateId.equals(t.id))
-              ..orderBy([(e) => OrderingTerm.asc(e.orderIndex)]))
-            .get();
+    // упражнения шаблона (с учётом локальных правок клиента)
+    final ex = await _getEffectiveExercisesForClientTemplate(
+      clientId: clientId,
+      templateId: t.id,
+    );
 
     // overrides (суперсеты) для клиента
     final overrideRows = await (select(
@@ -2691,20 +2781,6 @@ class AppDb extends _$AppDb {
     final overrideMap = {
       for (final o in overrideRows) o.templateExerciseId: o.supersetGroup,
     };
-    await _ensureClientExerciseNameOverridesTable();
-    final nameOverrideRows = await customSelect(
-      '''
-      SELECT template_exercise_id, custom_name
-      FROM client_exercise_name_overrides
-      WHERE client_id = ?
-      ''',
-      variables: [Variable.withString(clientId)],
-    ).get();
-    final nameOverrides = {
-      for (final r in nameOverrideRows)
-        (r.data['template_exercise_id'] as int?) ?? 0:
-            (r.data['custom_name'] as String?) ?? '',
-    }..remove(0);
 
     // ✅ Берём ПОСЛЕДНИЙ результат из истории для каждого упражнения этого шаблона
     final exIds = ex.map((e) => e.id).toList();
@@ -2737,13 +2813,12 @@ class AppDb extends _$AppDb {
     return ex.map((e) {
       final rr = lastMap[e.id]; // (kg, reps)
       final sg = overrideMap[e.id]; // supersetGroup (для клиента)
-      final name = nameOverrides[e.id] ?? e.name;
 
       return WorkoutExerciseVm(
         templateExerciseId: e.id,
         templateId: e.templateId,
         orderIndex: e.orderIndex,
-        name: name,
+        name: e.name,
         lastWeightKg: rr?.$1,
         lastReps: rr?.$2,
         supersetGroup: sg,
@@ -3103,6 +3178,16 @@ class AppDb extends _$AppDb {
     if (normalized.isEmpty) return;
 
     await _ensureClientExerciseNameOverridesTable();
+    await _ensureClientAddedExercisesTable();
+
+    if (templateExerciseId < 0) {
+      final addedId = -templateExerciseId;
+      await customStatement(
+        'UPDATE client_added_exercises SET name = ? WHERE id = ? AND client_id = ?',
+        [normalized, addedId, clientId],
+      );
+      return;
+    }
 
     final base =
         await (select(workoutTemplateExercises)
@@ -3127,6 +3212,90 @@ class AppDb extends _$AppDb {
       DO UPDATE SET custom_name = excluded.custom_name
       ''',
       [clientId, templateExerciseId, normalized],
+    );
+  }
+
+  Future<void> addWorkoutExerciseForClient({
+    required String clientId,
+    required int templateId,
+    required String name,
+  }) async {
+    final normalized = name.trim();
+    if (normalized.isEmpty) return;
+
+    await _ensureClientAddedExercisesTable();
+
+    final baseMax = await customSelect(
+      'SELECT MAX(order_index) AS m FROM ${workoutTemplateExercises.actualTableName} WHERE template_id = ?',
+      variables: [Variable.withInt(templateId)],
+      readsFrom: {workoutTemplateExercises},
+    ).getSingle();
+
+    final addedMax = await customSelect(
+      'SELECT MAX(order_index) AS m FROM client_added_exercises WHERE client_id = ? AND template_id = ?',
+      variables: [Variable.withString(clientId), Variable.withInt(templateId)],
+    ).getSingle();
+
+    final maxOrder = [
+      (baseMax.data['m'] as int?) ?? -1,
+      (addedMax.data['m'] as int?) ?? -1,
+    ].reduce((a, b) => a > b ? a : b);
+
+    await customStatement(
+      'INSERT INTO client_added_exercises (client_id, template_id, order_index, name) VALUES (?, ?, ?, ?)',
+      [clientId, templateId, maxOrder + 1, normalized],
+    );
+  }
+
+  Future<void> deleteWorkoutExerciseForClient({
+    required String clientId,
+    required int templateExerciseId,
+  }) async {
+    await _ensureClientAddedExercisesTable();
+    await _ensureClientHiddenExercisesTable();
+    await _ensureClientExerciseNameOverridesTable();
+
+    if (templateExerciseId < 0) {
+      final addedId = -templateExerciseId;
+      await customStatement(
+        'DELETE FROM client_added_exercises WHERE id = ? AND client_id = ?',
+        [addedId, clientId],
+      );
+      await customStatement(
+        'DELETE FROM client_template_exercise_overrides WHERE client_id = ? AND template_exercise_id = ?',
+        [clientId, templateExerciseId],
+      );
+      await customStatement(
+        'DELETE FROM client_exercise_name_overrides WHERE client_id = ? AND template_exercise_id = ?',
+        [clientId, templateExerciseId],
+      );
+      return;
+    }
+
+    final base =
+        await (select(workoutTemplateExercises)
+              ..where((e) => e.id.equals(templateExerciseId))
+              ..limit(1))
+            .getSingleOrNull();
+    if (base == null) return;
+
+    await customStatement(
+      '''
+      INSERT INTO client_hidden_exercises (client_id, template_exercise_id)
+      VALUES (?, ?)
+      ON CONFLICT(client_id, template_exercise_id)
+      DO NOTHING
+      ''',
+      [clientId, templateExerciseId],
+    );
+
+    await customStatement(
+      'DELETE FROM client_template_exercise_overrides WHERE client_id = ? AND template_exercise_id = ?',
+      [clientId, templateExerciseId],
+    );
+    await customStatement(
+      'DELETE FROM client_exercise_name_overrides WHERE client_id = ? AND template_exercise_id = ?',
+      [clientId, templateExerciseId],
     );
   }
 
@@ -3530,7 +3699,7 @@ class AppDb extends _$AppDb {
     return rows
         .map(
           (r) => ExpenseEntryVm(
-            id: (r.data['id'] as int?) ?? 0,
+            id: -((r.data['id'] as int?) ?? 0),
             date: DateTime.fromMillisecondsSinceEpoch(
               (r.data['happened_at'] as int?) ?? 0,
             ),
@@ -3702,7 +3871,7 @@ class AppDb extends _$AppDb {
     return rows
         .map(
           (r) => ContestPrizeVm(
-            id: (r.data['id'] as int?) ?? 0,
+            id: -((r.data['id'] as int?) ?? 0),
             title: (r.data['title'] as String?) ?? 'Приз',
             weight:
                 (r.data['weight'] as double?) ??

@@ -333,7 +333,11 @@ class _WorkoutScreenState extends State<WorkoutScreen> {
 
     if (name == null || name.trim().isEmpty) return;
 
-    await db.addWorkoutTemplateExercise(templateId: templateId, name: name);
+    await db.addWorkoutExerciseForClient(
+      clientId: widget.clientId,
+      templateId: templateId,
+      name: name,
+    );
     if (!mounted) return;
     setState(() {});
   }
@@ -361,7 +365,10 @@ class _WorkoutScreenState extends State<WorkoutScreen> {
 
     if (ok != true) return;
 
-    await db.deleteWorkoutTemplateExercise(e.templateExerciseId);
+    await db.deleteWorkoutExerciseForClient(
+      clientId: widget.clientId,
+      templateExerciseId: e.templateExerciseId,
+    );
     if (!mounted) return;
     setState(() {});
   }
