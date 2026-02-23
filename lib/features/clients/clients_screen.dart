@@ -370,11 +370,20 @@ class _ClientsSummaryCard extends StatelessWidget {
             runSpacing: 8,
             children: [
               _SummaryChip(
-                icon: Icons.groups_2_outlined,
+                assetPath: 'assets/clients/summary_total.png',
+                fallbackIcon: Icons.groups_2_outlined,
                 label: 'Всего: $total',
               ),
-              _SummaryChip(icon: Icons.male, label: 'М: $male'),
-              _SummaryChip(icon: Icons.female, label: 'Ж: $female'),
+              _SummaryChip(
+                assetPath: 'assets/clients/summary_male.png',
+                fallbackIcon: Icons.male,
+                label: 'М: $male',
+              ),
+              _SummaryChip(
+                assetPath: 'assets/clients/summary_female.png',
+                fallbackIcon: Icons.female,
+                label: 'Ж: $female',
+              ),
             ],
           ),
         ],
@@ -384,9 +393,14 @@ class _ClientsSummaryCard extends StatelessWidget {
 }
 
 class _SummaryChip extends StatelessWidget {
-  const _SummaryChip({required this.icon, required this.label});
+  const _SummaryChip({
+    required this.assetPath,
+    required this.fallbackIcon,
+    required this.label,
+  });
 
-  final IconData icon;
+  final String assetPath;
+  final IconData fallbackIcon;
   final String label;
 
   @override
@@ -402,7 +416,14 @@ class _SummaryChip extends StatelessWidget {
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(icon, size: 16, color: colors.primary),
+          Image.asset(
+            assetPath,
+            width: 16,
+            height: 16,
+            fit: BoxFit.contain,
+            errorBuilder: (_, __, ___) =>
+                Icon(fallbackIcon, size: 16, color: colors.primary),
+          ),
           const SizedBox(width: 6),
           Text(label),
         ],
