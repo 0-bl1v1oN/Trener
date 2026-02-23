@@ -20,6 +20,8 @@ class ClientProgramScreen extends StatefulWidget {
 class _ClientProgramScreenState extends State<ClientProgramScreen> {
   late Future<_ProgramData> _future;
   bool _loaded = false;
+  bool _didAutoScrollToLastDone = false;
+  final ScrollController _programListController = ScrollController();
 
   @override
   void didChangeDependencies() {
@@ -43,6 +45,7 @@ class _ClientProgramScreenState extends State<ClientProgramScreen> {
   Future<void> _reload() async {
     final db = AppDbScope.of(context);
     setState(() {
+      _didAutoScrollToLastDone = false;
       _future = _load(db);
     });
   }
@@ -51,6 +54,32 @@ class _ClientProgramScreenState extends State<ClientProgramScreen> {
     final db = AppDbScope.of(context);
     await db.shiftClientProgramDays(clientId: widget.clientId, delta: delta);
     await _reload();
+  }
+
+  @override
+  void dispose() {
+    _programListController.dispose();
+    super.dispose();
+  }
+
+  void _scrollToLastDoneSlot(List<ProgramSlotVm> slots) {
+    if (_didAutoScrollToLastDone) return;
+    if (!_programListController.hasClients) return;
+
+    var lastDoneIdx = -1;
+    for (var i = 0; i < slots.length; i++) {
+      if (slots[i].isDone) lastDoneIdx = i;
+    }
+
+    _didAutoScrollToLastDone = true;
+    if (lastDoneIdx < 0) return;
+
+    const estimatedItemExtent = 88.0;
+    final rawOffset = lastDoneIdx * estimatedItemExtent;
+    final maxOffset = _programListController.position.maxScrollExtent;
+    final targetOffset = rawOffset.clamp(0.0, maxOffset);
+
+    _programListController.jumpTo(targetOffset);
   }
 
   Future<void> _openSwapDayDialog({
@@ -333,6 +362,11 @@ class _ClientProgramScreenState extends State<ClientProgramScreen> {
           final st = overview.st;
           final gender = data.gender;
 
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (!mounted) return;
+            _scrollToLastDoneSlot(overview.slots);
+          });
+
           return Column(
             children: [
               Padding(
@@ -384,6 +418,7 @@ class _ClientProgramScreenState extends State<ClientProgramScreen> {
               else
                 Expanded(
                   child: ListView.separated(
+                    controller: _programListController,
                     padding: const EdgeInsets.all(12),
                     itemCount: overview.slots.length,
                     separatorBuilder: (_, __) => const SizedBox(height: 8),
