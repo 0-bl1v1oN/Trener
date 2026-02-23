@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 
 import '../../app/app_db_scope.dart';
@@ -44,6 +45,9 @@ class _WorkoutScreenState extends State<WorkoutScreen> {
   final Map<int, TextEditingController> _repsCtrls = {};
 
   bool _saving = false;
+  Timer? _draftAutosaveDebounce;
+  bool _draftAutosaveInFlight = false;
+  List<WorkoutExerciseVm> _latestExercises = const [];
 
   @override
   void didChangeDependencies() {
@@ -59,6 +63,7 @@ class _WorkoutScreenState extends State<WorkoutScreen> {
     for (final c in _repsCtrls.values) {
       c.dispose();
     }
+    _draftAutosaveDebounce?.cancel();
     super.dispose();
   }
 
@@ -67,6 +72,7 @@ class _WorkoutScreenState extends State<WorkoutScreen> {
       final t = TextEditingController(
         text: initial == null ? '' : _fmtKg(initial),
       );
+      t.addListener(_scheduleDraftAutosave);
       return t;
     });
   }
@@ -76,6 +82,7 @@ class _WorkoutScreenState extends State<WorkoutScreen> {
       final t = TextEditingController(
         text: initial == null ? '' : initial.toString(),
       );
+      t.addListener(_scheduleDraftAutosave);
       return t;
     });
   }
@@ -182,6 +189,7 @@ class _WorkoutScreenState extends State<WorkoutScreen> {
     );
     if (!mounted) return;
     setState(() {});
+    _scheduleDraftAutosave();
   }
 
   Future<void> _toggleSupersetForExercise(WorkoutExerciseVm e) async {
@@ -192,6 +200,7 @@ class _WorkoutScreenState extends State<WorkoutScreen> {
     );
     if (!mounted) return;
     setState(() {});
+    _scheduleDraftAutosave();
   }
 
   Future<void> _saveDraft({
@@ -220,6 +229,39 @@ class _WorkoutScreenState extends State<WorkoutScreen> {
       );
     } finally {
       if (mounted) setState(() => _saving = false);
+    }
+  }
+
+  void _scheduleDraftAutosave() {
+    if (!mounted) return;
+    _draftAutosaveDebounce?.cancel();
+    _draftAutosaveDebounce = Timer(const Duration(milliseconds: 650), () {
+      _autosaveDraftSilently();
+    });
+  }
+
+  Future<void> _autosaveDraftSilently() async {
+    if (!mounted ||
+        _latestExercises.isEmpty ||
+        _draftAutosaveInFlight ||
+        _saving) {
+      return;
+    }
+
+    final collected = _collectCurrentResults(_latestExercises);
+    if (collected.invalidExerciseNames.isNotEmpty) return;
+
+    _draftAutosaveInFlight = true;
+    try {
+      await db.saveWorkoutDraftResults(
+        clientId: widget.clientId,
+        day: widget.day,
+        resultsByTemplateExerciseId: collected.results,
+        templateIdx: widget.templateIdx,
+        absoluteIndex: widget.absoluteIndex,
+      );
+    } finally {
+      _draftAutosaveInFlight = false;
     }
   }
 
@@ -340,6 +382,7 @@ class _WorkoutScreenState extends State<WorkoutScreen> {
     );
     if (!mounted) return;
     setState(() {});
+    _scheduleDraftAutosave();
   }
 
   Future<void> _deleteExercise(WorkoutExerciseVm e) async {
@@ -371,6 +414,7 @@ class _WorkoutScreenState extends State<WorkoutScreen> {
     );
     if (!mounted) return;
     setState(() {});
+    _scheduleDraftAutosave();
   }
 
   Future<_WorkoutScreenData> _loadScreenData() async {
@@ -463,6 +507,7 @@ class _WorkoutScreenState extends State<WorkoutScreen> {
           final data = snap.data!;
           final info = data.info;
           final exercises = data.exercises;
+          _latestExercises = exercises;
 
           if (!info.hasPlan) {
             return const Center(
