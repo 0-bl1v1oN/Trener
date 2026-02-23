@@ -190,16 +190,51 @@ class AppShell extends StatelessWidget {
             label: '',
           ),
           NavigationDestination(
-            icon: Icon(Icons.calendar_month),
+            icon: _NavPngIcon(
+              assetPath: 'assets/nav/calendar.png',
+              fallback: Icons.calendar_month,
+            ),
             label: 'Календарь',
           ),
-          NavigationDestination(icon: Icon(Icons.people), label: 'Клиенты'),
           NavigationDestination(
-            icon: Icon(Icons.fitness_center),
+            icon: _NavPngIcon(
+              assetPath: 'assets/nav/clients.png',
+              fallback: Icons.people,
+            ),
+            label: 'Клиенты',
+          ),
+          NavigationDestination(
+            icon: _NavPngIcon(
+              assetPath: 'assets/nav/program.png',
+              fallback: Icons.fitness_center,
+            ),
             label: 'Программа',
           ),
         ],
       ),
+    );
+  }
+}
+
+class _NavPngIcon extends StatelessWidget {
+  const _NavPngIcon({
+    required this.assetPath,
+    required this.fallback,
+    this.size = 24,
+  });
+
+  final String assetPath;
+  final IconData fallback;
+  final double size;
+
+  @override
+  Widget build(BuildContext context) {
+    return Image.asset(
+      assetPath,
+      width: size,
+      height: size,
+      fit: BoxFit.contain,
+      errorBuilder: (_, __, ___) => Icon(fallback, size: size),
     );
   }
 }
