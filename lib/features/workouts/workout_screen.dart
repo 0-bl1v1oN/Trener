@@ -829,7 +829,7 @@ class _BottomBar extends StatelessWidget {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            if (done) ...[
+            if (done)
               SizedBox(
                 width: double.infinity,
                 height: 44,
@@ -842,24 +842,23 @@ class _BottomBar extends StatelessWidget {
                     side: BorderSide(color: colors.error.withOpacity(0.6)),
                   ),
                 ),
+              )
+            else
+              SizedBox(
+                width: double.infinity,
+                height: 46,
+                child: ElevatedButton.icon(
+                  onPressed: saving ? null : onMarkDone,
+                  icon: saving
+                      ? const SizedBox(
+                          width: 18,
+                          height: 18,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Icon(Icons.task_alt),
+                  label: const Text('Отметить выполнено'),
+                ),
               ),
-              const SizedBox(height: 8),
-            ],
-            SizedBox(
-              width: double.infinity,
-              height: 46,
-              child: ElevatedButton.icon(
-                onPressed: saving ? null : onMarkDone,
-                icon: saving
-                    ? const SizedBox(
-                        width: 18,
-                        height: 18,
-                        child: CircularProgressIndicator(strokeWidth: 2),
-                      )
-                    : Icon(done ? Icons.check : Icons.task_alt),
-                label: Text(done ? 'Готово' : 'Отметить выполнено'),
-              ),
-            ),
           ],
         ),
       ),
