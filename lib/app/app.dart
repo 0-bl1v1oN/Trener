@@ -186,7 +186,11 @@ class AppShell extends StatelessWidget {
         onDestinationSelected: (i) => _onTap(context, i),
         destinations: const [
           NavigationDestination(
-            icon: Icon(Icons.menu_rounded, size: 30),
+            icon: _NavPngIcon(
+              assetPath: 'assets/nav/menu.png',
+              fallback: Icons.menu_rounded,
+              size: 30,
+            ),
             label: '',
           ),
           NavigationDestination(
