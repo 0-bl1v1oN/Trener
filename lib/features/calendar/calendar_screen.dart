@@ -54,7 +54,7 @@ class _CalendarCategory {
 class _CalendarScreenState extends State<CalendarScreen>
     with TickerProviderStateMixin {
   static const String _calendarBackgroundAsset =
-      'assets/calendar/calendar_bg_boy.png';
+      'assets/calendar/calendar_bg_boy.jpg';
   static const String _calendarBackgroundEnabledKey =
       'calendar_background_enabled';
   late final AppDb db;
@@ -128,6 +128,11 @@ class _CalendarScreenState extends State<CalendarScreen>
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
+    if (!_dbInited) {
+      db = AppDbScope.of(context);
+      _dbInited = true;
+      _setCountsWindow(_focusedDay);
+    }
     _loadCalendarBackgroundState();
   }
 
@@ -161,14 +166,6 @@ class _CalendarScreenState extends State<CalendarScreen>
         ),
       ),
     );
-
-    if (!_dbInited) {
-      db = AppDbScope.of(context);
-      _dbInited = true;
-
-      // стартуем подписку 1 раз
-      _setCountsWindow(_focusedDay);
-    }
   }
 
   @override
@@ -2422,7 +2419,12 @@ class _CalendarScreenState extends State<CalendarScreen>
 
     return SafeArea(
       child: Scaffold(
+        backgroundColor: Colors.transparent,
+        extendBody: true,
         appBar: AppBar(
+          backgroundColor: Colors.transparent,
+          elevation: 0,
+          scrolledUnderElevation: 0,
           title: const Text('Календарь'),
           actions: [
             IconButton(
@@ -2453,6 +2455,17 @@ class _CalendarScreenState extends State<CalendarScreen>
         ),
         body: Stack(
           children: [
+            const Positioned.fill(
+              child: DecoratedBox(
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
+                    colors: [Color(0xFF0B0E34), Color(0xFF090A25)],
+                  ),
+                ),
+              ),
+            ),
             if (_showCalendarBackground)
               const Positioned.fill(
                 child: IgnorePointer(child: _CalendarBackgroundLayer()),
@@ -2505,13 +2518,15 @@ class _CalendarScreenState extends State<CalendarScreen>
                                       alignment: Alignment.topCenter,
                                       child: DecoratedBox(
                                         decoration: BoxDecoration(
-                                          color: colors.surface,
+                                          color: colors.surface.withOpacity(
+                                            0.46,
+                                          ),
                                           borderRadius: BorderRadius.circular(
                                             24,
                                           ),
                                           border: Border.all(
                                             color: colors.outlineVariant
-                                                .withOpacity(0.7),
+                                                .withOpacity(0.45),
                                           ),
                                         ),
                                         child: Padding(
@@ -3341,18 +3356,18 @@ class _CalendarBackgroundLayer extends StatelessWidget {
             ? constraints.maxHeight
             : MediaQuery.sizeOf(context).height;
 
-        final imageWidth = (width * 0.72).clamp(220.0, 420.0);
-        final imageHeight = (height * 0.78).clamp(280.0, 620.0);
+        final imageWidth = (width * 1.05).clamp(320.0, 760.0);
+        final imageHeight = (height * 1.0).clamp(420.0, 980.0);
 
         return Align(
-          alignment: Alignment.bottomRight,
+          alignment: Alignment.bottomCenter,
           child: Opacity(
-            opacity: 0.14,
+            opacity: 0.32,
             child: Image.asset(
               _CalendarScreenState._calendarBackgroundAsset,
               width: imageWidth,
               height: imageHeight,
-              fit: BoxFit.contain,
+              fit: BoxFit.cover,
               filterQuality: FilterQuality.low,
               errorBuilder: (_, __, ___) => const SizedBox.shrink(),
             ),
