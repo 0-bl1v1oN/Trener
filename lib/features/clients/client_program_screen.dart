@@ -553,7 +553,8 @@ class _WorkoutPreviewSheetState extends State<WorkoutPreviewSheet> {
     if (next == null || next.trim().isEmpty) return;
 
     final db = AppDbScope.of(context);
-    await db.renameWorkoutTemplateExercise(
+    await db.renameWorkoutExerciseForClient(
+      clientId: widget.clientId,
       templateExerciseId: e.templateExerciseId,
       newName: next,
     );

@@ -397,6 +397,7 @@ class AppDb extends _$AppDb {
       await _ensureProgramDayOverridesTable();
       await _ensurePlanEndAlertOverridesTable();
       await _ensureClientPaymentRemindersTable();
+      await _ensureClientExerciseNameOverridesTable();
       await _seedWorkoutTemplates();
       await _seedWorkoutTemplateExercises();
     },
@@ -406,6 +407,7 @@ class AppDb extends _$AppDb {
       await _ensureProgramDayOverridesTable();
       await _ensurePlanEndAlertOverridesTable();
       await _ensureClientPaymentRemindersTable();
+      await _ensureClientExerciseNameOverridesTable();
 
       await _seedWorkoutTemplates();
       await _seedWorkoutTemplateExercises();
@@ -439,6 +441,17 @@ class AppDb extends _$AppDb {
         client_id TEXT NOT NULL PRIMARY KEY,
         remind_on INTEGER NOT NULL,
         note TEXT
+      )
+    ''');
+  }
+
+  Future<void> _ensureClientExerciseNameOverridesTable() async {
+    await customStatement('''
+      CREATE TABLE IF NOT EXISTS client_exercise_name_overrides (
+        client_id TEXT NOT NULL,
+        template_exercise_id INTEGER NOT NULL,
+        custom_name TEXT NOT NULL,
+        PRIMARY KEY (client_id, template_exercise_id)
       )
     ''');
   }
@@ -2398,10 +2411,14 @@ class AppDb extends _$AppDb {
     final overrideMap = {
       for (final o in overrideRows) o.templateExerciseId: o.supersetGroup,
     };
+    final nameOverrides = await _getClientExerciseCustomNames(
+      clientId: clientId,
+    );
 
     final list = ex.map((e) {
       final rr = resMap[e.id]; // (kg, reps)
       final sg = overrideMap[e.id]; // supersetGroup (для клиента)
+      final name = nameOverrides[e.id] ?? e.name;
 
       return WorkoutExerciseVm(
         templateExerciseId: e.id,
@@ -2413,7 +2430,7 @@ class AppDb extends _$AppDb {
         // ✅ суперсет берём ТОЛЬКО из overrides
         supersetGroup: sg,
 
-        name: e.name,
+        name: name,
         lastWeightKg: rr?.$1,
         lastReps: rr?.$2,
       );
@@ -2663,6 +2680,9 @@ class AppDb extends _$AppDb {
     final overrideMap = {
       for (final o in overrideRows) o.templateExerciseId: o.supersetGroup,
     };
+    final nameOverrides = await _getClientExerciseCustomNames(
+      clientId: clientId,
+    );
 
     // ✅ Берём ПОСЛЕДНИЙ результат из истории для каждого упражнения этого шаблона
     final exIds = ex.map((e) => e.id).toList();
@@ -2695,12 +2715,13 @@ class AppDb extends _$AppDb {
     return ex.map((e) {
       final rr = lastMap[e.id]; // (kg, reps)
       final sg = overrideMap[e.id]; // supersetGroup (для клиента)
+      final name = nameOverrides[e.id] ?? e.name;
 
       return WorkoutExerciseVm(
         templateExerciseId: e.id,
         templateId: e.templateId,
         orderIndex: e.orderIndex,
-        name: e.name,
+        name: name,
         lastWeightKg: rr?.$1,
         lastReps: rr?.$2,
         supersetGroup: sg,

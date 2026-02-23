@@ -175,7 +175,8 @@ class _WorkoutScreenState extends State<WorkoutScreen> {
 
     if (result == null || result.trim().isEmpty) return;
 
-    await db.renameWorkoutTemplateExercise(
+    await db.renameWorkoutExerciseForClient(
+      clientId: widget.clientId,
       templateExerciseId: e.templateExerciseId,
       newName: result,
     );
