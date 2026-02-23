@@ -203,35 +203,6 @@ class _WorkoutScreenState extends State<WorkoutScreen> {
     _scheduleDraftAutosave();
   }
 
-  Future<void> _saveDraft({
-    required Map<int, (double? kg, int? reps)> results,
-  }) async {
-    if (_saving) return;
-    setState(() => _saving = true);
-
-    try {
-      await db.saveWorkoutDraftResults(
-        clientId: widget.clientId,
-        day: widget.day,
-        resultsByTemplateExerciseId: results,
-        templateIdx: widget.templateIdx,
-        absoluteIndex: widget.absoluteIndex,
-      );
-
-      if (!mounted) return;
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text('Черновик сохранён')));
-    } catch (e) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Ошибка сохранения черновика: $e')),
-      );
-    } finally {
-      if (mounted) setState(() => _saving = false);
-    }
-  }
-
   void _scheduleDraftAutosave() {
     if (!mounted) return;
     _draftAutosaveDebounce?.cancel();
@@ -554,11 +525,6 @@ class _WorkoutScreenState extends State<WorkoutScreen> {
               _BottomBar(
                 saving: _saving,
                 done: info.doneToday,
-                onSaveDraft: () {
-                  final results = buildResults();
-                  if (results == null) return;
-                  _saveDraft(results: results);
-                },
                 onMarkDone: () {
                   final results = buildResults();
                   if (results == null) return;
@@ -843,14 +809,12 @@ class _Header extends StatelessWidget {
 class _BottomBar extends StatelessWidget {
   final bool saving;
   final bool done;
-  final VoidCallback onSaveDraft;
   final VoidCallback onMarkDone;
   final VoidCallback onCancel;
 
   const _BottomBar({
     required this.saving,
     required this.done,
-    required this.onSaveDraft,
     required this.onMarkDone,
     required this.onCancel,
   });
@@ -881,36 +845,20 @@ class _BottomBar extends StatelessWidget {
               ),
               const SizedBox(height: 8),
             ],
-            Row(
-              children: [
-                Expanded(
-                  child: SizedBox(
-                    height: 46,
-                    child: OutlinedButton.icon(
-                      onPressed: saving ? null : onSaveDraft,
-                      icon: const Icon(Icons.save_outlined),
-                      label: const Text('Сохранить'),
-                    ),
-                  ),
-                ),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: SizedBox(
-                    height: 46,
-                    child: ElevatedButton.icon(
-                      onPressed: saving ? null : onMarkDone,
-                      icon: saving
-                          ? const SizedBox(
-                              width: 18,
-                              height: 18,
-                              child: CircularProgressIndicator(strokeWidth: 2),
-                            )
-                          : Icon(done ? Icons.check : Icons.task_alt),
-                      label: Text(done ? 'Готово' : 'Отметить выполнено'),
-                    ),
-                  ),
-                ),
-              ],
+            SizedBox(
+              width: double.infinity,
+              height: 46,
+              child: ElevatedButton.icon(
+                onPressed: saving ? null : onMarkDone,
+                icon: saving
+                    ? const SizedBox(
+                        width: 18,
+                        height: 18,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : Icon(done ? Icons.check : Icons.task_alt),
+                label: Text(done ? 'Готово' : 'Отметить выполнено'),
+              ),
             ),
           ],
         ),
