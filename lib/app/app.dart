@@ -74,60 +74,75 @@ final GoRouter _router = GoRouter(
   navigatorKey: _rootNavKey,
   initialLocation: '/calendar',
   routes: [
-    ShellRoute(
-      builder: (context, state, child) => AppShell(child: child),
-      routes: [
-        GoRoute(
-          path: '/calendar',
-          pageBuilder: (context, state) =>
-              const NoTransitionPage(child: CalendarScreen()),
-        ),
-
-        // ✅ ДОБАВЬ ЭТО
-        GoRoute(
-          path: '/workout',
-          builder: (context, state) {
-            final clientId = state.uri.queryParameters['clientId']!;
-            final dayStr = state.uri.queryParameters['day']!; // yyyy-MM-dd
-            final day = DateTime.parse(dayStr);
-            return WorkoutScreen(clientId: clientId, day: day);
-          },
-        ),
-
-        GoRoute(
-          path: '/clients',
-          pageBuilder: (context, state) =>
-              const NoTransitionPage(child: ClientsScreen()),
+    StatefulShellRoute.indexedStack(
+      builder: (context, state, navigationShell) =>
+          AppShell(navigationShell: navigationShell),
+      branches: [
+        StatefulShellBranch(
           routes: [
             GoRoute(
-              path: ':id',
-              builder: (context, state) {
-                final id = state.pathParameters['id']!;
-                return ClientDetailScreen(clientId: id);
-              },
-            ),
-            GoRoute(
-              path: ':id/program',
-              builder: (context, state) {
-                final id = state.pathParameters['id']!;
-                final dayStr = state.uri.queryParameters['day'];
-                final day = dayStr == null ? null : DateTime.parse(dayStr);
-                return ClientProgramScreen(clientId: id, day: day);
-              },
+              path: '/more',
+              pageBuilder: (context, state) =>
+                  const NoTransitionPage(child: MoreScreen()),
             ),
           ],
         ),
-        GoRoute(
-          path: '/programs',
-          pageBuilder: (context, state) =>
-              const NoTransitionPage(child: DefaultProgramsScreen()),
+        StatefulShellBranch(
+          routes: [
+            GoRoute(
+              path: '/calendar',
+              pageBuilder: (context, state) =>
+                  const NoTransitionPage(child: CalendarScreen()),
+            ),
+          ],
         ),
-        GoRoute(
-          path: '/more',
-          pageBuilder: (context, state) =>
-              const NoTransitionPage(child: MoreScreen()),
+        StatefulShellBranch(
+          routes: [
+            GoRoute(
+              path: '/clients',
+              pageBuilder: (context, state) =>
+                  const NoTransitionPage(child: ClientsScreen()),
+              routes: [
+                GoRoute(
+                  path: ':id',
+                  builder: (context, state) {
+                    final id = state.pathParameters['id']!;
+                    return ClientDetailScreen(clientId: id);
+                  },
+                ),
+                GoRoute(
+                  path: ':id/program',
+                  builder: (context, state) {
+                    final id = state.pathParameters['id']!;
+                    final dayStr = state.uri.queryParameters['day'];
+                    final day = dayStr == null ? null : DateTime.parse(dayStr);
+                    return ClientProgramScreen(clientId: id, day: day);
+                  },
+                ),
+              ],
+            ),
+          ],
+        ),
+        StatefulShellBranch(
+          routes: [
+            GoRoute(
+              path: '/programs',
+              pageBuilder: (context, state) =>
+                  const NoTransitionPage(child: DefaultProgramsScreen()),
+            ),
+          ],
         ),
       ],
+    ),
+    GoRoute(
+      parentNavigatorKey: _rootNavKey,
+      path: '/workout',
+      builder: (context, state) {
+        final clientId = state.uri.queryParameters['clientId']!;
+        final dayStr = state.uri.queryParameters['day']!; // yyyy-MM-dd
+        final day = DateTime.parse(dayStr);
+        return WorkoutScreen(clientId: clientId, day: day);
+      },
     ),
     GoRoute(
       parentNavigatorKey: _rootNavKey,
@@ -148,53 +163,23 @@ final GoRouter _router = GoRouter(
 );
 
 class AppShell extends StatelessWidget {
-  const AppShell({super.key, required this.child});
-  final Widget child;
+  const AppShell({super.key, required this.navigationShell});
+  final StatefulNavigationShell navigationShell;
 
-  int _locationToIndex(Uri uri) {
-    final location = uri.toString();
-    if (uri.path == '/calendar' &&
-        uri.queryParameters['openCategories'] == '1') {
-      return 0;
-    }
-    if (location.startsWith('/more') ||
-        location.startsWith('/income') ||
-        location.startsWith('/records') ||
-        location.startsWith('/contests')) {
-      return 0;
-    }
-    if (location.startsWith('/clients')) return 2;
-    if (location.startsWith('/programs')) return 3;
-    return 1; // /calendar
-  }
-
-  void _onTap(BuildContext context, int index) {
-    switch (index) {
-      case 0:
-        context.go('/more');
-        break;
-      case 1:
-        context.go('/calendar');
-        break;
-      case 2:
-        context.go('/clients');
-        break;
-      case 3:
-        context.go('/programs');
-        break;
-    }
+  void _onTap(int index) {
+    navigationShell.goBranch(
+      index,
+      initialLocation: index == navigationShell.currentIndex,
+    );
   }
 
   @override
   Widget build(BuildContext context) {
-    final uri = GoRouterState.of(context).uri;
-    final currentIndex = _locationToIndex(uri);
-
     return Scaffold(
-      body: child,
+      body: navigationShell,
       bottomNavigationBar: NavigationBar(
-        selectedIndex: currentIndex,
-        onDestinationSelected: (i) => _onTap(context, i),
+        selectedIndex: navigationShell.currentIndex,
+        onDestinationSelected: _onTap,
         destinations: const [
           NavigationDestination(
             icon: _NavPngIcon(
