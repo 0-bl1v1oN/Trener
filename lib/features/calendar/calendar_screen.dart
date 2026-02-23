@@ -8,7 +8,7 @@ import '../../db/app_db.dart';
 import 'package:drift/drift.dart' show Value;
 
 import 'package:flutter/services.dart';
-
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:myfitness/theme_controller.dart';
 import 'dart:async';
 
@@ -53,8 +53,13 @@ class _CalendarCategory {
 
 class _CalendarScreenState extends State<CalendarScreen>
     with TickerProviderStateMixin {
+  static const String _calendarBackgroundAsset =
+      'assets/calendar/calendar_bg_boy.png';
+  static const String _calendarBackgroundEnabledKey =
+      'calendar_background_enabled';
   late final AppDb db;
   bool _dbInited = false;
+  bool _showCalendarBackground = true;
 
   DateTime _focusedDay = DateTime.now();
   DateTime _selectedDay = DateTime.now();
@@ -123,6 +128,35 @@ class _CalendarScreenState extends State<CalendarScreen>
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
+    _loadCalendarBackgroundState();
+  }
+
+  Future<void> _loadCalendarBackgroundState() async {
+    final prefs = await SharedPreferences.getInstance();
+    final enabled = prefs.getBool(_calendarBackgroundEnabledKey);
+    if (!mounted) return;
+    setState(() {
+      _showCalendarBackground = enabled ?? true;
+    });
+  }
+
+  Future<void> _toggleCalendarBackground() async {
+    final next = !_showCalendarBackground;
+    setState(() {
+      _showCalendarBackground = next;
+    });
+
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_calendarBackgroundEnabledKey, next);
+
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          next ? 'Фон в календаре включён' : 'Фон в календаре выключен',
+        ),
+      ),
+    );
 
     if (!_dbInited) {
       db = AppDbScope.of(context);
@@ -2388,6 +2422,17 @@ class _CalendarScreenState extends State<CalendarScreen>
           title: const Text('Календарь'),
           actions: [
             IconButton(
+              tooltip: _showCalendarBackground
+                  ? 'Скрыть фоновую картинку'
+                  : 'Показать фоновую картинку',
+              onPressed: _toggleCalendarBackground,
+              icon: Icon(
+                _showCalendarBackground
+                    ? Icons.image_rounded
+                    : Icons.hide_image_rounded,
+              ),
+            ),
+            IconButton(
               onPressed: () => themeController.toggle(),
               icon: Icon(
                 Theme.of(context).brightness == Brightness.dark
@@ -2402,822 +2447,888 @@ class _CalendarScreenState extends State<CalendarScreen>
           onPressed: () => _openAddMenu(),
           child: const Icon(Icons.add),
         ),
-        body: StreamBuilder<List<AppointmentWithClient>>(
-          stream: db.watchAppointmentsForDay(_selectedDay),
-          builder: (context, snap) {
-            final items = snap.data ?? const <AppointmentWithClient>[];
-
-            return StreamBuilder<List<Client>>(
-              stream: db.watchClientsWithPlanAlertForDay(_selectedDay),
-              builder: (context, planSnap) {
-                final expiringClients = planSnap.data ?? const <Client>[];
-
-                return StreamBuilder<List<PaymentReminderWithClient>>(
-                  stream: db.watchClientsWithPaymentReminderForDay(
-                    _selectedDay,
+        body: Stack(
+          children: [
+            if (_showCalendarBackground)
+              Positioned.fill(
+                child: IgnorePointer(
+                  child: Align(
+                    alignment: Alignment.bottomRight,
+                    child: Opacity(
+                      opacity: 0.18,
+                      child: Image.asset(
+                        _calendarBackgroundAsset,
+                        fit: BoxFit.cover,
+                        errorBuilder: (_, __, ___) => const SizedBox.shrink(),
+                      ),
+                    ),
                   ),
-                  builder: (context, paymentSnap) {
-                    final paymentReminders =
-                        paymentSnap.data ?? const <PaymentReminderWithClient>[];
-                    final hasAnyItems =
-                        items.isNotEmpty ||
-                        expiringClients.isNotEmpty ||
-                        paymentReminders.isNotEmpty;
+                ),
+              ),
+            StreamBuilder<List<AppointmentWithClient>>(
+              stream: db.watchAppointmentsForDay(_selectedDay),
+              builder: (context, snap) {
+                final items = snap.data ?? const <AppointmentWithClient>[];
 
-                    return NotificationListener<ScrollNotification>(
-                      onNotification: _onListScroll,
-                      child: CustomScrollView(
-                        controller: _appointmentsController,
-                        physics: const AlwaysScrollableScrollPhysics(),
-                        slivers: [
-                          // Календарь сверху
-                          SliverToBoxAdapter(
-                            child: Padding(
-                              padding: const EdgeInsets.fromLTRB(12, 10, 12, 6),
-                              child: ClipRRect(
-                                borderRadius: BorderRadius.circular(24),
-                                child: AnimatedSize(
-                                  duration: const Duration(milliseconds: 240),
-                                  curve: Curves.easeInOutCubic,
-                                  alignment: Alignment.topCenter,
-                                  child: DecoratedBox(
-                                    decoration: BoxDecoration(
-                                      color: colors.surface,
-                                      borderRadius: BorderRadius.circular(24),
-                                      border: Border.all(
-                                        color: colors.outlineVariant
-                                            .withOpacity(0.7),
+                return StreamBuilder<List<Client>>(
+                  stream: db.watchClientsWithPlanAlertForDay(_selectedDay),
+                  builder: (context, planSnap) {
+                    final expiringClients = planSnap.data ?? const <Client>[];
+
+                    return StreamBuilder<List<PaymentReminderWithClient>>(
+                      stream: db.watchClientsWithPaymentReminderForDay(
+                        _selectedDay,
+                      ),
+                      builder: (context, paymentSnap) {
+                        final paymentReminders =
+                            paymentSnap.data ??
+                            const <PaymentReminderWithClient>[];
+                        final hasAnyItems =
+                            items.isNotEmpty ||
+                            expiringClients.isNotEmpty ||
+                            paymentReminders.isNotEmpty;
+
+                        return NotificationListener<ScrollNotification>(
+                          onNotification: _onListScroll,
+                          child: CustomScrollView(
+                            controller: _appointmentsController,
+                            physics: const AlwaysScrollableScrollPhysics(),
+                            slivers: [
+                              // Календарь сверху
+                              SliverToBoxAdapter(
+                                child: Padding(
+                                  padding: const EdgeInsets.fromLTRB(
+                                    12,
+                                    10,
+                                    12,
+                                    6,
+                                  ),
+                                  child: ClipRRect(
+                                    borderRadius: BorderRadius.circular(24),
+                                    child: AnimatedSize(
+                                      duration: const Duration(
+                                        milliseconds: 240,
                                       ),
-                                    ),
-                                    child: Padding(
-                                      padding: const EdgeInsets.fromLTRB(
-                                        8,
-                                        8,
-                                        8,
-                                        6,
-                                      ),
-                                      child: TableCalendar(
-                                        // вертикальный жест календаря отключен: формат
-                                        // переключаем только прокруткой списка,
-                                        // чтобы горизонтальный свайп месяца не схлопывал вид
-                                        availableGestures:
-                                            AvailableGestures.horizontalSwipe,
-
-                                        pageAnimationCurve: Curves.easeOutCubic,
-                                        pageAnimationDuration: const Duration(
-                                          milliseconds: 280,
-                                        ),
-
-                                        locale: 'ru_RU',
-                                        availableCalendarFormats: const {
-                                          CalendarFormat.month: 'Месяц',
-                                          CalendarFormat.week: 'Неделя',
-                                        },
-                                        calendarFormat: _calendarFormat,
-
-                                        headerStyle: HeaderStyle(
-                                          formatButtonVisible: false,
-                                          titleCentered: true,
-                                          titleTextStyle:
-                                              Theme.of(
-                                                context,
-                                              ).textTheme.titleLarge?.copyWith(
-                                                fontWeight: FontWeight.w700,
-                                              ) ??
-                                              const TextStyle(fontSize: 22),
-                                          leftChevronIcon: Icon(
-                                            Icons.chevron_left,
-                                            color: colors.onSurface,
+                                      curve: Curves.easeInOutCubic,
+                                      alignment: Alignment.topCenter,
+                                      child: DecoratedBox(
+                                        decoration: BoxDecoration(
+                                          color: colors.surface,
+                                          borderRadius: BorderRadius.circular(
+                                            24,
                                           ),
-                                          rightChevronIcon: Icon(
-                                            Icons.chevron_right,
-                                            color: colors.onSurface,
+                                          border: Border.all(
+                                            color: colors.outlineVariant
+                                                .withOpacity(0.7),
                                           ),
                                         ),
-                                        daysOfWeekStyle: DaysOfWeekStyle(
-                                          weekdayStyle:
-                                              Theme.of(
-                                                context,
-                                              ).textTheme.labelLarge?.copyWith(
-                                                fontWeight: FontWeight.w600,
-                                              ) ??
-                                              const TextStyle(),
-                                          weekendStyle:
-                                              Theme.of(
-                                                context,
-                                              ).textTheme.labelLarge?.copyWith(
-                                                fontWeight: FontWeight.w600,
-                                                color: colors.onSurfaceVariant,
-                                              ) ??
-                                              const TextStyle(),
-                                        ),
-                                        calendarStyle: CalendarStyle(
-                                          outsideTextStyle: TextStyle(
-                                            color: colors.onSurface.withOpacity(
-                                              0.35,
+                                        child: Padding(
+                                          padding: const EdgeInsets.fromLTRB(
+                                            8,
+                                            8,
+                                            8,
+                                            6,
+                                          ),
+                                          child: TableCalendar(
+                                            // вертикальный жест календаря отключен: формат
+                                            // переключаем только прокруткой списка,
+                                            // чтобы горизонтальный свайп месяца не схлопывал вид
+                                            availableGestures: AvailableGestures
+                                                .horizontalSwipe,
+
+                                            pageAnimationCurve:
+                                                Curves.easeOutCubic,
+                                            pageAnimationDuration:
+                                                const Duration(
+                                                  milliseconds: 280,
+                                                ),
+
+                                            locale: 'ru_RU',
+                                            availableCalendarFormats: const {
+                                              CalendarFormat.month: 'Месяц',
+                                              CalendarFormat.week: 'Неделя',
+                                            },
+                                            calendarFormat: _calendarFormat,
+
+                                            headerStyle: HeaderStyle(
+                                              formatButtonVisible: false,
+                                              titleCentered: true,
+                                              titleTextStyle:
+                                                  Theme.of(context)
+                                                      .textTheme
+                                                      .titleLarge
+                                                      ?.copyWith(
+                                                        fontWeight:
+                                                            FontWeight.w700,
+                                                      ) ??
+                                                  const TextStyle(fontSize: 22),
+                                              leftChevronIcon: Icon(
+                                                Icons.chevron_left,
+                                                color: colors.onSurface,
+                                              ),
+                                              rightChevronIcon: Icon(
+                                                Icons.chevron_right,
+                                                color: colors.onSurface,
+                                              ),
                                             ),
-                                          ),
-                                          weekendTextStyle: TextStyle(
-                                            color: colors.onSurface.withOpacity(
-                                              0.85,
+                                            daysOfWeekStyle: DaysOfWeekStyle(
+                                              weekdayStyle:
+                                                  Theme.of(context)
+                                                      .textTheme
+                                                      .labelLarge
+                                                      ?.copyWith(
+                                                        fontWeight:
+                                                            FontWeight.w600,
+                                                      ) ??
+                                                  const TextStyle(),
+                                              weekendStyle:
+                                                  Theme.of(context)
+                                                      .textTheme
+                                                      .labelLarge
+                                                      ?.copyWith(
+                                                        fontWeight:
+                                                            FontWeight.w600,
+                                                        color: colors
+                                                            .onSurfaceVariant,
+                                                      ) ??
+                                                  const TextStyle(),
                                             ),
-                                          ),
-                                          defaultDecoration:
-                                              const BoxDecoration(
+                                            calendarStyle: CalendarStyle(
+                                              outsideTextStyle: TextStyle(
+                                                color: colors.onSurface
+                                                    .withOpacity(0.35),
+                                              ),
+                                              weekendTextStyle: TextStyle(
+                                                color: colors.onSurface
+                                                    .withOpacity(0.85),
+                                              ),
+                                              defaultDecoration:
+                                                  const BoxDecoration(
+                                                    shape: BoxShape.circle,
+                                                  ),
+                                              todayDecoration: BoxDecoration(
+                                                color: colors.primary
+                                                    .withOpacity(0.18),
                                                 shape: BoxShape.circle,
                                               ),
-                                          todayDecoration: BoxDecoration(
-                                            color: colors.primary.withOpacity(
-                                              0.18,
+                                              selectedDecoration: BoxDecoration(
+                                                color: colors.primary,
+                                                shape: BoxShape.circle,
+                                                boxShadow: [
+                                                  BoxShadow(
+                                                    color: colors.primary
+                                                        .withOpacity(0.28),
+                                                    blurRadius: 10,
+                                                    offset: const Offset(0, 3),
+                                                  ),
+                                                ],
+                                              ),
+                                              markersAlignment:
+                                                  Alignment.bottomCenter,
+                                              markersMaxCount: 3,
+                                              markerDecoration: BoxDecoration(
+                                                color: colors.primary,
+                                                shape: BoxShape.circle,
+                                              ),
+                                              markerSize: 6,
+                                              markerMargin:
+                                                  const EdgeInsets.symmetric(
+                                                    horizontal: 1.5,
+                                                  ),
                                             ),
-                                            shape: BoxShape.circle,
+
+                                            firstDay: DateTime.utc(2020, 1, 1),
+                                            lastDay: DateTime.utc(2035, 12, 31),
+                                            focusedDay: _focusedDay,
+
+                                            startingDayOfWeek:
+                                                StartingDayOfWeek.monday,
+                                            selectedDayPredicate: (day) =>
+                                                isSameDay(_selectedDay, day),
+
+                                            onDaySelected:
+                                                (selectedDay, focusedDay) {
+                                                  setState(() {
+                                                    _selectedDay = DateTime(
+                                                      selectedDay.year,
+                                                      selectedDay.month,
+                                                      selectedDay.day,
+                                                    );
+                                                    _focusedDay = focusedDay;
+                                                  });
+                                                },
+
+                                            onPageChanged: (focusedDay) {
+                                              setState(
+                                                () => _focusedDay = focusedDay,
+                                              );
+                                              _setCountsWindow(focusedDay);
+                                            },
+
+                                            eventLoader: (day) {
+                                              final key = DateTime(
+                                                day.year,
+                                                day.month,
+                                                day.day,
+                                              );
+                                              final visibleWork =
+                                                  _isCategoryVisible(
+                                                    _workCategoryId,
+                                                  )
+                                                  ? (_workApptCountByDay[key] ??
+                                                        0)
+                                                  : 0;
+                                              final visibleTrial =
+                                                  _isCategoryVisible(
+                                                    _trialCategoryId,
+                                                  )
+                                                  ? (_trialApptCountByDay[key] ??
+                                                        0)
+                                                  : 0;
+                                              final planEnd =
+                                                  _planEndCountByDay[key] ?? 0;
+                                              final paymentReminder =
+                                                  _paymentReminderCountByDay[key] ??
+                                                  0;
+                                              final total =
+                                                  visibleWork +
+                                                  visibleTrial +
+                                                  planEnd +
+                                                  paymentReminder;
+                                              return List.filled(total, 1);
+                                            },
+
+                                            calendarBuilders: CalendarBuilders(
+                                              markerBuilder: (context, day, events) {
+                                                final key = DateTime(
+                                                  day.year,
+                                                  day.month,
+                                                  day.day,
+                                                );
+                                                final markers = <Color>[];
+
+                                                if (_isCategoryVisible(
+                                                      _workCategoryId,
+                                                    ) &&
+                                                    (_workApptCountByDay[key] ??
+                                                            0) >
+                                                        0) {
+                                                  markers.add(
+                                                    _categoryColor(
+                                                      _workCategoryId,
+                                                      Theme.of(
+                                                        context,
+                                                      ).colorScheme.primary,
+                                                    ),
+                                                  );
+                                                }
+
+                                                if (_isCategoryVisible(
+                                                      _trialCategoryId,
+                                                    ) &&
+                                                    (_trialApptCountByDay[key] ??
+                                                            0) >
+                                                        0) {
+                                                  markers.add(
+                                                    _categoryColor(
+                                                      _trialCategoryId,
+                                                      const Color(0xFFFF9F43),
+                                                    ),
+                                                  );
+                                                }
+
+                                                if ((_planEndCountByDay[key] ??
+                                                        0) >
+                                                    0) {
+                                                  markers.add(Colors.redAccent);
+                                                }
+
+                                                if ((_paymentReminderCountByDay[key] ??
+                                                        0) >
+                                                    0) {
+                                                  markers.add(
+                                                    const Color(0xFFF59E0B),
+                                                  );
+                                                }
+
+                                                if (markers.isEmpty)
+                                                  return null;
+
+                                                return IgnorePointer(
+                                                  child: Align(
+                                                    alignment:
+                                                        Alignment.bottomCenter,
+                                                    child: Padding(
+                                                      padding:
+                                                          const EdgeInsets.only(
+                                                            bottom: 4,
+                                                          ),
+                                                      child: Wrap(
+                                                        spacing: 3,
+                                                        children: [
+                                                          for (final color
+                                                              in markers.take(
+                                                                3,
+                                                              ))
+                                                            Container(
+                                                              width: 6,
+                                                              height: 6,
+                                                              decoration:
+                                                                  BoxDecoration(
+                                                                    color:
+                                                                        color,
+                                                                    shape: BoxShape
+                                                                        .circle,
+                                                                  ),
+                                                            ),
+                                                        ],
+                                                      ),
+                                                    ),
+                                                  ),
+                                                );
+                                              },
+                                            ),
                                           ),
-                                          selectedDecoration: BoxDecoration(
-                                            color: colors.primary,
-                                            shape: BoxShape.circle,
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              ),
+
+                              const SliverToBoxAdapter(
+                                child: SizedBox(height: 4),
+                              ),
+
+                              // Заголовок (скроллится вместе со списком)
+                              SliverToBoxAdapter(
+                                child: Padding(
+                                  padding: const EdgeInsets.fromLTRB(
+                                    16,
+                                    10,
+                                    16,
+                                    10,
+                                  ),
+                                  child: Align(
+                                    alignment: Alignment.centerLeft,
+                                    child: Text(
+                                      'Записи на $selectedLabel',
+                                      style: Theme.of(
+                                        context,
+                                      ).textTheme.titleMedium,
+                                    ),
+                                  ),
+                                ),
+                              ),
+
+                              if (expiringClients.isNotEmpty)
+                                SliverList(
+                                  delegate: SliverChildBuilderDelegate((
+                                    context,
+                                    i,
+                                  ) {
+                                    final client = expiringClients[i];
+                                    final planEnd = client.planEnd == null
+                                        ? ''
+                                        : DateFormat(
+                                            'dd.MM.yyyy',
+                                            'ru_RU',
+                                          ).format(client.planEnd!);
+                                    return Padding(
+                                      padding: const EdgeInsets.fromLTRB(
+                                        12,
+                                        0,
+                                        12,
+                                        10,
+                                      ),
+                                      child: Card(
+                                        elevation: 0,
+                                        color: colors.errorContainer
+                                            .withOpacity(0.45),
+                                        shape: RoundedRectangleBorder(
+                                          borderRadius: BorderRadius.circular(
+                                            16,
+                                          ),
+                                          side: BorderSide(
+                                            color: colors.error.withOpacity(
+                                              0.4,
+                                            ),
+                                          ),
+                                        ),
+                                        child: ListTile(
+                                          dense: true,
+                                          onLongPress: () =>
+                                              _openPlanAlertActions(client),
+                                          leading: Icon(
+                                            Icons.warning_amber_rounded,
+                                            color: colors.error,
+                                          ),
+                                          title: Text(client.name),
+                                          subtitle: Text(
+                                            planEnd.isEmpty
+                                                ? 'Абонемент заканчивается'
+                                                : 'Абонемент до $planEnd',
+                                          ),
+                                          trailing: FilledButton.tonalIcon(
+                                            onPressed: () =>
+                                                _extendClientPlan(client),
+                                            icon: const Icon(
+                                              Icons.event_repeat,
+                                            ),
+                                            label: const Text('+28'),
+                                          ),
+                                        ),
+                                      ),
+                                    );
+                                  }, childCount: expiringClients.length),
+                                ),
+                              if (paymentReminders.isNotEmpty)
+                                SliverList(
+                                  delegate: SliverChildBuilderDelegate((
+                                    context,
+                                    i,
+                                  ) {
+                                    final it = paymentReminders[i];
+                                    final remindLabel = DateFormat(
+                                      'dd.MM.yyyy',
+                                      'ru_RU',
+                                    ).format(it.remindOn);
+                                    return Padding(
+                                      padding: const EdgeInsets.fromLTRB(
+                                        12,
+                                        0,
+                                        12,
+                                        10,
+                                      ),
+                                      child: Card(
+                                        elevation: 0,
+                                        color: const Color(
+                                          0xFFF59E0B,
+                                        ).withOpacity(0.14),
+                                        shape: RoundedRectangleBorder(
+                                          borderRadius: BorderRadius.circular(
+                                            16,
+                                          ),
+                                          side: BorderSide(
+                                            color: const Color(
+                                              0xFFF59E0B,
+                                            ).withOpacity(0.35),
+                                          ),
+                                        ),
+                                        child: ListTile(
+                                          dense: true,
+                                          onLongPress: () =>
+                                              _openPaymentReminderActions(it),
+                                          leading: const Icon(
+                                            Icons.payments_outlined,
+                                            color: Color(0xFFF59E0B),
+                                          ),
+                                          title: Text(it.client.name),
+                                          subtitle: Text(
+                                            it.note?.trim().isNotEmpty == true
+                                                ? '${it.note} • $remindLabel'
+                                                : 'Ожидается перевод • $remindLabel',
+                                          ),
+                                          trailing: IconButton.filledTonal(
+                                            tooltip: 'Оплачено',
+                                            onPressed: () async {
+                                              await db
+                                                  .clearClientPaymentReminder(
+                                                    it.client.id,
+                                                  );
+                                              _setCountsWindow(_focusedDay);
+                                              if (mounted) setState(() {});
+                                            },
+                                            icon: const Icon(Icons.check),
+                                          ),
+                                        ),
+                                      ),
+                                    );
+                                  }, childCount: paymentReminders.length),
+                                ),
+
+                              if (items.isEmpty && !hasAnyItems)
+                                SliverFillRemaining(
+                                  hasScrollBody: false,
+                                  child: Center(
+                                    child: Text(
+                                      'На этот день записей, окончаний абонемента и напоминаний нет',
+                                      style: Theme.of(
+                                        context,
+                                      ).textTheme.bodyMedium,
+                                    ),
+                                  ),
+                                )
+                              else if (items.isNotEmpty)
+                                SliverList(
+                                  delegate: SliverChildBuilderDelegate((
+                                    context,
+                                    i,
+                                  ) {
+                                    final it = items[i];
+                                    final done = _isAppointmentDone(
+                                      it.appointment,
+                                    );
+                                    final hasPlan = (it.client.plan ?? '')
+                                        .trim()
+                                        .isNotEmpty;
+                                    return Padding(
+                                      padding: EdgeInsets.fromLTRB(
+                                        12,
+                                        0,
+                                        12,
+                                        i == items.length - 1 ? 98 : 10,
+                                      ),
+                                      child: InkWell(
+                                        borderRadius: BorderRadius.circular(18),
+                                        onTap: () async {
+                                          final dayStr = DateFormat(
+                                            'yyyy-MM-dd',
+                                          ).format(_selectedDay);
+                                          await context.push(
+                                            '/clients/${it.client.id}/program?day=$dayStr',
+                                          );
+                                          if (!mounted) return;
+                                          setState(() {});
+                                        },
+                                        onLongPress: () =>
+                                            _openAppointmentActions(it),
+                                        child: Container(
+                                          padding: const EdgeInsets.fromLTRB(
+                                            12,
+                                            12,
+                                            8,
+                                            12,
+                                          ),
+                                          decoration: BoxDecoration(
+                                            borderRadius: BorderRadius.circular(
+                                              18,
+                                            ),
+                                            gradient: LinearGradient(
+                                              colors: [
+                                                colors.surface,
+                                                colors.surfaceContainerLow,
+                                              ],
+                                              begin: Alignment.topLeft,
+                                              end: Alignment.bottomRight,
+                                            ),
+                                            border: Border.all(
+                                              color: done
+                                                  ? colors.primary.withOpacity(
+                                                      0.28,
+                                                    )
+                                                  : colors.outlineVariant
+                                                        .withOpacity(0.6),
+                                            ),
                                             boxShadow: [
                                               BoxShadow(
-                                                color: colors.primary
-                                                    .withOpacity(0.28),
-                                                blurRadius: 10,
-                                                offset: const Offset(0, 3),
+                                                color: colors.shadow
+                                                    .withOpacity(0.03),
+                                                blurRadius: 8,
+                                                offset: const Offset(0, 2),
                                               ),
                                             ],
                                           ),
-                                          markersAlignment:
-                                              Alignment.bottomCenter,
-                                          markersMaxCount: 3,
-                                          markerDecoration: BoxDecoration(
-                                            color: colors.primary,
-                                            shape: BoxShape.circle,
-                                          ),
-                                          markerSize: 6,
-                                          markerMargin:
-                                              const EdgeInsets.symmetric(
-                                                horizontal: 1.5,
-                                              ),
-                                        ),
-
-                                        firstDay: DateTime.utc(2020, 1, 1),
-                                        lastDay: DateTime.utc(2035, 12, 31),
-                                        focusedDay: _focusedDay,
-
-                                        startingDayOfWeek:
-                                            StartingDayOfWeek.monday,
-                                        selectedDayPredicate: (day) =>
-                                            isSameDay(_selectedDay, day),
-
-                                        onDaySelected:
-                                            (selectedDay, focusedDay) {
-                                              setState(() {
-                                                _selectedDay = DateTime(
-                                                  selectedDay.year,
-                                                  selectedDay.month,
-                                                  selectedDay.day,
-                                                );
-                                                _focusedDay = focusedDay;
-                                              });
-                                            },
-
-                                        onPageChanged: (focusedDay) {
-                                          setState(
-                                            () => _focusedDay = focusedDay,
-                                          );
-                                          _setCountsWindow(focusedDay);
-                                        },
-
-                                        eventLoader: (day) {
-                                          final key = DateTime(
-                                            day.year,
-                                            day.month,
-                                            day.day,
-                                          );
-                                          final visibleWork =
-                                              _isCategoryVisible(
-                                                _workCategoryId,
-                                              )
-                                              ? (_workApptCountByDay[key] ?? 0)
-                                              : 0;
-                                          final visibleTrial =
-                                              _isCategoryVisible(
-                                                _trialCategoryId,
-                                              )
-                                              ? (_trialApptCountByDay[key] ?? 0)
-                                              : 0;
-                                          final planEnd =
-                                              _planEndCountByDay[key] ?? 0;
-                                          final paymentReminder =
-                                              _paymentReminderCountByDay[key] ??
-                                              0;
-                                          final total =
-                                              visibleWork +
-                                              visibleTrial +
-                                              planEnd +
-                                              paymentReminder;
-                                          return List.filled(total, 1);
-                                        },
-
-                                        calendarBuilders: CalendarBuilders(
-                                          markerBuilder: (context, day, events) {
-                                            final key = DateTime(
-                                              day.year,
-                                              day.month,
-                                              day.day,
-                                            );
-                                            final markers = <Color>[];
-
-                                            if (_isCategoryVisible(
-                                                  _workCategoryId,
-                                                ) &&
-                                                (_workApptCountByDay[key] ??
-                                                        0) >
-                                                    0) {
-                                              markers.add(
-                                                _categoryColor(
-                                                  _workCategoryId,
-                                                  Theme.of(
-                                                    context,
-                                                  ).colorScheme.primary,
-                                                ),
-                                              );
-                                            }
-
-                                            if (_isCategoryVisible(
-                                                  _trialCategoryId,
-                                                ) &&
-                                                (_trialApptCountByDay[key] ??
-                                                        0) >
-                                                    0) {
-                                              markers.add(
-                                                _categoryColor(
-                                                  _trialCategoryId,
-                                                  const Color(0xFFFF9F43),
-                                                ),
-                                              );
-                                            }
-
-                                            if ((_planEndCountByDay[key] ?? 0) >
-                                                0) {
-                                              markers.add(Colors.redAccent);
-                                            }
-
-                                            if ((_paymentReminderCountByDay[key] ??
-                                                    0) >
-                                                0) {
-                                              markers.add(
-                                                const Color(0xFFF59E0B),
-                                              );
-                                            }
-
-                                            if (markers.isEmpty) return null;
-
-                                            return IgnorePointer(
-                                              child: Align(
-                                                alignment:
-                                                    Alignment.bottomCenter,
-                                                child: Padding(
-                                                  padding:
-                                                      const EdgeInsets.only(
-                                                        bottom: 4,
-                                                      ),
-                                                  child: Wrap(
-                                                    spacing: 3,
-                                                    children: [
-                                                      for (final color
-                                                          in markers.take(3))
+                                          child: Row(
+                                            crossAxisAlignment:
+                                                CrossAxisAlignment.start,
+                                            children: [
+                                              Expanded(
+                                                child: Column(
+                                                  crossAxisAlignment:
+                                                      CrossAxisAlignment.start,
+                                                  children: [
+                                                    Row(
+                                                      children: [
                                                         Container(
-                                                          width: 6,
-                                                          height: 6,
-                                                          decoration:
-                                                              BoxDecoration(
-                                                                color: color,
-                                                                shape: BoxShape
-                                                                    .circle,
+                                                          padding:
+                                                              const EdgeInsets.symmetric(
+                                                                horizontal: 10,
+                                                                vertical: 6,
                                                               ),
-                                                        ),
-                                                    ],
-                                                  ),
-                                                ),
-                                              ),
-                                            );
-                                          },
-                                        ),
-                                      ),
-                                    ),
-                                  ),
-                                ),
-                              ),
-                            ),
-                          ),
-
-                          const SliverToBoxAdapter(child: SizedBox(height: 4)),
-
-                          // Заголовок (скроллится вместе со списком)
-                          SliverToBoxAdapter(
-                            child: Padding(
-                              padding: const EdgeInsets.fromLTRB(
-                                16,
-                                10,
-                                16,
-                                10,
-                              ),
-                              child: Align(
-                                alignment: Alignment.centerLeft,
-                                child: Text(
-                                  'Записи на $selectedLabel',
-                                  style: Theme.of(
-                                    context,
-                                  ).textTheme.titleMedium,
-                                ),
-                              ),
-                            ),
-                          ),
-
-                          if (expiringClients.isNotEmpty)
-                            SliverList(
-                              delegate: SliverChildBuilderDelegate((
-                                context,
-                                i,
-                              ) {
-                                final client = expiringClients[i];
-                                final planEnd = client.planEnd == null
-                                    ? ''
-                                    : DateFormat(
-                                        'dd.MM.yyyy',
-                                        'ru_RU',
-                                      ).format(client.planEnd!);
-                                return Padding(
-                                  padding: const EdgeInsets.fromLTRB(
-                                    12,
-                                    0,
-                                    12,
-                                    10,
-                                  ),
-                                  child: Card(
-                                    elevation: 0,
-                                    color: colors.errorContainer.withOpacity(
-                                      0.45,
-                                    ),
-                                    shape: RoundedRectangleBorder(
-                                      borderRadius: BorderRadius.circular(16),
-                                      side: BorderSide(
-                                        color: colors.error.withOpacity(0.4),
-                                      ),
-                                    ),
-                                    child: ListTile(
-                                      dense: true,
-                                      onLongPress: () =>
-                                          _openPlanAlertActions(client),
-                                      leading: Icon(
-                                        Icons.warning_amber_rounded,
-                                        color: colors.error,
-                                      ),
-                                      title: Text(client.name),
-                                      subtitle: Text(
-                                        planEnd.isEmpty
-                                            ? 'Абонемент заканчивается'
-                                            : 'Абонемент до $planEnd',
-                                      ),
-                                      trailing: FilledButton.tonalIcon(
-                                        onPressed: () =>
-                                            _extendClientPlan(client),
-                                        icon: const Icon(Icons.event_repeat),
-                                        label: const Text('+28'),
-                                      ),
-                                    ),
-                                  ),
-                                );
-                              }, childCount: expiringClients.length),
-                            ),
-                          if (paymentReminders.isNotEmpty)
-                            SliverList(
-                              delegate: SliverChildBuilderDelegate((
-                                context,
-                                i,
-                              ) {
-                                final it = paymentReminders[i];
-                                final remindLabel = DateFormat(
-                                  'dd.MM.yyyy',
-                                  'ru_RU',
-                                ).format(it.remindOn);
-                                return Padding(
-                                  padding: const EdgeInsets.fromLTRB(
-                                    12,
-                                    0,
-                                    12,
-                                    10,
-                                  ),
-                                  child: Card(
-                                    elevation: 0,
-                                    color: const Color(
-                                      0xFFF59E0B,
-                                    ).withOpacity(0.14),
-                                    shape: RoundedRectangleBorder(
-                                      borderRadius: BorderRadius.circular(16),
-                                      side: BorderSide(
-                                        color: const Color(
-                                          0xFFF59E0B,
-                                        ).withOpacity(0.35),
-                                      ),
-                                    ),
-                                    child: ListTile(
-                                      dense: true,
-                                      onLongPress: () =>
-                                          _openPaymentReminderActions(it),
-                                      leading: const Icon(
-                                        Icons.payments_outlined,
-                                        color: Color(0xFFF59E0B),
-                                      ),
-                                      title: Text(it.client.name),
-                                      subtitle: Text(
-                                        it.note?.trim().isNotEmpty == true
-                                            ? '${it.note} • $remindLabel'
-                                            : 'Ожидается перевод • $remindLabel',
-                                      ),
-                                      trailing: IconButton.filledTonal(
-                                        tooltip: 'Оплачено',
-                                        onPressed: () async {
-                                          await db.clearClientPaymentReminder(
-                                            it.client.id,
-                                          );
-                                          _setCountsWindow(_focusedDay);
-                                          if (mounted) setState(() {});
-                                        },
-                                        icon: const Icon(Icons.check),
-                                      ),
-                                    ),
-                                  ),
-                                );
-                              }, childCount: paymentReminders.length),
-                            ),
-
-                          if (items.isEmpty && !hasAnyItems)
-                            SliverFillRemaining(
-                              hasScrollBody: false,
-                              child: Center(
-                                child: Text(
-                                  'На этот день записей, окончаний абонемента и напоминаний нет',
-                                  style: Theme.of(context).textTheme.bodyMedium,
-                                ),
-                              ),
-                            )
-                          else if (items.isNotEmpty)
-                            SliverList(
-                              delegate: SliverChildBuilderDelegate((
-                                context,
-                                i,
-                              ) {
-                                final it = items[i];
-                                final done = _isAppointmentDone(it.appointment);
-                                final hasPlan = (it.client.plan ?? '')
-                                    .trim()
-                                    .isNotEmpty;
-                                return Padding(
-                                  padding: EdgeInsets.fromLTRB(
-                                    12,
-                                    0,
-                                    12,
-                                    i == items.length - 1 ? 98 : 10,
-                                  ),
-                                  child: InkWell(
-                                    borderRadius: BorderRadius.circular(18),
-                                    onTap: () async {
-                                      final dayStr = DateFormat(
-                                        'yyyy-MM-dd',
-                                      ).format(_selectedDay);
-                                      await context.push(
-                                        '/clients/${it.client.id}/program?day=$dayStr',
-                                      );
-                                      if (!mounted) return;
-                                      setState(() {});
-                                    },
-                                    onLongPress: () =>
-                                        _openAppointmentActions(it),
-                                    child: Container(
-                                      padding: const EdgeInsets.fromLTRB(
-                                        12,
-                                        12,
-                                        8,
-                                        12,
-                                      ),
-                                      decoration: BoxDecoration(
-                                        borderRadius: BorderRadius.circular(18),
-                                        gradient: LinearGradient(
-                                          colors: [
-                                            colors.surface,
-                                            colors.surfaceContainerLow,
-                                          ],
-                                          begin: Alignment.topLeft,
-                                          end: Alignment.bottomRight,
-                                        ),
-                                        border: Border.all(
-                                          color: done
-                                              ? colors.primary.withOpacity(0.28)
-                                              : colors.outlineVariant
-                                                    .withOpacity(0.6),
-                                        ),
-                                        boxShadow: [
-                                          BoxShadow(
-                                            color: colors.shadow.withOpacity(
-                                              0.03,
-                                            ),
-                                            blurRadius: 8,
-                                            offset: const Offset(0, 2),
-                                          ),
-                                        ],
-                                      ),
-                                      child: Row(
-                                        crossAxisAlignment:
-                                            CrossAxisAlignment.start,
-                                        children: [
-                                          Expanded(
-                                            child: Column(
-                                              crossAxisAlignment:
-                                                  CrossAxisAlignment.start,
-                                              children: [
-                                                Row(
-                                                  children: [
-                                                    Container(
-                                                      padding:
-                                                          const EdgeInsets.symmetric(
-                                                            horizontal: 10,
-                                                            vertical: 6,
+                                                          decoration: BoxDecoration(
+                                                            color: colors
+                                                                .primaryContainer
+                                                                .withOpacity(
+                                                                  0.6,
+                                                                ),
+                                                            borderRadius:
+                                                                BorderRadius.circular(
+                                                                  999,
+                                                                ),
                                                           ),
-                                                      decoration: BoxDecoration(
-                                                        color: colors
-                                                            .primaryContainer
-                                                            .withOpacity(0.6),
-                                                        borderRadius:
-                                                            BorderRadius.circular(
-                                                              999,
+                                                          child: Text(
+                                                            _fmtTime(
+                                                              it
+                                                                  .appointment
+                                                                  .startAt,
                                                             ),
-                                                      ),
-                                                      child: Text(
-                                                        _fmtTime(
-                                                          it
-                                                              .appointment
-                                                              .startAt,
-                                                        ),
-                                                        style: Theme.of(context)
-                                                            .textTheme
-                                                            .labelMedium
-                                                            ?.copyWith(
-                                                              fontWeight:
-                                                                  FontWeight
-                                                                      .w700,
-                                                            ),
-                                                      ),
-                                                    ),
-                                                    const SizedBox(width: 10),
-                                                    Expanded(
-                                                      child: Text(
-                                                        it.client.name,
-                                                        style: Theme.of(context)
-                                                            .textTheme
-                                                            .titleMedium
-                                                            ?.copyWith(
-                                                              fontWeight:
-                                                                  FontWeight
-                                                                      .w700,
-                                                              letterSpacing:
-                                                                  0.1,
-                                                            ),
-                                                      ),
-                                                    ),
-                                                  ],
-                                                ),
-                                                const SizedBox(height: 10),
-                                                Wrap(
-                                                  spacing: 8,
-                                                  runSpacing: 8,
-                                                  children: [
-                                                    if (hasPlan)
-                                                      Container(
-                                                        padding:
-                                                            const EdgeInsets.symmetric(
-                                                              horizontal: 10,
-                                                              vertical: 6,
-                                                            ),
-                                                        decoration: BoxDecoration(
-                                                          color: colors
-                                                              .secondaryContainer
-                                                              .withOpacity(
-                                                                0.65,
-                                                              ),
-                                                          borderRadius:
-                                                              BorderRadius.circular(
-                                                                999,
-                                                              ),
-                                                        ),
-                                                        child: Row(
-                                                          mainAxisSize:
-                                                              MainAxisSize.min,
-                                                          children: [
-                                                            _CalendarPngIcon(
-                                                              assetPath:
-                                                                  'assets/calendar/plan_badge.png',
-                                                              fallback: Icons
-                                                                  .confirmation_number_outlined,
-                                                              size: 15,
-                                                              color: colors
-                                                                  .onSecondaryContainer,
-                                                            ),
-                                                            const SizedBox(
-                                                              width: 4,
-                                                            ),
-                                                            Text(
-                                                              'Абонемент ${it.client.plan}',
-                                                              style:
-                                                                  Theme.of(
-                                                                        context,
-                                                                      )
-                                                                      .textTheme
-                                                                      .labelMedium,
-                                                            ),
-                                                          ],
-                                                        ),
-                                                      ),
-                                                    Container(
-                                                      padding:
-                                                          const EdgeInsets.symmetric(
-                                                            horizontal: 10,
-                                                            vertical: 6,
-                                                          ),
-                                                      decoration: BoxDecoration(
-                                                        color: done
-                                                            ? Colors.green
-                                                                  .withOpacity(
-                                                                    0.14,
-                                                                  )
-                                                            : colors
-                                                                  .errorContainer
-                                                                  .withOpacity(
-                                                                    0.45,
-                                                                  ),
-                                                        borderRadius:
-                                                            BorderRadius.circular(
-                                                              999,
-                                                            ),
-                                                      ),
-                                                      child: Row(
-                                                        mainAxisSize:
-                                                            MainAxisSize.min,
-                                                        children: [
-                                                          Icon(
-                                                            done
-                                                                ? Icons
-                                                                      .check_rounded
-                                                                : Icons
-                                                                      .hourglass_bottom_rounded,
-                                                            size: 15,
-                                                            color: done
-                                                                ? Colors
-                                                                      .green
-                                                                      .shade800
-                                                                : colors
-                                                                      .onErrorContainer,
-                                                          ),
-                                                          const SizedBox(
-                                                            width: 4,
-                                                          ),
-                                                          Text(
-                                                            done
-                                                                ? 'Выполнено'
-                                                                : 'Не выполнено',
                                                             style: Theme.of(context)
                                                                 .textTheme
                                                                 .labelMedium
                                                                 ?.copyWith(
                                                                   fontWeight:
                                                                       FontWeight
-                                                                          .w600,
-                                                                  color: done
-                                                                      ? Colors
-                                                                            .green
-                                                                            .shade800
-                                                                      : colors
-                                                                            .onErrorContainer,
+                                                                          .w700,
                                                                 ),
                                                           ),
-                                                        ],
-                                                      ),
+                                                        ),
+                                                        const SizedBox(
+                                                          width: 10,
+                                                        ),
+                                                        Expanded(
+                                                          child: Text(
+                                                            it.client.name,
+                                                            style: Theme.of(context)
+                                                                .textTheme
+                                                                .titleMedium
+                                                                ?.copyWith(
+                                                                  fontWeight:
+                                                                      FontWeight
+                                                                          .w700,
+                                                                  letterSpacing:
+                                                                      0.1,
+                                                                ),
+                                                          ),
+                                                        ),
+                                                      ],
+                                                    ),
+                                                    const SizedBox(height: 10),
+                                                    Wrap(
+                                                      spacing: 8,
+                                                      runSpacing: 8,
+                                                      children: [
+                                                        if (hasPlan)
+                                                          Container(
+                                                            padding:
+                                                                const EdgeInsets.symmetric(
+                                                                  horizontal:
+                                                                      10,
+                                                                  vertical: 6,
+                                                                ),
+                                                            decoration: BoxDecoration(
+                                                              color: colors
+                                                                  .secondaryContainer
+                                                                  .withOpacity(
+                                                                    0.65,
+                                                                  ),
+                                                              borderRadius:
+                                                                  BorderRadius.circular(
+                                                                    999,
+                                                                  ),
+                                                            ),
+                                                            child: Row(
+                                                              mainAxisSize:
+                                                                  MainAxisSize
+                                                                      .min,
+                                                              children: [
+                                                                _CalendarPngIcon(
+                                                                  assetPath:
+                                                                      'assets/calendar/plan_badge.png',
+                                                                  fallback: Icons
+                                                                      .confirmation_number_outlined,
+                                                                  size: 15,
+                                                                  color: colors
+                                                                      .onSecondaryContainer,
+                                                                ),
+                                                                const SizedBox(
+                                                                  width: 4,
+                                                                ),
+                                                                Text(
+                                                                  'Абонемент ${it.client.plan}',
+                                                                  style: Theme.of(
+                                                                    context,
+                                                                  ).textTheme.labelMedium,
+                                                                ),
+                                                              ],
+                                                            ),
+                                                          ),
+                                                        Container(
+                                                          padding:
+                                                              const EdgeInsets.symmetric(
+                                                                horizontal: 10,
+                                                                vertical: 6,
+                                                              ),
+                                                          decoration: BoxDecoration(
+                                                            color: done
+                                                                ? Colors.green
+                                                                      .withOpacity(
+                                                                        0.14,
+                                                                      )
+                                                                : colors
+                                                                      .errorContainer
+                                                                      .withOpacity(
+                                                                        0.45,
+                                                                      ),
+                                                            borderRadius:
+                                                                BorderRadius.circular(
+                                                                  999,
+                                                                ),
+                                                          ),
+                                                          child: Row(
+                                                            mainAxisSize:
+                                                                MainAxisSize
+                                                                    .min,
+                                                            children: [
+                                                              Icon(
+                                                                done
+                                                                    ? Icons
+                                                                          .check_rounded
+                                                                    : Icons
+                                                                          .hourglass_bottom_rounded,
+                                                                size: 15,
+                                                                color: done
+                                                                    ? Colors
+                                                                          .green
+                                                                          .shade800
+                                                                    : colors
+                                                                          .onErrorContainer,
+                                                              ),
+                                                              const SizedBox(
+                                                                width: 4,
+                                                              ),
+                                                              Text(
+                                                                done
+                                                                    ? 'Выполнено'
+                                                                    : 'Не выполнено',
+                                                                style: Theme.of(context)
+                                                                    .textTheme
+                                                                    .labelMedium
+                                                                    ?.copyWith(
+                                                                      fontWeight:
+                                                                          FontWeight
+                                                                              .w600,
+                                                                      color:
+                                                                          done
+                                                                          ? Colors.green.shade800
+                                                                          : colors.onErrorContainer,
+                                                                    ),
+                                                              ),
+                                                            ],
+                                                          ),
+                                                        ),
+                                                      ],
                                                     ),
                                                   ],
                                                 ),
-                                              ],
-                                            ),
-                                          ),
-                                          const SizedBox(width: 6),
-                                          Row(
-                                            mainAxisSize: MainAxisSize.min,
-                                            children: [
-                                              IconButton.filledTonal(
-                                                visualDensity:
-                                                    VisualDensity.compact,
-                                                tooltip: done
-                                                    ? 'Снять отметку выполнения'
-                                                    : 'Проверить и отметить выполненной',
-                                                icon: _DoneTogglePngIcon(
-                                                  done: done,
-                                                ),
-                                                onPressed: () async {
-                                                  if (done) {
-                                                    final details = await db
-                                                        .getWorkoutDetailsForClientOnDay(
+                                              ),
+                                              const SizedBox(width: 6),
+                                              Row(
+                                                mainAxisSize: MainAxisSize.min,
+                                                children: [
+                                                  IconButton.filledTonal(
+                                                    visualDensity:
+                                                        VisualDensity.compact,
+                                                    tooltip: done
+                                                        ? 'Снять отметку выполнения'
+                                                        : 'Проверить и отметить выполненной',
+                                                    icon: _DoneTogglePngIcon(
+                                                      done: done,
+                                                    ),
+                                                    onPressed: () async {
+                                                      if (done) {
+                                                        final details = await db
+                                                            .getWorkoutDetailsForClientOnDay(
+                                                              clientId:
+                                                                  it.client.id,
+                                                              day: it
+                                                                  .appointment
+                                                                  .startAt,
+                                                            );
+
+                                                        final results = {
+                                                          for (final e
+                                                              in details.$3)
+                                                            e.templateExerciseId:
+                                                                (
+                                                                  e.lastWeightKg,
+                                                                  e.lastReps,
+                                                                ),
+                                                        };
+
+                                                        await db.saveWorkoutDraftResults(
                                                           clientId:
                                                               it.client.id,
                                                           day: it
                                                               .appointment
                                                               .startAt,
+                                                          resultsByTemplateExerciseId:
+                                                              results,
                                                         );
-
-                                                    final results = {
-                                                      for (final e
-                                                          in details.$3)
-                                                        e.templateExerciseId: (
-                                                          e.lastWeightKg,
-                                                          e.lastReps,
-                                                        ),
-                                                    };
-
-                                                    await db.saveWorkoutDraftResults(
-                                                      clientId: it.client.id,
-                                                      day: it
-                                                          .appointment
-                                                          .startAt,
-                                                      resultsByTemplateExerciseId:
-                                                          results,
-                                                    );
-                                                    await db
-                                                        .toggleWorkoutForClientOnDay(
-                                                          clientId:
-                                                              it.client.id,
-                                                          day: _selectedDay,
+                                                        await db
+                                                            .toggleWorkoutForClientOnDay(
+                                                              clientId:
+                                                                  it.client.id,
+                                                              day: _selectedDay,
+                                                            );
+                                                        await db.updateAppointmentNote(
+                                                          id: it.appointment.id,
+                                                          note:
+                                                              _withAttendanceMarker(
+                                                                it
+                                                                    .appointment
+                                                                    .note,
+                                                                false,
+                                                              ),
                                                         );
-                                                    await db.updateAppointmentNote(
-                                                      id: it.appointment.id,
-                                                      note:
-                                                          _withAttendanceMarker(
-                                                            it.appointment.note,
-                                                            false,
+                                                        if (!mounted) return;
+                                                        setState(() {});
+                                                        return;
+                                                      }
+
+                                                      await _openQuickWorkoutCheck(
+                                                        it,
+                                                      );
+                                                    },
+                                                  ),
+                                                  PopupMenuButton<String>(
+                                                    tooltip: 'Действия',
+                                                    itemBuilder: (context) => [
+                                                      PopupMenuItem(
+                                                        value: 'delete',
+                                                        child: Center(
+                                                          child: _CalendarPngIcon(
+                                                            assetPath:
+                                                                'assets/calendar/delete_record.png',
+                                                            fallback: Icons
+                                                                .delete_outline,
+                                                            size: 20,
+                                                            color: colors.error,
                                                           ),
-                                                    );
-                                                    if (!mounted) return;
-                                                    setState(() {});
-                                                    return;
-                                                  }
-
-                                                  await _openQuickWorkoutCheck(
-                                                    it,
-                                                  );
-                                                },
-                                              ),
-                                              PopupMenuButton<String>(
-                                                tooltip: 'Действия',
-                                                itemBuilder: (context) => [
-                                                  PopupMenuItem(
-                                                    value: 'delete',
-                                                    child: Center(
-                                                      child: _CalendarPngIcon(
-                                                        assetPath:
-                                                            'assets/calendar/delete_record.png',
-                                                        fallback: Icons
-                                                            .delete_outline,
-                                                        size: 20,
-                                                        color: colors.error,
+                                                        ),
                                                       ),
+                                                    ],
+                                                    onSelected: (value) async {
+                                                      if (value == 'delete') {
+                                                        await db
+                                                            .deleteAppointmentById(
+                                                              it.appointment.id,
+                                                            );
+                                                      }
+                                                    },
+                                                    icon: const Icon(
+                                                      Icons.more_horiz_rounded,
                                                     ),
                                                   ),
                                                 ],
-                                                onSelected: (value) async {
-                                                  if (value == 'delete') {
-                                                    await db
-                                                        .deleteAppointmentById(
-                                                          it.appointment.id,
-                                                        );
-                                                  }
-                                                },
-                                                icon: const Icon(
-                                                  Icons.more_horiz_rounded,
-                                                ),
                                               ),
                                             ],
                                           ),
-                                        ],
+                                        ),
                                       ),
-                                    ),
-                                  ),
-                                );
-                              }, childCount: items.length),
-                            ),
-                        ],
-                      ),
+                                    );
+                                  }, childCount: items.length),
+                                ),
+                            ],
+                          ),
+                        );
+                      },
                     );
                   },
                 );
               },
-            );
-          },
+            ),
+          ],
         ),
       ),
     );
