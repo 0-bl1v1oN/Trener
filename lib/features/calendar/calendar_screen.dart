@@ -3013,8 +3013,10 @@ class _CalendarScreenState extends State<CalendarScreen>
                                                           mainAxisSize:
                                                               MainAxisSize.min,
                                                           children: [
-                                                            Icon(
-                                                              Icons
+                                                            _CalendarPngIcon(
+                                                              assetPath:
+                                                                  'assets/calendar/plan_badge.png',
+                                                              fallback: Icons
                                                                   .confirmation_number_outlined,
                                                               size: 15,
                                                               color: colors
@@ -3120,6 +3122,32 @@ class _CalendarScreenState extends State<CalendarScreen>
                                                 ),
                                                 onPressed: () async {
                                                   if (done) {
+                                                    final details = await db
+                                                        .getWorkoutDetailsForClientOnDay(
+                                                          clientId:
+                                                              it.client.id,
+                                                          day: it
+                                                              .appointment
+                                                              .startAt,
+                                                        );
+
+                                                    final results = {
+                                                      for (final e
+                                                          in details.$3)
+                                                        e.templateExerciseId: (
+                                                          e.lastWeightKg,
+                                                          e.lastReps,
+                                                        ),
+                                                    };
+
+                                                    await db.saveWorkoutDraftResults(
+                                                      clientId: it.client.id,
+                                                      day: it
+                                                          .appointment
+                                                          .startAt,
+                                                      resultsByTemplateExerciseId:
+                                                          results,
+                                                    );
                                                     await db
                                                         .toggleWorkoutForClientOnDay(
                                                           clientId:
@@ -3149,23 +3177,15 @@ class _CalendarScreenState extends State<CalendarScreen>
                                                 itemBuilder: (context) => [
                                                   PopupMenuItem(
                                                     value: 'delete',
-                                                    child: Row(
-                                                      children: [
-                                                        Icon(
-                                                          Icons.delete_outline,
-                                                          size: 18,
-                                                          color: colors.error,
-                                                        ),
-                                                        const SizedBox(
-                                                          width: 8,
-                                                        ),
-                                                        Text(
-                                                          'Удалить запись',
-                                                          style: TextStyle(
-                                                            color: colors.error,
-                                                          ),
-                                                        ),
-                                                      ],
+                                                    child: Center(
+                                                      child: _CalendarPngIcon(
+                                                        assetPath:
+                                                            'assets/calendar/delete_record.png',
+                                                        fallback: Icons
+                                                            .delete_outline,
+                                                        size: 20,
+                                                        color: colors.error,
+                                                      ),
                                                     ),
                                                   ),
                                                 ],
@@ -3220,6 +3240,35 @@ class _DoneTogglePngIcon extends StatelessWidget {
       fit: BoxFit.contain,
       errorBuilder: (_, __, ___) =>
           Icon(done ? Icons.check_circle : Icons.radio_button_unchecked),
+    );
+  }
+}
+
+class _CalendarPngIcon extends StatelessWidget {
+  const _CalendarPngIcon({
+    required this.assetPath,
+    required this.fallback,
+    this.size = 18,
+    this.color,
+  });
+
+  final String assetPath;
+  final IconData fallback;
+  final double size;
+  final Color? color;
+
+  @override
+  Widget build(BuildContext context) {
+    final iconColor = color ?? Theme.of(context).colorScheme.onSurface;
+    return Image.asset(
+      assetPath,
+      width: size,
+      height: size,
+      fit: BoxFit.contain,
+      errorBuilder: (_, __, ___) =>
+          Icon(fallback, size: size, color: iconColor),
+      color: color,
+      colorBlendMode: color == null ? null : BlendMode.srcIn,
     );
   }
 }
