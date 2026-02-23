@@ -57,6 +57,10 @@ class _CalendarScreenState extends State<CalendarScreen>
       'assets/calendar/calendar_bg_boy.jpg';
   static const String _calendarBackgroundEnabledKey =
       'calendar_background_enabled';
+  static const AssetImage _calendarBackgroundImage = AssetImage(
+    _calendarBackgroundAsset,
+  );
+  bool _calendarBackgroundPrecached = false;
   late final AppDb db;
   bool _dbInited = false;
   bool _showCalendarBackground = true;
@@ -128,12 +132,19 @@ class _CalendarScreenState extends State<CalendarScreen>
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
+    _precacheCalendarBackgroundIfNeeded();
     if (!_dbInited) {
       db = AppDbScope.of(context);
       _dbInited = true;
       _setCountsWindow(_focusedDay);
     }
     _loadCalendarBackgroundState();
+  }
+
+  Future<void> _precacheCalendarBackgroundIfNeeded() async {
+    if (_calendarBackgroundPrecached) return;
+    _calendarBackgroundPrecached = true;
+    await precacheImage(_calendarBackgroundImage, context);
   }
 
   Future<void> _loadCalendarBackgroundState() async {
@@ -3363,11 +3374,12 @@ class _CalendarBackgroundLayer extends StatelessWidget {
           alignment: Alignment.bottomCenter,
           child: Opacity(
             opacity: 0.32,
-            child: Image.asset(
-              _CalendarScreenState._calendarBackgroundAsset,
+            child: Image(
+              image: _CalendarScreenState._calendarBackgroundImage,
               width: imageWidth,
               height: imageHeight,
               fit: BoxFit.cover,
+              gaplessPlayback: true,
               filterQuality: FilterQuality.low,
               errorBuilder: (_, __, ___) => const SizedBox.shrink(),
             ),
