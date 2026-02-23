@@ -133,10 +133,14 @@ class _CalendarScreenState extends State<CalendarScreen>
 
   Future<void> _loadCalendarBackgroundState() async {
     final prefs = await SharedPreferences.getInstance();
-    final enabled = prefs.getBool(_calendarBackgroundEnabledKey);
-    if (!mounted) return;
-    setState(() {
-      _showCalendarBackground = enabled ?? true;
+    final enabled = prefs.getBool(_calendarBackgroundEnabledKey) ?? true;
+    if (!mounted || enabled == _showCalendarBackground) return;
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      setState(() {
+        _showCalendarBackground = enabled;
+      });
     });
   }
 
@@ -2450,20 +2454,8 @@ class _CalendarScreenState extends State<CalendarScreen>
         body: Stack(
           children: [
             if (_showCalendarBackground)
-              Positioned.fill(
-                child: IgnorePointer(
-                  child: Align(
-                    alignment: Alignment.bottomRight,
-                    child: Opacity(
-                      opacity: 0.18,
-                      child: Image.asset(
-                        _calendarBackgroundAsset,
-                        fit: BoxFit.cover,
-                        errorBuilder: (_, __, ___) => const SizedBox.shrink(),
-                      ),
-                    ),
-                  ),
-                ),
+              const Positioned.fill(
+                child: IgnorePointer(child: _CalendarBackgroundLayer()),
               ),
             StreamBuilder<List<AppointmentWithClient>>(
               stream: db.watchAppointmentsForDay(_selectedDay),
@@ -3331,6 +3323,42 @@ class _CalendarScreenState extends State<CalendarScreen>
           ],
         ),
       ),
+    );
+  }
+}
+
+class _CalendarBackgroundLayer extends StatelessWidget {
+  const _CalendarBackgroundLayer();
+
+  @override
+  Widget build(BuildContext context) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final width = constraints.maxWidth.isFinite
+            ? constraints.maxWidth
+            : MediaQuery.sizeOf(context).width;
+        final height = constraints.maxHeight.isFinite
+            ? constraints.maxHeight
+            : MediaQuery.sizeOf(context).height;
+
+        final imageWidth = (width * 0.72).clamp(220.0, 420.0);
+        final imageHeight = (height * 0.78).clamp(280.0, 620.0);
+
+        return Align(
+          alignment: Alignment.bottomRight,
+          child: Opacity(
+            opacity: 0.14,
+            child: Image.asset(
+              _CalendarScreenState._calendarBackgroundAsset,
+              width: imageWidth,
+              height: imageHeight,
+              fit: BoxFit.contain,
+              filterQuality: FilterQuality.low,
+              errorBuilder: (_, __, ___) => const SizedBox.shrink(),
+            ),
+          ),
+        );
+      },
     );
   }
 }
