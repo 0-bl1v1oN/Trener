@@ -36,7 +36,18 @@ class MyFitnessApp extends StatelessWidget {
           darkTheme: ThemeData(
             useMaterial3: true,
             brightness: Brightness.dark,
-            colorSchemeSeed: const Color(0xFF7C4DFF),
+            colorScheme:
+                ColorScheme.fromSeed(
+                  seedColor: const Color(0xFF8D7CFF),
+                  brightness: Brightness.dark,
+                ).copyWith(
+                  surface: const Color(0xFF1B1D2A),
+                  surfaceContainerHighest: const Color(0xFF2A2D3E),
+                  outlineVariant: const Color(0xFF3A3D52),
+                ),
+            scaffoldBackgroundColor: const Color(0xFF141623),
+            canvasColor: const Color(0xFF141623),
+            cardColor: const Color(0xFF1B1D2A),
           ),
 
           // --- только русский интерфейс ---

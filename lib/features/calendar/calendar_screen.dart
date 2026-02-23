@@ -3267,8 +3267,6 @@ class _CalendarPngIcon extends StatelessWidget {
       fit: BoxFit.contain,
       errorBuilder: (_, __, ___) =>
           Icon(fallback, size: size, color: iconColor),
-      color: color,
-      colorBlendMode: color == null ? null : BlendMode.srcIn,
     );
   }
 }
