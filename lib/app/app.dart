@@ -74,9 +74,14 @@ final GoRouter _router = GoRouter(
   navigatorKey: _rootNavKey,
   initialLocation: '/calendar',
   routes: [
-    StatefulShellRoute.indexedStack(
+    StatefulShellRoute(
       builder: (context, state, navigationShell) =>
           AppShell(navigationShell: navigationShell),
+      navigatorContainerBuilder: (context, navigationShell, children) =>
+          _AnimatedBranchContainer(
+            currentIndex: navigationShell.currentIndex,
+            children: children,
+          ),
       branches: [
         StatefulShellBranch(
           routes: [
@@ -212,6 +217,87 @@ class AppShell extends StatelessWidget {
           ),
         ],
       ),
+    );
+  }
+}
+
+class _AnimatedBranchContainer extends StatefulWidget {
+  const _AnimatedBranchContainer({
+    required this.currentIndex,
+    required this.children,
+  });
+
+  final int currentIndex;
+  final List<Widget> children;
+
+  @override
+  State<_AnimatedBranchContainer> createState() =>
+      _AnimatedBranchContainerState();
+}
+
+class _AnimatedBranchContainerState extends State<_AnimatedBranchContainer>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _controller;
+  late int _fromIndex;
+  late int _toIndex;
+
+  @override
+  void initState() {
+    super.initState();
+    _fromIndex = widget.currentIndex;
+    _toIndex = widget.currentIndex;
+    _controller = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 260),
+      value: 1,
+    );
+  }
+
+  @override
+  void didUpdateWidget(covariant _AnimatedBranchContainer oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.currentIndex == _toIndex) return;
+
+    _fromIndex = _toIndex;
+    _toIndex = widget.currentIndex;
+    _controller.forward(from: 0);
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedBuilder(
+      animation: _controller,
+      builder: (context, _) {
+        final t = Curves.easeInOutCubicEmphasized.transform(_controller.value);
+
+        return Stack(
+          children: [
+            for (var i = 0; i < widget.children.length; i++)
+              Positioned.fill(
+                child: IgnorePointer(
+                  ignoring: i != _toIndex,
+                  child: TickerMode(
+                    enabled: i == _toIndex,
+                    child: Opacity(
+                      opacity: i == _toIndex
+                          ? t
+                          : i == _fromIndex
+                          ? 1 - t
+                          : 0,
+                      child: widget.children[i],
+                    ),
+                  ),
+                ),
+              ),
+          ],
+        );
+      },
     );
   }
 }
