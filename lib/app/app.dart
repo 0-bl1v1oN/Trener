@@ -13,7 +13,7 @@ import '../features/more/more_screen.dart';
 import '../features/more/income_screen.dart';
 import '../features/more/records_screen.dart';
 import '../features/more/contests_screen.dart';
-
+import '../features/more/data_backup_screen.dart';
 import '../theme_controller.dart';
 
 class MyFitnessApp extends StatefulWidget {
@@ -293,6 +293,11 @@ final GoRouter _router = GoRouter(
       parentNavigatorKey: _rootNavKey,
       path: '/contests',
       builder: (context, state) => const ContestsScreen(),
+    ),
+    GoRoute(
+      parentNavigatorKey: _rootNavKey,
+      path: '/backup',
+      builder: (context, state) => const DataBackupScreen(),
     ),
   ],
 );

@@ -29,6 +29,14 @@ class MoreScreen extends StatelessWidget {
               iconColor: colors.primary,
               onTap: () => context.push('/contests'),
             ),
+            const SizedBox(height: 10),
+            _MenuTile(
+              icon: Icons.import_export_outlined,
+              title: 'Экспорт / Импорт',
+              subtitle: 'Резервная копия и восстановление данных клиентов',
+              iconColor: colors.primary,
+              onTap: () => context.push('/backup'),
+            ),
             _MenuTile(
               icon: Icons.payments_outlined,
               title: 'Доход',

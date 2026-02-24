@@ -1,3 +1,5 @@
+import 'dart:convert';
+import 'dart:io';
 import 'package:drift/drift.dart';
 import 'package:drift_flutter/drift_flutter.dart';
 
@@ -4124,5 +4126,105 @@ class AppDb extends _$AppDb {
           ),
         )
         .toList(growable: false);
+  }
+
+  String _quoteIdent(String ident) => '"${ident.replaceAll('"', '""')}"';
+
+  String _sqlLiteral(Object? value) {
+    if (value == null) return 'NULL';
+    if (value is num) return value.toString();
+    if (value is bool) return value ? '1' : '0';
+    final text = value is String ? value : jsonEncode(value);
+    return "'${text.replaceAll("'", "''")}'";
+  }
+
+  Future<Map<String, dynamic>> buildBackupPayload() async {
+    await ensureContestTables();
+
+    final tables = await customSelect(
+      "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' ORDER BY name",
+    ).get();
+
+    final payload = <String, dynamic>{
+      'schemaVersion': schemaVersion,
+      'exportedAt': DateTime.now().toIso8601String(),
+      'tables': <String, dynamic>{},
+    };
+
+    final tablesMap = payload['tables'] as Map<String, dynamic>;
+
+    for (final row in tables) {
+      final tableName = (row.data['name'] as String?) ?? '';
+      if (tableName.isEmpty) continue;
+
+      final dataRows = await customSelect(
+        'SELECT * FROM ${_quoteIdent(tableName)}',
+      ).get();
+
+      tablesMap[tableName] = dataRows
+          .map((e) => e.data)
+          .toList(growable: false);
+    }
+
+    return payload;
+  }
+
+  Future<void> exportBackupToFile(String filePath) async {
+    final payload = await buildBackupPayload();
+    final json = const JsonEncoder.withIndent('  ').convert(payload);
+    await File(filePath).writeAsString(json);
+  }
+
+  Future<void> importBackupPayload(Map<String, dynamic> payload) async {
+    final rawTables = payload['tables'];
+    if (rawTables is! Map<String, dynamic>) {
+      throw const FormatException(
+        'Некорректный формат резервной копии: нет tables',
+      );
+    }
+
+    await transaction(() async {
+      await customStatement('PRAGMA foreign_keys = OFF');
+
+      final existingTables = await customSelect(
+        "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' ORDER BY name",
+      ).get();
+
+      for (final row in existingTables) {
+        final tableName = (row.data['name'] as String?) ?? '';
+        if (tableName.isEmpty) continue;
+        await customStatement('DELETE FROM ${_quoteIdent(tableName)}');
+      }
+
+      final sortedNames = rawTables.keys.toList()..sort();
+      for (final tableName in sortedNames) {
+        final rows = rawTables[tableName];
+        if (rows is! List) continue;
+
+        for (final rawRow in rows) {
+          if (rawRow is! Map) continue;
+
+          final row = rawRow.map((key, value) => MapEntry('$key', value));
+          if (row.isEmpty) continue;
+
+          final columns = row.keys.map(_quoteIdent).join(', ');
+          final values = row.values.map(_sqlLiteral).join(', ');
+          await customStatement(
+            'INSERT INTO ${_quoteIdent(tableName)} ($columns) VALUES ($values)',
+          );
+        }
+      }
+
+      await customStatement('PRAGMA foreign_keys = ON');
+    });
+  }
+
+  Future<void> importBackupFromFile(String filePath) async {
+    final content = await File(filePath).readAsString();
+    final dynamic decoded = jsonDecode(content);
+    if (decoded is! Map<String, dynamic>) {
+      throw const FormatException('Некорректный формат резервной копии');
+    }
+    await importBackupPayload(decoded);
   }
 }
