@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:go_router/go_router.dart';
+import 'package:flutter_native_splash/flutter_native_splash.dart';
 
 import '../features/calendar/calendar_screen.dart';
 import '../features/clients/clients_screen.dart';
@@ -15,14 +16,65 @@ import '../features/more/contests_screen.dart';
 
 import '../theme_controller.dart';
 
-class MyFitnessApp extends StatelessWidget {
+class MyFitnessApp extends StatefulWidget {
   const MyFitnessApp({super.key});
+
+  @override
+  State<MyFitnessApp> createState() => _MyFitnessAppState();
+}
+
+class _MyFitnessAppState extends State<MyFitnessApp> {
+  bool _backgroundWarmedUp = false;
+  bool _nativeSplashRemoved = false;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (_backgroundWarmedUp) return;
+    _warmUpCalendarBackground();
+  }
+
+  Future<void> _warmUpCalendarBackground() async {
+    final startedAt = DateTime.now();
+    const minSplashDuration = Duration(milliseconds: 900);
+
+    try {
+      await precacheImage(
+        const AssetImage('assets/calendar/calendar_bg_boy.jpg'),
+        context,
+      );
+    } catch (_) {
+      // Если ассет не прогрелся, продолжаем запуск без блокировки.
+    }
+
+    final elapsed = DateTime.now().difference(startedAt);
+    final waitMore = minSplashDuration - elapsed;
+    if (waitMore > Duration.zero) {
+      await Future.delayed(waitMore);
+    }
+
+    if (!mounted) return;
+    setState(() {
+      _backgroundWarmedUp = true;
+    });
+
+    if (!_nativeSplashRemoved) {
+      _nativeSplashRemoved = true;
+      FlutterNativeSplash.remove();
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
     return ValueListenableBuilder<ThemeMode>(
       valueListenable: themeController,
       builder: (context, mode, _) {
+        if (!_backgroundWarmedUp) {
+          return const MaterialApp(
+            debugShowCheckedModeBanner: false,
+            home: _StartupWarmupScreen(),
+          );
+        }
         return MaterialApp.router(
           title: 'MyFitness',
 
@@ -64,6 +116,84 @@ class MyFitnessApp extends StatelessWidget {
           debugShowCheckedModeBanner: false,
         );
       },
+    );
+  }
+}
+
+class _StartupWarmupScreen extends StatefulWidget {
+  const _StartupWarmupScreen();
+
+  @override
+  State<_StartupWarmupScreen> createState() => _StartupWarmupScreenState();
+}
+
+class _StartupWarmupScreenState extends State<_StartupWarmupScreen>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _controller;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 1800),
+    )..repeat(reverse: true);
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final scale = Tween<double>(
+      begin: 0.96,
+      end: 1.0,
+    ).animate(CurvedAnimation(parent: _controller, curve: Curves.easeInOut));
+    final opacity = Tween<double>(
+      begin: 0.88,
+      end: 1.0,
+    ).animate(CurvedAnimation(parent: _controller, curve: Curves.easeInOut));
+
+    return DecoratedBox(
+      decoration: const BoxDecoration(color: Color(0xFFF4F5FA)),
+      child: Center(
+        child: AnimatedBuilder(
+          animation: _controller,
+          builder: (context, _) => Opacity(
+            opacity: opacity.value,
+            child: Transform.scale(
+              scale: scale.value,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Image.asset(
+                    'assets/branding/splash_hero.jpg',
+                    width: 220,
+                    fit: BoxFit.contain,
+                    errorBuilder: (_, __, ___) => Image.asset(
+                      'assets/branding/splash_icon.png',
+                      width: 170,
+                      fit: BoxFit.contain,
+                    ),
+                  ),
+                  const SizedBox(height: 24),
+                  const SizedBox(
+                    width: 26,
+                    height: 26,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2.6,
+                      valueColor: AlwaysStoppedAnimation(Color(0xFF7C4DFF)),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
     );
   }
 }
@@ -248,7 +378,7 @@ class _AnimatedBranchContainerState extends State<_AnimatedBranchContainer>
     _toIndex = widget.currentIndex;
     _controller = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 260),
+      duration: const Duration(milliseconds: 320),
       value: 1,
     );
   }
@@ -274,7 +404,7 @@ class _AnimatedBranchContainerState extends State<_AnimatedBranchContainer>
     return AnimatedBuilder(
       animation: _controller,
       builder: (context, _) {
-        final t = Curves.easeInOutCubicEmphasized.transform(_controller.value);
+        final t = Curves.easeInOutCubic.transform(_controller.value);
 
         return Stack(
           children: [
