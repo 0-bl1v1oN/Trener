@@ -4139,6 +4139,7 @@ class AppDb extends _$AppDb {
   }
 
   Future<Map<String, dynamic>> buildBackupPayload() async {
+    await ensureIncomeTables();
     await ensureContestTables();
 
     final tables = await customSelect(
@@ -4176,6 +4177,9 @@ class AppDb extends _$AppDb {
   }
 
   Future<void> importBackupPayload(Map<String, dynamic> payload) async {
+    await ensureIncomeTables();
+    await ensureContestTables();
+
     final rawTables = payload['tables'];
     if (rawTables is! Map<String, dynamic>) {
       throw const FormatException(
