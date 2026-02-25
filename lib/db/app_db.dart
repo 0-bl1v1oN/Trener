@@ -4170,6 +4170,40 @@ class AppDb extends _$AppDb {
     return payload;
   }
 
+  Future<void> _ensureAuxTableForBackup(String tableName) async {
+    switch (tableName) {
+      case 'app_plan_prices':
+      case 'app_expenses':
+        await ensureIncomeTables();
+        return;
+      case 'app_contest_entries':
+      case 'app_contest_prizes':
+      case 'app_contest_winner_status':
+        await ensureContestTables();
+        return;
+      case 'client_program_day_overrides':
+        await _ensureProgramDayOverridesTable();
+        return;
+      case 'client_plan_end_alert_overrides':
+        await _ensurePlanEndAlertOverridesTable();
+        return;
+      case 'client_payment_reminders':
+        await _ensureClientPaymentRemindersTable();
+        return;
+      case 'client_exercise_name_overrides':
+        await _ensureClientExerciseNameOverridesTable();
+        return;
+      case 'client_hidden_exercises':
+        await _ensureClientHiddenExercisesTable();
+        return;
+      case 'client_added_exercises':
+        await _ensureClientAddedExercisesTable();
+        return;
+      default:
+        return;
+    }
+  }
+
   Future<void> exportBackupToFile(String filePath) async {
     final payload = await buildBackupPayload();
     final json = const JsonEncoder.withIndent('  ').convert(payload);
@@ -4185,6 +4219,9 @@ class AppDb extends _$AppDb {
       throw const FormatException(
         'Некорректный формат резервной копии: нет tables',
       );
+    }
+    for (final tableName in rawTables.keys) {
+      await _ensureAuxTableForBackup(tableName);
     }
 
     await transaction(() async {
