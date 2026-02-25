@@ -396,6 +396,8 @@ class AppDb extends _$AppDb {
   MigrationStrategy get migration => MigrationStrategy(
     onCreate: (m) async {
       await m.createAll();
+      await ensureIncomeTables();
+      await ensureContestTables();
       await _ensureProgramDayOverridesTable();
       await _ensurePlanEndAlertOverridesTable();
       await _ensureClientPaymentRemindersTable();
@@ -409,6 +411,8 @@ class AppDb extends _$AppDb {
     onUpgrade: (m, from, to) async {
       // Продовая миграция: без удаления существующих данных клиентов.
       await _ensureProgramDayOverridesTable();
+      await ensureIncomeTables();
+      await ensureContestTables();
       await _ensurePlanEndAlertOverridesTable();
       await _ensureClientPaymentRemindersTable();
       await _ensureClientExerciseNameOverridesTable();
@@ -4210,6 +4214,14 @@ class AppDb extends _$AppDb {
     await File(filePath).writeAsString(json);
   }
 
+  Future<bool> _tableExists(String tableName) async {
+    final rows = await customSelect(
+      "SELECT 1 FROM sqlite_master WHERE type='table' AND name = ? LIMIT 1",
+      variables: [Variable.withString(tableName)],
+    ).get();
+    return rows.isNotEmpty;
+  }
+
   Future<void> importBackupPayload(Map<String, dynamic> payload) async {
     await ensureIncomeTables();
     await ensureContestTables();
@@ -4239,6 +4251,10 @@ class AppDb extends _$AppDb {
 
       final sortedNames = rawTables.keys.toList()..sort();
       for (final tableName in sortedNames) {
+        await _ensureAuxTableForBackup(tableName);
+        if (!await _tableExists(tableName)) {
+          continue;
+        }
         final rows = rawTables[tableName];
         if (rows is! List) continue;
 
