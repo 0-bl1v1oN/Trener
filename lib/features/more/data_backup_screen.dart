@@ -1,9 +1,11 @@
 import 'dart:io';
 
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
+import 'package:share_plus/share_plus.dart';
 
 import '../../app/app_db_scope.dart';
 import '../../main.dart';
@@ -49,21 +51,26 @@ class _DataBackupScreenState extends State<DataBackupScreen> {
     setState(() => _files = entities);
   }
 
+  Future<File> _createBackupFile() async {
+    final db = AppDbScope.of(context);
+    final dir = await _backupDir();
+    final ts = DateFormat('yyyyMMdd_HHmmss').format(DateTime.now());
+    final filePath = p.join(dir.path, 'backup_$ts.json');
+    await db.exportBackupToFile(filePath);
+    return File(filePath);
+  }
+
   Future<void> _createBackup() async {
     if (_busy) return;
     setState(() => _busy = true);
     try {
-      final db = AppDbScope.of(context);
-      final dir = await _backupDir();
-      final ts = DateFormat('yyyyMMdd_HHmmss').format(DateTime.now());
-      final filePath = p.join(dir.path, 'backup_$ts.json');
-      await db.exportBackupToFile(filePath);
+      final file = await _createBackupFile();
       await _reloadFiles();
 
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('Резервная копия сохранена: ${p.basename(filePath)}'),
+          content: Text('Резервная копия сохранена: ${p.basename(file.path)}'),
         ),
       );
     } catch (e) {
@@ -71,6 +78,40 @@ class _DataBackupScreenState extends State<DataBackupScreen> {
       ScaffoldMessenger.of(
         context,
       ).showSnackBar(SnackBar(content: Text('Ошибка экспорта: $e')));
+    } finally {
+      if (mounted) {
+        setState(() => _busy = false);
+      }
+    }
+  }
+
+  Future<void> _createAndShareBackup() async {
+    if (_busy) return;
+    setState(() => _busy = true);
+    try {
+      final file = await _createBackupFile();
+      await _reloadFiles();
+
+      await Share.shareXFiles(
+        [XFile(file.path)],
+        text:
+            'Резервная копия данных MyFitness. Сохраните файл в облако/на устройство, чтобы восстановить данные после переустановки.',
+        subject: 'Резервная копия MyFitness',
+      );
+
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Открылось меню “Поделиться”. Сохраните файл вне приложения (например, в облако).',
+          ),
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Ошибка внешнего экспорта: $e')));
     } finally {
       if (mounted) {
         setState(() => _busy = false);
@@ -148,6 +189,58 @@ class _DataBackupScreenState extends State<DataBackupScreen> {
     }
   }
 
+  Future<void> _pickAndImportBackup() async {
+    if (_busy) return;
+    setState(() => _busy = true);
+
+    File? localCopy;
+    try {
+      final result = await FilePicker.platform.pickFiles(
+        type: FileType.custom,
+        allowedExtensions: const ['json'],
+      );
+
+      if (result == null || result.files.isEmpty) {
+        return;
+      }
+
+      final pickedPath = result.files.single.path;
+      if (pickedPath == null || pickedPath.isEmpty) {
+        throw const FileSystemException(
+          'Не удалось получить путь выбранного файла',
+        );
+      }
+
+      final pickedFile = File(pickedPath);
+      if (!await pickedFile.exists()) {
+        throw FileSystemException('Файл не найден', pickedPath);
+      }
+
+      // Сохраняем копию в локальном списке бэкапов приложения.
+      final backupDir = await _backupDir();
+      final targetPath = p.join(
+        backupDir.path,
+        'imported_${DateFormat('yyyyMMdd_HHmmss').format(DateTime.now())}.json',
+      );
+      localCopy = await pickedFile.copy(targetPath);
+      await _reloadFiles();
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Ошибка выбора файла: $e')));
+      return;
+    } finally {
+      if (mounted) {
+        setState(() => _busy = false);
+      }
+    }
+
+    if (localCopy != null && mounted) {
+      await _importBackup(localCopy);
+    }
+  }
+
   Future<void> _deleteBackup(File file) async {
     if (_busy) return;
 
@@ -186,13 +279,25 @@ class _DataBackupScreenState extends State<DataBackupScreen> {
             icon: const Icon(Icons.backup_outlined),
             label: const Text('Создать резервную копию'),
           ),
+          const SizedBox(height: 8),
+          OutlinedButton.icon(
+            onPressed: _busy ? null : _createAndShareBackup,
+            icon: const Icon(Icons.ios_share_outlined),
+            label: const Text('Создать и сохранить вне приложения'),
+          ),
+          const SizedBox(height: 8),
+          OutlinedButton.icon(
+            onPressed: _busy ? null : _pickAndImportBackup,
+            icon: const Icon(Icons.file_open_outlined),
+            label: const Text('Импортировать из файла устройства'),
+          ),
           const SizedBox(height: 12),
           const Text(
-            'Копии сохраняются в папке приложения /backups. Можно импортировать любую копию из списка ниже.',
+            'Важно: чтобы бэкап пережил удаление приложения, после создания сохраните файл во внешнее место (облако, Телеграм, Google Drive, iCloud и т.д.).',
           ),
           const SizedBox(height: 20),
           Text(
-            'Доступные копии',
+            'Локальные копии в приложении',
             style: Theme.of(context).textTheme.titleMedium,
           ),
           const SizedBox(height: 8),
