@@ -34,13 +34,9 @@ class _MyFitnessAppState extends State<MyFitnessApp> {
 
   Future<void> _warmUpCalendarBackground() async {
     final startedAt = DateTime.now();
-    const minSplashDuration = Duration(milliseconds: 600);
+    const minSplashDuration = Duration(milliseconds: 0);
 
     try {
-      await precacheImage(
-        const AssetImage('assets/branding/splash_hero.jpg'),
-        context,
-      );
       await precacheImage(
         const AssetImage('assets/calendar/calendar_bg_boy.jpg'),
         context,
@@ -183,6 +179,7 @@ class _StartupWarmupScreenState extends State<_StartupWarmupScreen>
                       child: Image.asset(
                         'assets/branding/splash_hero.jpg',
                         width: 220,
+                        cacheWidth: 520,
                         fit: BoxFit.contain,
                         errorBuilder: (_, __, ___) => Image.asset(
                           'assets/branding/splash_icon.png',

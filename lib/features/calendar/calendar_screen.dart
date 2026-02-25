@@ -129,6 +129,26 @@ class _CalendarScreenState extends State<CalendarScreen>
     return current.isEmpty ? _attendanceMarker : '$current $_attendanceMarker';
   }
 
+  String _normalizeSearchText(String value) {
+    return value
+        .toLowerCase()
+        .replaceAll('ё', 'е')
+        .replaceAll(RegExp(r'\s+'), ' ')
+        .trim();
+  }
+
+  String _primaryClientNamePart(String clientName) {
+    final normalizedName = _normalizeSearchText(clientName);
+    final parts = normalizedName.split(RegExp(r'[\s(\[{-]+'));
+    return parts.firstWhere((part) => part.isNotEmpty, orElse: () => '');
+  }
+
+  bool _matchesClientSearch(String clientName, String query) {
+    if (query.isEmpty) return true;
+    final primaryPart = _primaryClientNamePart(clientName);
+    return primaryPart.startsWith(query);
+  }
+
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
@@ -764,9 +784,9 @@ class _CalendarScreenState extends State<CalendarScreen>
               onSelected: (_) => toggleWeekday(wd),
             );
 
-            final query = clientQuery.trim().toLowerCase();
+            final query = _normalizeSearchText(clientQuery);
             final filteredClients = clients
-                .where((c) => c.name.toLowerCase().contains(query))
+                .where((c) => _matchesClientSearch(c.name, query))
                 .toList();
 
             if (filteredClients.isNotEmpty &&
