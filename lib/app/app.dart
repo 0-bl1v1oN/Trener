@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:go_router/go_router.dart';
-import 'package:flutter_native_splash/flutter_native_splash.dart';
 
 import '../features/calendar/calendar_screen.dart';
 import '../features/clients/clients_screen.dart';
@@ -25,7 +24,6 @@ class MyFitnessApp extends StatefulWidget {
 
 class _MyFitnessAppState extends State<MyFitnessApp> {
   bool _backgroundWarmedUp = false;
-  bool _nativeSplashRemoved = false;
 
   @override
   void didChangeDependencies() {
@@ -36,9 +34,13 @@ class _MyFitnessAppState extends State<MyFitnessApp> {
 
   Future<void> _warmUpCalendarBackground() async {
     final startedAt = DateTime.now();
-    const minSplashDuration = Duration(milliseconds: 900);
+    const minSplashDuration = Duration(milliseconds: 600);
 
     try {
+      await precacheImage(
+        const AssetImage('assets/branding/splash_hero.jpg'),
+        context,
+      );
       await precacheImage(
         const AssetImage('assets/calendar/calendar_bg_boy.jpg'),
         context,
@@ -57,11 +59,6 @@ class _MyFitnessAppState extends State<MyFitnessApp> {
     setState(() {
       _backgroundWarmedUp = true;
     });
-
-    if (!_nativeSplashRemoved) {
-      _nativeSplashRemoved = true;
-      FlutterNativeSplash.remove();
-    }
   }
 
   @override
@@ -148,17 +145,18 @@ class _StartupWarmupScreenState extends State<_StartupWarmupScreen>
 
   @override
   Widget build(BuildContext context) {
-    final scale = Tween<double>(
-      begin: 0.96,
-      end: 1.0,
-    ).animate(CurvedAnimation(parent: _controller, curve: Curves.easeInOut));
-    final opacity = Tween<double>(
-      begin: 0.88,
-      end: 1.0,
-    ).animate(CurvedAnimation(parent: _controller, curve: Curves.easeInOut));
+    final curve = CurvedAnimation(parent: _controller, curve: Curves.easeInOut);
+    final scale = Tween<double>(begin: 0.94, end: 1.02).animate(curve);
+    final opacity = Tween<double>(begin: 0.84, end: 1.0).animate(curve);
 
     return DecoratedBox(
-      decoration: const BoxDecoration(color: Color(0xFFF4F5FA)),
+      decoration: const BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: [Color(0xFF141623), Color(0xFF1B1D2A), Color(0xFF141623)],
+        ),
+      ),
       child: Center(
         child: AnimatedBuilder(
           animation: _controller,
@@ -169,23 +167,38 @@ class _StartupWarmupScreenState extends State<_StartupWarmupScreen>
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  Image.asset(
-                    'assets/branding/splash_hero.jpg',
-                    width: 220,
-                    fit: BoxFit.contain,
-                    errorBuilder: (_, __, ___) => Image.asset(
-                      'assets/branding/splash_icon.png',
-                      width: 170,
-                      fit: BoxFit.contain,
+                  DecoratedBox(
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(24),
+                      boxShadow: const [
+                        BoxShadow(
+                          color: Color(0x667C4DFF),
+                          blurRadius: 26,
+                          spreadRadius: 4,
+                        ),
+                      ],
+                    ),
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(20),
+                      child: Image.asset(
+                        'assets/branding/splash_hero.jpg',
+                        width: 220,
+                        fit: BoxFit.contain,
+                        errorBuilder: (_, __, ___) => Image.asset(
+                          'assets/branding/splash_icon.png',
+                          width: 170,
+                          fit: BoxFit.contain,
+                        ),
+                      ),
                     ),
                   ),
                   const SizedBox(height: 24),
                   const SizedBox(
-                    width: 26,
-                    height: 26,
+                    width: 28,
+                    height: 28,
                     child: CircularProgressIndicator(
-                      strokeWidth: 2.6,
-                      valueColor: AlwaysStoppedAnimation(Color(0xFF7C4DFF)),
+                      strokeWidth: 2.8,
+                      valueColor: AlwaysStoppedAnimation(Color(0xFFB9A6FF)),
                     ),
                   ),
                 ],

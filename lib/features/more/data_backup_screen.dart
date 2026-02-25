@@ -1,7 +1,9 @@
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
@@ -195,10 +197,24 @@ class _DataBackupScreenState extends State<DataBackupScreen> {
 
     File? localCopy;
     try {
-      final result = await FilePicker.platform.pickFiles(
-        type: FileType.custom,
-        allowedExtensions: const ['json'],
-      );
+      FilePickerResult? result;
+      try {
+        result = await FilePicker.platform.pickFiles(
+          type: FileType.custom,
+          allowedExtensions: const ['json'],
+        );
+      } on PlatformException catch (e) {
+        final message = e.message?.toLowerCase() ?? '';
+        final unsupportedFilter =
+            message.contains('unsupported filter') ||
+            message.contains('unsupported file extension');
+
+        if (!unsupportedFilter) {
+          rethrow;
+        }
+
+        result = await FilePicker.platform.pickFiles(type: FileType.any);
+      }
 
       if (result == null || result.files.isEmpty) {
         return;
@@ -214,6 +230,11 @@ class _DataBackupScreenState extends State<DataBackupScreen> {
       final pickedFile = File(pickedPath);
       if (!await pickedFile.exists()) {
         throw FileSystemException('Файл не найден', pickedPath);
+      }
+      final rawContent = await pickedFile.readAsString();
+      final dynamic parsed = jsonDecode(rawContent);
+      if (parsed is! Map<String, dynamic> || parsed['tables'] is! Map) {
+        throw const FormatException('Выберите JSON-файл резервной копии');
       }
 
       // Сохраняем копию в локальном списке бэкапов приложения.

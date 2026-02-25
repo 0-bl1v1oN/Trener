@@ -422,6 +422,17 @@ class AppDb extends _$AppDb {
       await _seedWorkoutTemplates();
       await _seedWorkoutTemplateExercises();
     },
+
+    beforeOpen: (details) async {
+      await ensureIncomeTables();
+      await ensureContestTables();
+      await _ensureProgramDayOverridesTable();
+      await _ensurePlanEndAlertOverridesTable();
+      await _ensureClientPaymentRemindersTable();
+      await _ensureClientExerciseNameOverridesTable();
+      await _ensureClientHiddenExercisesTable();
+      await _ensureClientAddedExercisesTable();
+    },
   );
 
   Future<void> _ensureProgramDayOverridesTable() async {
@@ -4222,6 +4233,11 @@ class AppDb extends _$AppDb {
     return rows.isNotEmpty;
   }
 
+  bool _isMissingTableInsertError(Object error, String tableName) {
+    final message = error.toString().toLowerCase();
+    return message.contains('no such table: $tableName'.toLowerCase());
+  }
+
   Future<void> importBackupPayload(Map<String, dynamic> payload) async {
     await ensureIncomeTables();
     await ensureContestTables();
@@ -4239,40 +4255,52 @@ class AppDb extends _$AppDb {
     await transaction(() async {
       await customStatement('PRAGMA foreign_keys = OFF');
 
-      final existingTables = await customSelect(
-        "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' ORDER BY name",
-      ).get();
+      try {
+        final existingTables = await customSelect(
+          "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' ORDER BY name",
+        ).get();
 
-      for (final row in existingTables) {
-        final tableName = (row.data['name'] as String?) ?? '';
-        if (tableName.isEmpty) continue;
-        await customStatement('DELETE FROM ${_quoteIdent(tableName)}');
-      }
-
-      final sortedNames = rawTables.keys.toList()..sort();
-      for (final tableName in sortedNames) {
-        await _ensureAuxTableForBackup(tableName);
-        if (!await _tableExists(tableName)) {
-          continue;
+        for (final row in existingTables) {
+          final tableName = (row.data['name'] as String?) ?? '';
+          if (tableName.isEmpty) continue;
+          await customStatement('DELETE FROM ${_quoteIdent(tableName)}');
         }
-        final rows = rawTables[tableName];
-        if (rows is! List) continue;
+        final sortedNames = rawTables.keys.toList()..sort();
+        for (final tableName in sortedNames) {
+          await _ensureAuxTableForBackup(tableName);
+          if (!await _tableExists(tableName)) {
+            continue;
+          }
+          final rows = rawTables[tableName];
+          if (rows is! List) continue;
 
-        for (final rawRow in rows) {
-          if (rawRow is! Map) continue;
+          var skipTable = false;
+          for (final rawRow in rows) {
+            if (skipTable) break;
+            if (rawRow is! Map) continue;
 
-          final row = rawRow.map((key, value) => MapEntry('$key', value));
-          if (row.isEmpty) continue;
+            final row = rawRow.map((key, value) => MapEntry('$key', value));
+            if (row.isEmpty) continue;
 
-          final columns = row.keys.map(_quoteIdent).join(', ');
-          final values = row.values.map(_sqlLiteral).join(', ');
-          await customStatement(
-            'INSERT INTO ${_quoteIdent(tableName)} ($columns) VALUES ($values)',
-          );
+            final columns = row.keys.map(_quoteIdent).join(', ');
+            final values = row.values.map(_sqlLiteral).join(', ');
+
+            try {
+              await customStatement(
+                'INSERT OR REPLACE INTO ${_quoteIdent(tableName)} ($columns) VALUES ($values)',
+              );
+            } catch (error) {
+              if (_isMissingTableInsertError(error, tableName)) {
+                skipTable = true;
+                continue;
+              }
+              rethrow;
+            }
+          }
         }
+      } finally {
+        await customStatement('PRAGMA foreign_keys = ON');
       }
-
-      await customStatement('PRAGMA foreign_keys = ON');
     });
   }
 
