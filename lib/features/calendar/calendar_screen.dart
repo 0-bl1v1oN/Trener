@@ -161,17 +161,30 @@ class _CalendarScreenState extends State<CalendarScreen>
     return buffer.toString().replaceAll(RegExp(r'\s+'), ' ').trim();
   }
 
-  String _primaryClientNamePart(String clientName) {
+  String _extractSearchableClientName(String clientName) {
     final normalizedName = _normalizeSearchText(clientName);
-    final parts = normalizedName.split(RegExp(r'[\s(\[{-]+'));
-    return parts.firstWhere((part) => part.isNotEmpty, orElse: () => '');
+    final cutoff = normalizedName.indexOf(RegExp(r'[([{]'));
+    if (cutoff < 0) return normalizedName;
+    return normalizedName.substring(0, cutoff).trim();
+  }
+
+  String _normalizeQueryForSearch(String value) {
+    final normalized = _normalizeSearchText(value);
+
+    // На некоторых клавиатурах "ё" может приходить как латинская "ë".
+    return normalized.replaceAll('ë', 'е');
   }
 
   bool _matchesClientSearch(String clientName, String query) {
     if (query.isEmpty) return true;
-    final normalizedName = _normalizeSearchText(clientName);
-    final primaryPart = _primaryClientNamePart(clientName);
-    return primaryPart.startsWith(query) || normalizedName.contains(query);
+    final normalizedName = _extractSearchableClientName(clientName);
+    if (normalizedName.startsWith(query)) return true;
+
+    final nameParts = normalizedName
+        .split(RegExp(r'[\s\-_,.]+'))
+        .where((part) => part.isNotEmpty);
+
+    return nameParts.any((part) => part.startsWith(query));
   }
 
   @override
@@ -809,7 +822,7 @@ class _CalendarScreenState extends State<CalendarScreen>
               onSelected: (_) => toggleWeekday(wd),
             );
 
-            final query = _normalizeSearchText(clientQuery);
+            final query = _normalizeQueryForSearch(clientQuery);
             final filteredClients = clients
                 .where((c) => _matchesClientSearch(c.name, query))
                 .toList();
