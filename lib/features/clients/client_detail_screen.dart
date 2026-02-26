@@ -119,11 +119,26 @@ class _ClientDetailScreenState extends State<ClientDetailScreen> {
   InputDecoration _fieldDecoration(
     String label,
     ColorScheme colors, {
-    IconData? icon,
+    String? iconAsset,
+    IconData? fallbackIcon,
   }) {
     return InputDecoration(
       labelText: label,
-      prefixIcon: icon == null ? null : Icon(icon, size: 18),
+      prefixIcon: iconAsset == null
+          ? null
+          : Padding(
+              padding: const EdgeInsets.all(12),
+              child: Image.asset(
+                iconAsset,
+                width: 18,
+                height: 18,
+                fit: BoxFit.contain,
+                errorBuilder: (_, __, ___) => Icon(
+                  fallbackIcon ?? Icons.image_not_supported_outlined,
+                  size: 18,
+                ),
+              ),
+            ),
       filled: true,
       fillColor: colors.surfaceContainerHighest.withOpacity(0.35),
       border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
@@ -182,7 +197,8 @@ class _ClientDetailScreenState extends State<ClientDetailScreen> {
                         decoration: _fieldDecoration(
                           'Имя',
                           colors,
-                          icon: Icons.person_outline,
+                          iconAsset: 'assets/clients/client_name.png',
+                          fallbackIcon: Icons.person_outline,
                         ),
                       ),
                       const SizedBox(height: 12),
@@ -201,7 +217,8 @@ class _ClientDetailScreenState extends State<ClientDetailScreen> {
                         decoration: _fieldDecoration(
                           'Пол',
                           colors,
-                          icon: Icons.wc,
+                          iconAsset: 'assets/clients/client_gender.png',
+                          fallbackIcon: Icons.wc,
                         ),
                       ),
                       const SizedBox(height: 12),
@@ -221,7 +238,8 @@ class _ClientDetailScreenState extends State<ClientDetailScreen> {
                         decoration: _fieldDecoration(
                           'Абонемент',
                           colors,
-                          icon: Icons.confirmation_num_outlined,
+                          iconAsset: 'assets/clients/client_plan.png',
+                          fallbackIcon: Icons.confirmation_num_outlined,
                         ),
                       ),
                     ],
@@ -248,7 +266,8 @@ class _ClientDetailScreenState extends State<ClientDetailScreen> {
                           decoration: _fieldDecoration(
                             'Начало абонемента',
                             colors,
-                            icon: Icons.event,
+                            iconAsset: 'assets/clients/client_plan_start.png',
+                            fallbackIcon: Icons.event,
                           ),
                           child: Text(_fmtDate(_start)),
                         ),
@@ -258,7 +277,8 @@ class _ClientDetailScreenState extends State<ClientDetailScreen> {
                         decoration: _fieldDecoration(
                           'Конец абонемента (+28 дней)',
                           colors,
-                          icon: Icons.event_available,
+                          iconAsset: 'assets/clients/client_plan_end.png',
+                          fallbackIcon: Icons.event_available,
                         ),
                         child: Text(_fmtDate(_end)),
                       ),
@@ -275,10 +295,16 @@ class _ClientDetailScreenState extends State<ClientDetailScreen> {
                         ),
                         child: Row(
                           children: [
-                            Icon(
-                              Icons.fitness_center,
-                              size: 18,
-                              color: colors.onPrimaryContainer,
+                            Image.asset(
+                              'assets/clients/client_sessions_left.png',
+                              width: 18,
+                              height: 18,
+                              fit: BoxFit.contain,
+                              errorBuilder: (_, __, ___) => Icon(
+                                Icons.fitness_center,
+                                size: 18,
+                                color: colors.onPrimaryContainer,
+                              ),
                             ),
                             const SizedBox(width: 8),
                             Text(
@@ -305,7 +331,13 @@ class _ClientDetailScreenState extends State<ClientDetailScreen> {
                     if (!mounted) return;
                     await _load();
                   },
-                  icon: const Icon(Icons.view_list),
+                  icon: Image.asset(
+                    'assets/clients/client_program.png',
+                    width: 18,
+                    height: 18,
+                    fit: BoxFit.contain,
+                    errorBuilder: (_, __, ___) => const Icon(Icons.view_list),
+                  ),
                   label: const Text('Программа'),
                 ),
               ),

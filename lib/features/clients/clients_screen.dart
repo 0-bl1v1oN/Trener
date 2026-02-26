@@ -551,7 +551,14 @@ class _ClientCard extends StatelessWidget {
                   ),
                 ),
                 IconButton(
-                  icon: const Icon(Icons.delete_outline),
+                  icon: Image.asset(
+                    'assets/clients/client_delete.png',
+                    width: 22,
+                    height: 22,
+                    fit: BoxFit.contain,
+                    errorBuilder: (_, __, ___) =>
+                        const Icon(Icons.delete_outline),
+                  ),
                   tooltip: 'Удалить',
                   color: colors.error,
                   onPressed: onDelete,
