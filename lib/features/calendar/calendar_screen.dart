@@ -132,9 +132,13 @@ class _CalendarScreenState extends State<CalendarScreen>
   String _normalizeSearchText(String value) {
     return value
         .toLowerCase()
-        .replaceAll('ё', 'е')
+        // Сводим все варианты "ё" к "е":
+        // - precomposed: U+0451
+        // - decomposed: "е" + U+0308
         .replaceAll('ё', 'е')
-        .replaceAll(RegExp(r'[\u0300-\u036f]'), '')
+        .replaceAll('̈', '')
+        // Убираем zero-width символы, которые могут попадать из клавиатуры.
+        .replaceAll(RegExp('[\u200B-\u200D\uFEFF]'), '')
         .replaceAll(RegExp(r'\s+'), ' ')
         .trim();
   }
@@ -147,8 +151,9 @@ class _CalendarScreenState extends State<CalendarScreen>
 
   bool _matchesClientSearch(String clientName, String query) {
     if (query.isEmpty) return true;
+    final normalizedName = _normalizeSearchText(clientName);
     final primaryPart = _primaryClientNamePart(clientName);
-    return primaryPart.startsWith(query);
+    return primaryPart.startsWith(query) || normalizedName.contains(query);
   }
 
   @override
