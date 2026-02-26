@@ -132,7 +132,9 @@ class _CalendarScreenState extends State<CalendarScreen>
   String _normalizeSearchText(String value) {
     return value
         .toLowerCase()
+        .replaceAll('ё', 'е')
         .replaceAll('ё', 'е')
+        .replaceAll(RegExp(r'[\u0300-\u036f]'), '')
         .replaceAll(RegExp(r'\s+'), ' ')
         .trim();
   }
