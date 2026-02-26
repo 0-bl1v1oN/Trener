@@ -535,20 +535,14 @@ class _ClientCard extends StatelessWidget {
                       ),
                       if (dateText != null) ...[
                         const SizedBox(height: 8),
-                        Row(
+                        Wrap(
+                          spacing: 8,
+                          runSpacing: 8,
                           children: [
-                            Icon(
-                              Icons.event_available,
-                              size: 16,
-                              color: colors.onSurfaceVariant,
-                            ),
-                            const SizedBox(width: 6),
-                            Expanded(
-                              child: Text(
-                                dateText!,
-                                style: Theme.of(context).textTheme.bodyMedium
-                                    ?.copyWith(color: colors.onSurfaceVariant),
-                              ),
+                            _MetaChip(
+                              icon: Icons.event_available,
+                              label: dateText!,
+                              iconColor: colors.onSurfaceVariant,
                             ),
                           ],
                         ),
