@@ -129,18 +129,36 @@ class _CalendarScreenState extends State<CalendarScreen>
     return current.isEmpty ? _attendanceMarker : '$current $_attendanceMarker';
   }
 
+  bool _isCombiningMark(int rune) {
+    return (rune >= 0x0300 && rune <= 0x036F) ||
+        (rune >= 0x1AB0 && rune <= 0x1AFF) ||
+        (rune >= 0x1DC0 && rune <= 0x1DFF) ||
+        (rune >= 0x20D0 && rune <= 0x20FF) ||
+        (rune >= 0xFE20 && rune <= 0xFE2F);
+  }
+
   String _normalizeSearchText(String value) {
-    return value
-        .toLowerCase()
-        // Сводим все варианты "ё" к "е":
-        // - precomposed: U+0451
-        // - decomposed: "е" + U+0308
-        .replaceAll('ё', 'е')
-        .replaceAll('̈', '')
-        // Убираем zero-width символы, которые могут попадать из клавиатуры.
-        .replaceAll(RegExp('[\u200B-\u200D\uFEFF]'), '')
-        .replaceAll(RegExp(r'\s+'), ' ')
-        .trim();
+    final lowered = value.toLowerCase();
+    final buffer = StringBuffer();
+
+    for (final rune in lowered.runes) {
+      // Сводим "ё" к "е", чтобы "Алёна" находилась и по "Алена", и по "Алё".
+      if (rune == 0x0451) {
+        buffer.writeCharCode(0x0435);
+        continue;
+      }
+
+      // Убираем combining-диакритики (например, U+0308 для декомпозированной "ё").
+      if (_isCombiningMark(rune)) continue;
+
+      // Убираем zero-width символы, которые могут попадать из клавиатуры.
+      if (rune >= 0x200B && rune <= 0x200D) continue;
+      if (rune == 0xFEFF) continue;
+
+      buffer.writeCharCode(rune);
+    }
+
+    return buffer.toString().replaceAll(RegExp(r'\s+'), ' ').trim();
   }
 
   String _primaryClientNamePart(String clientName) {
