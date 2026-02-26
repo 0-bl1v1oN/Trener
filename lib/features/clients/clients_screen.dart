@@ -465,17 +465,14 @@ class _ClientCard extends StatelessWidget {
       final today = DateTime(now.year, now.month, now.day);
       daysLeft = end.difference(today).inDays;
     }
-    Color statusColor = colors.primary;
+
     String statusText = 'Без даты';
     if (daysLeft != null) {
       if (daysLeft < 0) {
-        statusColor = colors.error;
         statusText = 'Истёк';
       } else if (daysLeft <= 3) {
-        statusColor = colors.tertiary;
         statusText = 'Скоро конец';
       } else {
-        statusColor = colors.primary;
         statusText = 'Активен';
       }
     }
@@ -521,14 +518,18 @@ class _ClientCard extends StatelessWidget {
                         spacing: 8,
                         runSpacing: 8,
                         children: [
-                          _MetaChip(icon: Icons.wc, label: 'Пол: $gender'),
                           _MetaChip(
-                            icon: Icons.workspace_premium,
+                            assetIcon: 'assets/clients/meta_gender.png',
+                            label: 'Пол: $gender',
+                          ),
+                          _MetaChip(
+                            assetIcon: 'assets/clients/meta_plan.png',
                             label: 'Абонемент: $plan',
                           ),
                           _MetaChip(
-                            icon: Icons.circle,
-                            iconColor: statusColor,
+                            assetIcon: statusText == 'Активен'
+                                ? 'assets/clients/meta_active.png'
+                                : 'assets/clients/meta_inactive.png',
                             label: statusText,
                           ),
                         ],
@@ -540,9 +541,8 @@ class _ClientCard extends StatelessWidget {
                           runSpacing: 8,
                           children: [
                             _MetaChip(
-                              icon: Icons.event_available,
+                              assetIcon: 'assets/clients/meta_date.png',
                               label: dateText!,
-                              iconColor: colors.onSurfaceVariant,
                             ),
                           ],
                         ),
@@ -566,9 +566,15 @@ class _ClientCard extends StatelessWidget {
 }
 
 class _MetaChip extends StatelessWidget {
-  const _MetaChip({required this.icon, required this.label, this.iconColor});
+  const _MetaChip({
+    required this.label,
+    this.icon,
+    this.assetIcon,
+    this.iconColor,
+  }) : assert(icon != null || assetIcon != null);
 
-  final IconData icon;
+  final IconData? icon;
+  final String? assetIcon;
   final String label;
   final Color? iconColor;
 
@@ -585,7 +591,10 @@ class _MetaChip extends StatelessWidget {
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(icon, size: 14, color: iconColor ?? colors.primary),
+          if (assetIcon != null)
+            Image.asset(assetIcon!, width: 16, height: 16, fit: BoxFit.contain)
+          else
+            Icon(icon, size: 14, color: iconColor ?? colors.primary),
           const SizedBox(width: 6),
           Text(label, style: Theme.of(context).textTheme.labelMedium),
         ],
