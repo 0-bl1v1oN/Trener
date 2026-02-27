@@ -112,6 +112,15 @@ class _ProgressScreenState extends State<ProgressScreen> {
     }
   }
 
+  ProgressSnapshotVm? get _selectedSnapshot {
+    final selected = _selectedSnapshotId;
+    if (selected == null) return null;
+    for (final s in _snapshots) {
+      if (s.snapshotId == selected) return s;
+    }
+    return null;
+  }
+
   @override
   Widget build(BuildContext context) {
     final colors = Theme.of(context).colorScheme;
@@ -125,37 +134,45 @@ class _ProgressScreenState extends State<ProgressScreen> {
                 children: [
                   Padding(
                     padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
-                    child: Row(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Expanded(
-                          child: DropdownButtonFormField<int>(
-                            value: _selectedSnapshotId,
-                            decoration: const InputDecoration(
-                              labelText: 'Период (мм-год)',
-                              border: OutlineInputBorder(),
-                              isDense: true,
-                            ),
-                            items: _snapshots
-                                .map(
-                                  (s) => DropdownMenuItem<int>(
-                                    value: s.snapshotId,
-                                    child: Text(
-                                      '${s.periodKey} · клиентов: ${s.clientsCount}',
-                                    ),
-                                  ),
-                                )
-                                .toList(growable: false),
-                            onChanged: (v) {
-                              if (v == null) return;
-                              _changeSnapshot(v);
-                            },
+                        DropdownButtonFormField<int>(
+                          value: _selectedSnapshotId,
+                          decoration: const InputDecoration(
+                            labelText: 'Период',
+                            border: OutlineInputBorder(),
+                            isDense: true,
                           ),
+                          items: _snapshots
+                              .map(
+                                (s) => DropdownMenuItem<int>(
+                                  value: s.snapshotId,
+                                  child: Text(s.periodKey),
+                                ),
+                              )
+                              .toList(growable: false),
+                          onChanged: (v) {
+                            if (v == null) return;
+                            _changeSnapshot(v);
+                          },
                         ),
-                        const SizedBox(width: 10),
-                        FilledButton.icon(
-                          onPressed: _sharing ? null : _exportSelectedSnapshot,
-                          icon: const Icon(Icons.ios_share),
-                          label: const Text('Собрать данные'),
+                        const SizedBox(height: 8),
+                        Text(
+                          'Клиентов в периоде: ${_selectedSnapshot?.clientsCount ?? 0}',
+                          style: Theme.of(context).textTheme.bodyMedium
+                              ?.copyWith(color: colors.onSurfaceVariant),
+                        ),
+                        const SizedBox(height: 10),
+                        SizedBox(
+                          width: double.infinity,
+                          child: FilledButton.icon(
+                            onPressed: _sharing
+                                ? null
+                                : _exportSelectedSnapshot,
+                            icon: const Icon(Icons.ios_share),
+                            label: const Text('Собрать данные'),
+                          ),
                         ),
                       ],
                     ),
