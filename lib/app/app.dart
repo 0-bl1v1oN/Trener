@@ -13,7 +13,9 @@ import '../features/more/income_screen.dart';
 import '../features/more/records_screen.dart';
 import '../features/more/contests_screen.dart';
 import '../features/more/data_backup_screen.dart';
+import '../features/more/progress_screen.dart';
 import '../theme_controller.dart';
+import 'app_db_scope.dart';
 
 class MyFitnessApp extends StatefulWidget {
   const MyFitnessApp({super.key});
@@ -30,6 +32,10 @@ class _MyFitnessAppState extends State<MyFitnessApp> {
     super.didChangeDependencies();
     if (_backgroundWarmedUp) return;
     _warmUpCalendarBackground();
+
+    // Авто-фиксация прошлого месяца при первом запуске в новом месяце.
+    final db = AppDbScope.of(context);
+    db.ensurePreviousMonthProgressSnapshot();
   }
 
   Future<void> _warmUpCalendarBackground() async {
@@ -308,6 +314,11 @@ final GoRouter _router = GoRouter(
       parentNavigatorKey: _rootNavKey,
       path: '/backup',
       builder: (context, state) => const DataBackupScreen(),
+    ),
+    GoRoute(
+      parentNavigatorKey: _rootNavKey,
+      path: '/progress',
+      builder: (context, state) => const ProgressScreen(),
     ),
   ],
 );

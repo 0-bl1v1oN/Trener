@@ -368,6 +368,34 @@ class ContestWinnerVm {
   });
 }
 
+class ProgressSnapshotVm {
+  final int snapshotId;
+  final String periodKey; // мм-гггг
+  final DateTime createdAt;
+  final int clientsCount;
+
+  const ProgressSnapshotVm({
+    required this.snapshotId,
+    required this.periodKey,
+    required this.createdAt,
+    required this.clientsCount,
+  });
+}
+
+class ProgressSnapshotClientVm {
+  final String clientId;
+  final String clientName;
+  final int sessionsDone;
+  final List<Map<String, dynamic>> days;
+
+  const ProgressSnapshotClientVm({
+    required this.clientId,
+    required this.clientName,
+    required this.sessionsDone,
+    required this.days,
+  });
+}
+
 @DriftDatabase(
   tables: [
     Clients,
@@ -404,6 +432,7 @@ class AppDb extends _$AppDb {
       await _ensureClientExerciseNameOverridesTable();
       await _ensureClientHiddenExercisesTable();
       await _ensureClientAddedExercisesTable();
+      await ensureProgressTables();
       await _seedWorkoutTemplates();
       await _seedWorkoutTemplateExercises();
     },
@@ -418,6 +447,7 @@ class AppDb extends _$AppDb {
       await _ensureClientExerciseNameOverridesTable();
       await _ensureClientHiddenExercisesTable();
       await _ensureClientAddedExercisesTable();
+      await ensureProgressTables();
 
       await _seedWorkoutTemplates();
       await _seedWorkoutTemplateExercises();
@@ -432,6 +462,7 @@ class AppDb extends _$AppDb {
       await _ensureClientExerciseNameOverridesTable();
       await _ensureClientHiddenExercisesTable();
       await _ensureClientAddedExercisesTable();
+      await ensureProgressTables();
     },
   );
 
@@ -497,6 +528,292 @@ class AppDb extends _$AppDb {
         name TEXT NOT NULL
       )
     ''');
+  }
+
+  Future<void> ensureProgressTables() async {
+    await customStatement('''
+      CREATE TABLE IF NOT EXISTS app_progress_snapshots (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        period_key TEXT NOT NULL UNIQUE,
+        created_at INTEGER NOT NULL
+      )
+    ''');
+
+    await customStatement('''
+      CREATE TABLE IF NOT EXISTS app_progress_snapshot_clients (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        snapshot_id INTEGER NOT NULL,
+        client_id TEXT NOT NULL,
+        client_name TEXT NOT NULL,
+        sessions_done INTEGER NOT NULL,
+        days_json TEXT NOT NULL,
+        UNIQUE(snapshot_id, client_id)
+      )
+    ''');
+  }
+
+  String _periodKeyMmYyyy(DateTime date) {
+    final mm = date.month.toString().padLeft(2, '0');
+    return '$mm-${date.year}';
+  }
+
+  DateTime _monthStart(DateTime date) => DateTime(date.year, date.month, 1);
+
+  DateTime _toDateTime(dynamic value, {DateTime? fallback}) {
+    if (value is DateTime) return value;
+    if (value is int) return DateTime.fromMillisecondsSinceEpoch(value);
+    if (value is String) {
+      return DateTime.tryParse(value) ?? (fallback ?? DateTime.now());
+    }
+    return fallback ?? DateTime.now();
+  }
+
+  Future<void> ensurePreviousMonthProgressSnapshot() async {
+    await ensureProgressTables();
+
+    final now = DateTime.now();
+    final currentMonthStart = _monthStart(now);
+    final previousMonthStart = DateTime(
+      currentMonthStart.year,
+      currentMonthStart.month - 1,
+      1,
+    );
+    final previousMonthEnd = currentMonthStart;
+    final periodKey = _periodKeyMmYyyy(previousMonthStart);
+
+    final existing = await customSelect(
+      'SELECT id FROM app_progress_snapshots WHERE period_key = ? LIMIT 1',
+      variables: [Variable.withString(periodKey)],
+    ).getSingleOrNull();
+
+    if (existing != null) return;
+
+    await _createProgressSnapshot(
+      periodKey: periodKey,
+      rangeStart: previousMonthStart,
+      rangeEnd: previousMonthEnd,
+    );
+  }
+
+  Future<void> _createProgressSnapshot({
+    required String periodKey,
+    required DateTime rangeStart,
+    required DateTime rangeEnd,
+  }) async {
+    await ensureProgressTables();
+
+    await transaction(() async {
+      final nowMs = DateTime.now().millisecondsSinceEpoch;
+      await customStatement(
+        'INSERT OR IGNORE INTO app_progress_snapshots (period_key, created_at) VALUES (?, ?)',
+        [periodKey, nowMs],
+      );
+
+      final snapshotRow = await customSelect(
+        'SELECT id FROM app_progress_snapshots WHERE period_key = ? LIMIT 1',
+        variables: [Variable.withString(periodKey)],
+      ).getSingle();
+      final snapshotId = (snapshotRow.data['id'] as int?) ?? 0;
+      if (snapshotId <= 0) return;
+
+      final sessionsRows = await customSelect(
+        '''
+        SELECT s.id AS session_id,
+               s.client_id AS client_id,
+               COALESCE(c.name, 'Клиент') AS client_name,
+               s.performed_at AS performed_at,
+               s.template_idx AS template_idx,
+               COALESCE(t.title, 'Тренировка') AS template_title
+        FROM workout_sessions s
+        LEFT JOIN clients c ON c.id = s.client_id
+        LEFT JOIN workout_templates t
+          ON t.gender = s.gender AND t.idx = s.template_idx
+        WHERE s.performed_at >= ? AND s.performed_at < ?
+        ORDER BY s.client_id ASC, s.performed_at ASC, s.id ASC
+        ''',
+        variables: [
+          Variable.withDateTime(rangeStart),
+          Variable.withDateTime(rangeEnd),
+        ],
+        readsFrom: {workoutSessions, clients, workoutTemplates},
+      ).get();
+
+      final byClient = <String, Map<String, dynamic>>{};
+      for (final row in sessionsRows) {
+        final sessionId = (row.data['session_id'] as int?) ?? 0;
+        final clientId = (row.data['client_id'] as String?) ?? '';
+        if (sessionId <= 0 || clientId.isEmpty) continue;
+
+        final clientName = (row.data['client_name'] as String?) ?? 'Клиент';
+        final performedAt = _toDateTime(row.data['performed_at']);
+        final templateIdx = (row.data['template_idx'] as int?) ?? 0;
+        final templateTitle =
+            (row.data['template_title'] as String?) ?? 'Тренировка';
+
+        final exerciseRows = await customSelect(
+          '''
+          SELECT COALESCE(no.custom_name, te.name) AS exercise_name,
+                 r.last_weight_kg AS last_weight_kg
+          FROM workout_exercise_results r
+          LEFT JOIN workout_template_exercises te ON te.id = r.template_exercise_id
+          LEFT JOIN client_exercise_name_overrides no
+            ON no.client_id = ? AND no.template_exercise_id = r.template_exercise_id
+          WHERE r.session_id = ?
+          ORDER BY te.order_index ASC, r.id ASC
+          ''',
+          variables: [
+            Variable.withString(clientId),
+            Variable.withInt(sessionId),
+          ],
+          readsFrom: {workoutExerciseResults, workoutTemplateExercises},
+        ).get();
+
+        final exercises = exerciseRows
+            .map(
+              (e) => <String, dynamic>{
+                'name': (e.data['exercise_name'] as String?) ?? 'Упражнение',
+                'weightKg': e.data['last_weight_kg'] as double?,
+              },
+            )
+            .toList(growable: false);
+
+        final holder = byClient.putIfAbsent(clientId, () {
+          return <String, dynamic>{
+            'clientName': clientName,
+            'days': <Map<String, dynamic>>[],
+          };
+        });
+
+        final days = holder['days'] as List<Map<String, dynamic>>;
+        days.add({
+          'performedAt': performedAt.toIso8601String(),
+          'templateIdx': templateIdx,
+          'title': templateTitle,
+          'exercises': exercises,
+        });
+      }
+
+      for (final entry in byClient.entries) {
+        final clientId = entry.key;
+        final data = entry.value;
+        final clientName = (data['clientName'] as String?) ?? 'Клиент';
+        final daysRaw =
+            (data['days'] as List<Map<String, dynamic>>?) ??
+            <Map<String, dynamic>>[];
+
+        final days = <Map<String, dynamic>>[];
+        for (var i = 0; i < daysRaw.length; i++) {
+          final item = Map<String, dynamic>.from(daysRaw[i]);
+          item['dayNumber'] = i + 1;
+          days.add(item);
+        }
+
+        await customStatement(
+          '''
+          INSERT OR REPLACE INTO app_progress_snapshot_clients
+            (snapshot_id, client_id, client_name, sessions_done, days_json)
+          VALUES (?, ?, ?, ?, ?)
+          ''',
+          [snapshotId, clientId, clientName, days.length, jsonEncode(days)],
+        );
+      }
+    });
+  }
+
+  Future<List<ProgressSnapshotVm>> getProgressSnapshots() async {
+    await ensureProgressTables();
+
+    final rows = await customSelect('''
+      SELECT s.id, s.period_key, s.created_at, COUNT(c.id) AS clients_count
+      FROM app_progress_snapshots s
+      LEFT JOIN app_progress_snapshot_clients c ON c.snapshot_id = s.id
+      GROUP BY s.id, s.period_key, s.created_at
+      ORDER BY s.period_key DESC
+    ''').get();
+
+    return rows
+        .map(
+          (r) => ProgressSnapshotVm(
+            snapshotId: (r.data['id'] as int?) ?? 0,
+            periodKey: (r.data['period_key'] as String?) ?? '',
+            createdAt: DateTime.fromMillisecondsSinceEpoch(
+              (r.data['created_at'] as int?) ?? 0,
+            ),
+            clientsCount: (r.data['clients_count'] as int?) ?? 0,
+          ),
+        )
+        .toList(growable: false);
+  }
+
+  Future<List<ProgressSnapshotClientVm>> getSnapshotClients(
+    int snapshotId,
+  ) async {
+    await ensureProgressTables();
+
+    final rows = await customSelect(
+      '''
+      SELECT client_id, client_name, sessions_done, days_json
+      FROM app_progress_snapshot_clients
+      WHERE snapshot_id = ?
+      ORDER BY client_name COLLATE NOCASE ASC
+      ''',
+      variables: [Variable.withInt(snapshotId)],
+    ).get();
+
+    return rows
+        .map((r) {
+          final daysRaw = (r.data['days_json'] as String?) ?? '[]';
+          final decoded = jsonDecode(daysRaw);
+          final days = (decoded is List)
+              ? decoded
+                    .whereType<Map>()
+                    .map((e) => e.map((k, v) => MapEntry(k.toString(), v)))
+                    .toList(growable: false)
+              : const <Map<String, dynamic>>[];
+
+          return ProgressSnapshotClientVm(
+            clientId: (r.data['client_id'] as String?) ?? '',
+            clientName: (r.data['client_name'] as String?) ?? 'Клиент',
+            sessionsDone: (r.data['sessions_done'] as int?) ?? 0,
+            days: days,
+          );
+        })
+        .toList(growable: false);
+  }
+
+  Future<Map<String, dynamic>> buildProgressExportPayload(
+    int snapshotId,
+  ) async {
+    await ensureProgressTables();
+
+    final head = await customSelect(
+      'SELECT id, period_key, created_at FROM app_progress_snapshots WHERE id = ? LIMIT 1',
+      variables: [Variable.withInt(snapshotId)],
+    ).getSingleOrNull();
+    if (head == null) {
+      throw ArgumentError('Снимок прогресса не найден');
+    }
+
+    final clients = await getSnapshotClients(snapshotId);
+    return {
+      'kind': 'progress_export',
+      'schemaVersion': 1,
+      'exportedAt': DateTime.now().toIso8601String(),
+      'period': (head.data['period_key'] as String?) ?? '',
+      'snapshotCreatedAt': DateTime.fromMillisecondsSinceEpoch(
+        (head.data['created_at'] as int?) ?? 0,
+      ).toIso8601String(),
+      'clients': clients
+          .map(
+            (c) => {
+              'clientId': c.clientId,
+              'clientName': c.clientName,
+              'sessionsDone': c.sessionsDone,
+              'days': c.days,
+            },
+          )
+          .toList(growable: false),
+    };
   }
 
   Future<List<({int id, int templateId, int orderIndex, String name})>>
@@ -4213,6 +4530,10 @@ class AppDb extends _$AppDb {
         return;
       case 'client_added_exercises':
         await _ensureClientAddedExercisesTable();
+        return;
+      case 'app_progress_snapshots':
+      case 'app_progress_snapshot_clients':
+        await ensureProgressTables();
         return;
       default:
         return;
