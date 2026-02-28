@@ -1078,3 +1078,21 @@ class _SuperSetCard extends StatelessWidget {
     );
   }
 }
+
+class _WorkoutAssetIcon extends StatelessWidget {
+  final String name;
+  final double size;
+  final Color? color;
+
+  const _WorkoutAssetIcon(this.name, {this.size = 20, this.color, super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    final iconColor = color ?? Theme.of(context).colorScheme.primary;
+    return ImageIcon(
+      AssetImage('assets/workout_day_icons/$name.png'),
+      size: size,
+      color: iconColor,
+    );
+  }
+}
