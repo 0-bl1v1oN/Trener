@@ -1088,11 +1088,11 @@ class _WorkoutAssetIcon extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final iconColor = color ?? Theme.of(context).colorScheme.primary;
-    return ImageIcon(
-      AssetImage('assets/workout_day_icons/$name.png'),
-      size: size,
-      color: iconColor,
-    );
+    final path = 'assets/workout_day_icons/$name.png';
+    if (color == null) {
+      return Image.asset(path, width: size, height: size, fit: BoxFit.contain);
+    }
+
+    return ImageIcon(AssetImage(path), size: size, color: color);
   }
 }
