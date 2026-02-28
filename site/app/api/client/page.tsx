@@ -14,6 +14,14 @@ type ExerciseJsonItem = {
   weightKg?: number | null;
 };
 
+type SnapshotItem = {
+  id: string;
+  period: string;
+  sessionsDone: number;
+  daysJson: unknown;
+};
+
+
 export default async function ClientPage() {
   const auth = await readAuthPayload();
   if (!auth || auth.role !== 'CLIENT') {
@@ -46,20 +54,22 @@ export default async function ClientPage() {
       {client.snapshots.length === 0 ? (
         <p>Нет данных за периоды.</p>
       ) : (
-        client.snapshots.map((s) => {
-          const days = Array.isArray(s.daysJson) ? s.daysJson : [];
+        (client.snapshots as SnapshotItem[]).map((s: SnapshotItem) => {
+          const days: DayJsonItem[] = Array.isArray(s.daysJson) ? (s.daysJson as DayJsonItem[]) : [];
           return (
             <section className="card" key={s.id} style={{ marginBottom: 12 }}>
               <h3>Период: {s.period}</h3>
               <p>Отходил занятий: {s.sessionsDone}</p>
-              {days.map((d, idx) => {
+              {days.map((d: DayJsonItem, idx: number) => {
                 const item = d as Record<string, unknown>;
                 const title = (item.title as string) ?? 'Тренировка';
-                const ex = Array.isArray(item.exercises) ? item.exercises : [];
+                const ex: ExerciseJsonItem[] = Array.isArray(item.exercises)
+                  ? (item.exercises as ExerciseJsonItem[])
+                  : [];
                 return (
                   <div key={idx} style={{ marginTop: 8 }}>
                     <strong>День {(item.dayNumber as number) ?? idx + 1} ({title})</strong>
-                    {ex.map((e, exIdx) => {
+                    {ex.map((e: ExerciseJsonItem, exIdx: number) => {
                       const row = e as Record<string, unknown>;
                       return (
                         <div key={exIdx}>
