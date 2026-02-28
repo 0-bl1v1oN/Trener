@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, type FormEvent } from 'react';
 
 export default function AdminPage() {
   const [fullName, setFullName] = useState('');
@@ -10,7 +10,7 @@ export default function AdminPage() {
   const [jsonText, setJsonText] = useState('');
   const [msg, setMsg] = useState<string | null>(null);
 
-  async function createClient(e: React.FormEvent) {
+  async function createClient(e: FormEvent) {
     e.preventDefault();
     setMsg(null);
     const res = await fetch('/api/admin/users', {

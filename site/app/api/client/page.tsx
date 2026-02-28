@@ -3,6 +3,17 @@ import { redirect } from 'next/navigation';
 import { readAuthPayload } from '@/lib/auth';
 import { db } from '@/lib/db';
 
+type DayJsonItem = {
+  dayNumber?: number;
+  title?: string;
+  exercises?: ExerciseJsonItem[];
+};
+
+type ExerciseJsonItem = {
+  name?: string;
+  weightKg?: number | null;
+};
+
 export default async function ClientPage() {
   const auth = await readAuthPayload();
   if (!auth || auth.role !== 'CLIENT') {
