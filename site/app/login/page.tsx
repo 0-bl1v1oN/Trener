@@ -38,11 +38,13 @@ export default function LoginPage() {
 
   return (
     <main className="container auth-page">
-      <h1 className="auth-title">Ваш прогресс</h1>
+      <h1 className="hero-title">
+        Начни <span>свой путь к форме!</span>
+      </h1>
 
-      <form className="card auth-card" onSubmit={onSubmit}>
+      <form className="card auth-card auth-card-strong" onSubmit={onSubmit}>
         <h2>Вход</h2>
-        <div style={{ marginBottom: 10 }}>
+        <div className="field-block">
           <label>Логин</label>
           <input
             value={login}
@@ -52,7 +54,7 @@ export default function LoginPage() {
           />
         </div>
 
-        <div style={{ marginBottom: 10 }}>
+        <div className="field-block">
           <label>Пароль</label>
           <div className="password-field">
             <input
@@ -83,8 +85,10 @@ export default function LoginPage() {
           Запомнить на этом устройстве
         </label>
 
-        {error && <p style={{ color: '#ff9aa4' }}>{error}</p>}
-        <button disabled={busy}>{busy ? 'Входим...' : 'Войти'}</button>
+        {error && <p className="auth-error">{error}</p>}
+        <button className="auth-submit" disabled={busy}>
+          {busy ? 'Входим...' : 'Войти в аккаунт'}
+        </button>
       </form>
       <p className="auth-note">
         Используйте логин и пароль, который выдал вам ваш любимый тренер ❤️
