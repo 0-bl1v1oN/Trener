@@ -4,10 +4,10 @@ export default function HomePage() {
   return (
     <main className="container">
       <h1>Сайт прогресса</h1>
-      <p>Вход только по логину и паролю.</p>
+      <p>Войдите в существующий аккаунт или создайте новый клиентский профиль.</p>
       <div className="row">
         <Link href="/login" className="card">
-          Перейти к входу
+          Вход / Регистрация
         </Link>
       </div>
     </main>

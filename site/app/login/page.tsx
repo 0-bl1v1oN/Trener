@@ -3,8 +3,12 @@
 import { useState, type FormEvent } from 'react';
 import { useRouter } from 'next/navigation';
 
+type AuthMode = 'login' | 'register';
+
 export default function LoginPage() {
   const router = useRouter();
+  const [mode, setMode] = useState<AuthMode>('login');
+  const [fullName, setFullName] = useState('');
   const [login, setLogin] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
@@ -15,10 +19,13 @@ export default function LoginPage() {
     setBusy(true);
     setError(null);
 
-    const res = await fetch('/api/auth/login', {
+    const endpoint = mode === 'login' ? '/api/auth/login' : '/api/auth/register';
+    const payload = mode === 'login' ? { login, password } : { fullName, login, password };
+
+    const res = await fetch(endpoint, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ login, password }),
+      body: JSON.stringify(payload),
     });
 
     const data = await res.json();
@@ -35,11 +42,40 @@ export default function LoginPage() {
 
   return (
     <main className="container">
-      <h1>Вход</h1>
+      <h1>{mode === 'login' ? 'Вход' : 'Регистрация'}</h1>
+
+      <div className="row" style={{ marginBottom: 12 }}>
+        <button type="button" onClick={() => setMode('login')} disabled={busy || mode === 'login'}>
+          Вход
+        </button>
+        <button
+          type="button"
+          onClick={() => setMode('register')}
+          disabled={busy || mode === 'register'}
+        >
+          Регистрация
+        </button>
+      </div>
       <form className="card" onSubmit={onSubmit}>
+      {mode === 'register' && (
+          <div style={{ marginBottom: 10 }}>
+            <label>Ваше имя</label>
+            <input
+              value={fullName}
+              onChange={(e) => setFullName(e.target.value)}
+              placeholder="Иван Иванов"
+              required
+            />
+          </div>
+        )}
         <div style={{ marginBottom: 10 }}>
           <label>Логин</label>
-          <input value={login} onChange={(e) => setLogin(e.target.value)} required />
+          <input
+            value={login}
+            onChange={(e) => setLogin(e.target.value)}
+            placeholder="trainer_client_1"
+            required
+          />
         </div>
 
         <div style={{ marginBottom: 10 }}>
@@ -48,12 +84,15 @@ export default function LoginPage() {
             type="password"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
+            placeholder="минимум 6 символов"
             required
           />
         </div>
 
         {error && <p style={{ color: '#ff9aa4' }}>{error}</p>}
-        <button disabled={busy}>{busy ? 'Входим...' : 'Войти'}</button>
+        <button disabled={busy}>
+          {busy ? 'Подождите...' : mode === 'login' ? 'Войти' : 'Создать аккаунт'}
+        </button>
       </form>
     </main>
   );
