@@ -703,7 +703,7 @@ class _WorkoutScreenState extends State<WorkoutScreen> {
           decoration: InputDecoration(
             prefixIcon: const _WorkoutAssetIcon(
               'exercise_title_edit',
-              size: 18,
+              size: 14,
             ),
             labelText: 'Название',
             filled: true,
@@ -746,7 +746,7 @@ class _WorkoutScreenState extends State<WorkoutScreen> {
               child: IconButton.filledTonal(
                 tooltip: 'Удалить упражнение',
                 onPressed: ex.length <= 1 ? null : () => _deleteExercise(e),
-                icon: const _WorkoutAssetIcon('delete', size: 18),
+                icon: const _WorkoutAssetIcon('delete', size: 20),
               ),
             ),
           ],
@@ -765,7 +765,7 @@ class _WorkoutScreenState extends State<WorkoutScreen> {
                   context,
                 ).textTheme.bodyLarge?.copyWith(fontWeight: FontWeight.w600),
                 decoration: InputDecoration(
-                  prefixIcon: const _WorkoutAssetIcon('weight', size: 18),
+                  prefixIcon: const _WorkoutAssetIcon('weight', size: 14),
                   labelText: 'Вес, кг',
                   filled: true,
                   fillColor: colors.surfaceContainerHighest.withOpacity(0.35),
@@ -792,7 +792,7 @@ class _WorkoutScreenState extends State<WorkoutScreen> {
                   context,
                 ).textTheme.bodyLarge?.copyWith(fontWeight: FontWeight.w600),
                 decoration: InputDecoration(
-                  prefixIcon: const _WorkoutAssetIcon('reps', size: 18),
+                  prefixIcon: const _WorkoutAssetIcon('reps', size: 14),
                   labelText: 'Повторы',
                   filled: true,
                   fillColor: colors.surfaceContainerHighest.withOpacity(0.35),
@@ -853,7 +853,7 @@ class _Header extends StatelessWidget {
               ),
               child: _WorkoutAssetIcon(
                 done ? 'mark_done' : 'day_header',
-                color: colors.primary,
+                size: 20,
               ),
             ),
             const SizedBox(width: 12),
@@ -926,7 +926,7 @@ class _BottomBar extends StatelessWidget {
                           height: 18,
                           child: CircularProgressIndicator(strokeWidth: 2),
                         )
-                      : const _WorkoutAssetIcon('mark_done', size: 18),
+                      : const _WorkoutAssetIcon('mark_done', size: 22),
                   label: const Text('Отметить выполнено'),
                 ),
               ),
