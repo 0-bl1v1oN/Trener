@@ -7,6 +7,7 @@ import { setAuthCookie, signToken, verifyPassword } from '@/lib/auth';
 const loginSchema = z.object({
   login: z.string().min(1),
   password: z.string().min(1),
+  rememberDevice: z.boolean().optional(),
 });
 
 export async function POST(req: Request) {
@@ -27,7 +28,7 @@ export async function POST(req: Request) {
   }
 
   const token = signToken({ userId: user.id, role: user.role });
-  await setAuthCookie(token);
+  await setAuthCookie(token, parsed.data.rememberDevice ?? true);
 
   return NextResponse.json({ role: user.role });
 }

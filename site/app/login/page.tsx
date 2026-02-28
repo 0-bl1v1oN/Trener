@@ -3,14 +3,13 @@
 import { useState, type FormEvent } from 'react';
 import { useRouter } from 'next/navigation';
 
-type AuthMode = 'login' | 'register';
 
 export default function LoginPage() {
   const router = useRouter();
-  const [mode, setMode] = useState<AuthMode>('login');
-  const [fullName, setFullName] = useState('');
   const [login, setLogin] = useState('');
   const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
+  const [rememberDevice, setRememberDevice] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
@@ -19,13 +18,10 @@ export default function LoginPage() {
     setBusy(true);
     setError(null);
 
-    const endpoint = mode === 'login' ? '/api/auth/login' : '/api/auth/register';
-    const payload = mode === 'login' ? { login, password } : { fullName, login, password };
-
-    const res = await fetch(endpoint, {
+    const res = await fetch('/api/auth/login', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload),
+      body: JSON.stringify({ login, password, rememberDevice }),
     });
 
     const data = await res.json();
@@ -41,59 +37,58 @@ export default function LoginPage() {
   }
 
   return (
-    <main className="container">
-      <h1>{mode === 'login' ? 'Вход' : 'Регистрация'}</h1>
+    <main className="container auth-page">
+      <h1 className="auth-title">Ваш прогресс</h1>
 
-      <div className="row" style={{ marginBottom: 12 }}>
-        <button type="button" onClick={() => setMode('login')} disabled={busy || mode === 'login'}>
-          Вход
-        </button>
-        <button
-          type="button"
-          onClick={() => setMode('register')}
-          disabled={busy || mode === 'register'}
-        >
-          Регистрация
-        </button>
-      </div>
-      <form className="card" onSubmit={onSubmit}>
-      {mode === 'register' && (
-          <div style={{ marginBottom: 10 }}>
-            <label>Ваше имя</label>
-            <input
-              value={fullName}
-              onChange={(e) => setFullName(e.target.value)}
-              placeholder="Иван Иванов"
-              required
-            />
-          </div>
-        )}
+      <form className="card auth-card" onSubmit={onSubmit}>
+        <h2>Вход</h2>
         <div style={{ marginBottom: 10 }}>
           <label>Логин</label>
           <input
             value={login}
             onChange={(e) => setLogin(e.target.value)}
-            placeholder="trainer_client_1"
+            placeholder="client_login"
             required
           />
         </div>
 
         <div style={{ marginBottom: 10 }}>
           <label>Пароль</label>
-          <input
-            type="password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            placeholder="минимум 6 символов"
-            required
-          />
+          <div className="password-field">
+            <input
+              type={showPassword ? 'text' : 'password'}
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              placeholder="Введите пароль"
+              required
+            />
+            <button
+              type="button"
+              className="icon-button"
+              onClick={() => setShowPassword((prev) => !prev)}
+              aria-label={showPassword ? 'Скрыть пароль' : 'Показать пароль'}
+              title={showPassword ? 'Скрыть пароль' : 'Показать пароль'}
+            >
+              👁
+            </button>
+          </div>
         </div>
 
+        <label className="remember-check">
+          <input
+            type="checkbox"
+            checked={rememberDevice}
+            onChange={(e) => setRememberDevice(e.target.checked)}
+          />
+          Запомнить на этом устройстве
+        </label>
+
         {error && <p style={{ color: '#ff9aa4' }}>{error}</p>}
-        <button disabled={busy}>
-          {busy ? 'Подождите...' : mode === 'login' ? 'Войти' : 'Создать аккаунт'}
-        </button>
+        <button disabled={busy}>{busy ? 'Входим...' : 'Войти'}</button>
       </form>
+      <p className="auth-note">
+        Используйте логин и пароль, который выдал вам ваш любимый тренер ❤️
+      </p>
     </main>
   );
 }

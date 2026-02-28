@@ -59,3 +59,64 @@ button {
   font-weight: 700;
   cursor: pointer;
 }
+
+.auth-page {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  gap: 12px;
+}
+
+.auth-title {
+  margin: 0;
+  text-align: center;
+  font-size: clamp(28px, 4vw, 40px);
+}
+
+.auth-card {
+  width: 100%;
+  max-width: 440px;
+}
+
+.auth-card h2 {
+  margin-top: 0;
+}
+
+.password-field {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.password-field input {
+  flex: 1;
+}
+
+.icon-button {
+  min-width: 44px;
+  min-height: 44px;
+  padding: 0;
+  border: 1px solid #39406d;
+  background: #0f1326;
+  color: #f1f2f7;
+  border-radius: 10px;
+}
+
+.remember-check {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 12px 0;
+}
+
+.remember-check input {
+  width: auto;
+}
+
+.auth-note {
+  margin: 0;
+  text-align: center;
+  color: #c9c9d7;
+}
