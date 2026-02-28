@@ -701,7 +701,10 @@ class _WorkoutScreenState extends State<WorkoutScreen> {
             letterSpacing: 0.1,
           ),
           decoration: InputDecoration(
-            prefixIcon: const Icon(Icons.edit_outlined, size: 18),
+            prefixIcon: const _WorkoutAssetIcon(
+              'exercise_title_edit',
+              size: 18,
+            ),
             labelText: 'Название',
             filled: true,
             fillColor: colors.surfaceContainerHighest.withOpacity(0.35),
@@ -725,10 +728,7 @@ class _WorkoutScreenState extends State<WorkoutScreen> {
               child: hasNext
                   ? FilledButton.tonalIcon(
                       onPressed: () => _toggleSupersetForExercise(e),
-                      icon: Icon(
-                        linkedWithNext ? Icons.link_off : Icons.link,
-                        size: 16,
-                      ),
+                      icon: const _WorkoutAssetIcon('superset', size: 16),
                       label: Text(linkedWithNext ? 'Убрать сет' : 'Суперсет'),
                       style: FilledButton.styleFrom(
                         visualDensity: VisualDensity.compact,
@@ -746,7 +746,7 @@ class _WorkoutScreenState extends State<WorkoutScreen> {
               child: IconButton.filledTonal(
                 tooltip: 'Удалить упражнение',
                 onPressed: ex.length <= 1 ? null : () => _deleteExercise(e),
-                icon: const Icon(Icons.delete_outline),
+                icon: const _WorkoutAssetIcon('delete', size: 18),
               ),
             ),
           ],
@@ -765,7 +765,7 @@ class _WorkoutScreenState extends State<WorkoutScreen> {
                   context,
                 ).textTheme.bodyLarge?.copyWith(fontWeight: FontWeight.w600),
                 decoration: InputDecoration(
-                  prefixIcon: const Icon(Icons.fitness_center, size: 18),
+                  prefixIcon: const _WorkoutAssetIcon('weight', size: 18),
                   labelText: 'Вес, кг',
                   filled: true,
                   fillColor: colors.surfaceContainerHighest.withOpacity(0.35),
@@ -792,7 +792,7 @@ class _WorkoutScreenState extends State<WorkoutScreen> {
                   context,
                 ).textTheme.bodyLarge?.copyWith(fontWeight: FontWeight.w600),
                 decoration: InputDecoration(
-                  prefixIcon: const Icon(Icons.repeat, size: 18),
+                  prefixIcon: const _WorkoutAssetIcon('reps', size: 18),
                   labelText: 'Повторы',
                   filled: true,
                   fillColor: colors.surfaceContainerHighest.withOpacity(0.35),
@@ -851,8 +851,8 @@ class _Header extends StatelessWidget {
                 color: colors.primary.withOpacity(0.18),
                 borderRadius: BorderRadius.circular(12),
               ),
-              child: Icon(
-                done ? Icons.check_circle : Icons.fitness_center,
+              child: _WorkoutAssetIcon(
+                done ? 'mark_done' : 'day_header',
                 color: colors.primary,
               ),
             ),
@@ -926,7 +926,7 @@ class _BottomBar extends StatelessWidget {
                           height: 18,
                           child: CircularProgressIndicator(strokeWidth: 2),
                         )
-                      : const Icon(Icons.task_alt),
+                      : const _WorkoutAssetIcon('mark_done', size: 18),
                   label: const Text('Отметить выполнено'),
                 ),
               ),
@@ -955,7 +955,7 @@ class _EditorToolbar extends StatelessWidget {
       ),
       child: Row(
         children: [
-          Icon(Icons.tune, size: 18, color: colors.primary),
+          const _WorkoutAssetIcon('day_editor', size: 18),
           const SizedBox(width: 8),
           Expanded(
             child: Text(
@@ -1041,7 +1041,7 @@ class _SuperSetCard extends StatelessWidget {
               child: Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  Icon(Icons.bolt, size: 16, color: colors.primary),
+                  const _WorkoutAssetIcon('superset', size: 16),
                   const SizedBox(width: 6),
                   Text(
                     title,
