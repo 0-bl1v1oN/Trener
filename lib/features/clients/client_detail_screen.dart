@@ -181,32 +181,46 @@ class _ClientDetailScreenState extends State<ClientDetailScreen> {
     return Card(
       elevation: 0,
       shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(20),
         side: BorderSide(color: colors.outlineVariant.withOpacity(0.7)),
       ),
       child: Padding(
-        padding: const EdgeInsets.all(12),
+        padding: const EdgeInsets.fromLTRB(14, 14, 14, 12),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Row(
               children: [
-                Icon(Icons.event_note, size: 18, color: colors.primary),
-                const SizedBox(width: 8),
+                Container(
+                  width: 24,
+                  height: 24,
+                  alignment: Alignment.center,
+                  decoration: BoxDecoration(
+                    color: colors.primary.withOpacity(0.14),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Icon(
+                    Icons.edit_calendar_outlined,
+                    size: 16,
+                    color: colors.primary,
+                  ),
+                ),
+                const SizedBox(width: 10),
                 Text(
                   'Записи',
-                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                  style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                    fontSize: 36 / 2,
                     fontWeight: FontWeight.w700,
                   ),
                 ),
               ],
             ),
-            const SizedBox(height: 4),
+            const SizedBox(height: 6),
             Text(
               titleRange,
               style: Theme.of(
                 context,
-              ).textTheme.bodySmall?.copyWith(color: colors.onSurfaceVariant),
+              ).textTheme.bodyMedium?.copyWith(color: colors.onSurfaceVariant),
             ),
             const SizedBox(height: 10),
             StreamBuilder<List<Appointment>>(
@@ -464,50 +478,50 @@ class _WeekDayRecordsRow extends StatelessWidget {
 
     return Container(
       width: double.infinity,
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
       decoration: BoxDecoration(
-        color: colors.surfaceContainerHighest.withOpacity(0.35),
-        borderRadius: BorderRadius.circular(12),
+        color: colors.surfaceContainerHighest.withOpacity(0.26),
+        borderRadius: BorderRadius.circular(14),
       ),
       child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
+        crossAxisAlignment: CrossAxisAlignment.center,
         children: [
           SizedBox(
-            width: 76,
+            width: 88,
             child: Text(
               dayLabel,
-              style: Theme.of(context).textTheme.labelLarge?.copyWith(
+              style: Theme.of(context).textTheme.titleMedium?.copyWith(
                 color: colors.primary,
                 fontWeight: FontWeight.w600,
               ),
             ),
           ),
-          const SizedBox(width: 8),
+          const SizedBox(width: 10),
           Expanded(
             child: appointments.isEmpty
                 ? Text(
                     '—',
-                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                    style: Theme.of(context).textTheme.bodyLarge?.copyWith(
                       color: colors.onSurfaceVariant,
                     ),
                   )
                 : Wrap(
-                    spacing: 6,
+                    spacing: 8,
                     runSpacing: 6,
                     children: [
                       for (final a in appointments)
                         Container(
                           padding: const EdgeInsets.symmetric(
-                            horizontal: 8,
-                            vertical: 4,
+                            horizontal: 12,
+                            vertical: 5,
                           ),
                           decoration: BoxDecoration(
-                            color: colors.primary.withOpacity(0.14),
+                            color: colors.primary.withOpacity(0.18),
                             borderRadius: BorderRadius.circular(999),
                           ),
                           child: Text(
                             DateFormat('HH:mm').format(a.startAt),
-                            style: Theme.of(context).textTheme.labelMedium
+                            style: Theme.of(context).textTheme.titleSmall
                                 ?.copyWith(
                                   color: colors.primary,
                                   fontWeight: FontWeight.w600,
