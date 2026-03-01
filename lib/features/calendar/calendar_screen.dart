@@ -2538,8 +2538,13 @@ class _CalendarScreenState extends State<CalendarScreen>
           animation: _fabPulseController,
           builder: (context, child) {
             final t = _fabPulseController.value;
-            final dy = math.sin(t * math.pi * 2) * 0.9;
-            final tilt = math.sin(t * math.pi * 2) * 0.01;
+            final wave = math.sin(t * math.pi * 2);
+            final pulse = (wave + 1) / 2;
+            final dy = wave * 0.9;
+            final tilt = wave * 0.01;
+            final auraShadowOpacity = 0.35 + pulse * 0.45;
+            final auraShadowBlur = 20 + pulse * 16;
+            final auraShadowSpread = 1.5 + pulse * 4;
 
             return Transform.translate(
               offset: Offset(0, dy),
@@ -2559,14 +2564,16 @@ class _CalendarScreenState extends State<CalendarScreen>
                             height: 56,
                             decoration: BoxDecoration(
                               shape: BoxShape.circle,
-                              color: colors.primaryContainer.withOpacity(0.72),
+                              color: colors.primaryContainer.withOpacity(
+                                0.45 + pulse * 0.25,
+                              ),
                               boxShadow: [
                                 BoxShadow(
                                   color: colors.primaryContainer.withOpacity(
-                                    0.75,
+                                    auraShadowOpacity,
                                   ),
-                                  blurRadius: 30,
-                                  spreadRadius: 4,
+                                  blurRadius: auraShadowBlur,
+                                  spreadRadius: auraShadowSpread,
                                 ),
                               ],
                             ),
