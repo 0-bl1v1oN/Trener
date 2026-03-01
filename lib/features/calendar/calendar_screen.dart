@@ -118,6 +118,9 @@ class _CalendarScreenState extends State<CalendarScreen>
   bool _collapseLock = false;
   bool _openingCategoriesFromRoute = false;
 
+  late final AnimationController _fabPulseController;
+  late final Animation<double> _fabPulseScale;
+
   static const String _attendanceMarker = '[attended]';
 
   bool _isAppointmentDone(Appointment appointment) =>
@@ -240,6 +243,13 @@ class _CalendarScreenState extends State<CalendarScreen>
   @override
   void initState() {
     super.initState();
+    _fabPulseController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 1150),
+    )..repeat(reverse: true);
+    _fabPulseScale = Tween<double>(begin: 1.0, end: 1.1).animate(
+      CurvedAnimation(parent: _fabPulseController, curve: Curves.easeInOut),
+    );
   }
 
   @override
@@ -248,6 +258,7 @@ class _CalendarScreenState extends State<CalendarScreen>
     _trialCountsSub?.cancel();
     _planEndCountsSub?.cancel();
     _paymentReminderCountsSub?.cancel();
+    _fabPulseController.dispose();
     _appointmentsController.dispose();
     super.dispose();
   }
@@ -2518,9 +2529,12 @@ class _CalendarScreenState extends State<CalendarScreen>
           ],
         ),
 
-        floatingActionButton: FloatingActionButton(
-          onPressed: () => _openAddMenu(),
-          child: const Icon(Icons.add),
+        floatingActionButton: ScaleTransition(
+          scale: _fabPulseScale,
+          child: FloatingActionButton(
+            onPressed: () => _openAddMenu(),
+            child: const Icon(Icons.add),
+          ),
         ),
         body: Stack(
           children: [
@@ -3027,11 +3041,17 @@ class _CalendarScreenState extends State<CalendarScreen>
                                 SliverFillRemaining(
                                   hasScrollBody: false,
                                   child: Center(
-                                    child: Text(
-                                      'На этот день записей, окончаний абонемента и напоминаний нет',
-                                      style: Theme.of(
-                                        context,
-                                      ).textTheme.bodyMedium,
+                                    child: Padding(
+                                      padding: const EdgeInsets.symmetric(
+                                        horizontal: 24,
+                                      ),
+                                      child: Text(
+                                        'На этот день записей, окончаний абонемента и напоминаний нет',
+                                        textAlign: TextAlign.center,
+                                        style: Theme.of(
+                                          context,
+                                        ).textTheme.bodyMedium,
+                                      ),
                                     ),
                                   ),
                                 )
