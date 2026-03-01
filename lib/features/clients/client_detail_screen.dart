@@ -178,84 +178,105 @@ class _ClientDetailScreenState extends State<ClientDetailScreen> {
     final titleRange =
         '${_fmtDate(weekStart)} — ${_fmtDate(weekEndExclusive.subtract(const Duration(days: 1)))}';
 
-    return Card(
-      elevation: 0,
-      shape: RoundedRectangleBorder(
+    return Container(
+      decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(20),
-        side: BorderSide(color: colors.outlineVariant.withOpacity(0.7)),
-      ),
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(14, 14, 14, 12),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Container(
-                  width: 24,
-                  height: 24,
-                  alignment: Alignment.center,
-                  decoration: BoxDecoration(
-                    color: colors.primary.withOpacity(0.14),
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: Icon(
-                    Icons.edit_calendar_outlined,
-                    size: 16,
-                    color: colors.primary,
-                  ),
-                ),
-                const SizedBox(width: 10),
-                Text(
-                  'Записи',
-                  style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                    fontSize: 36 / 2,
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 6),
-            Text(
-              titleRange,
-              style: Theme.of(
-                context,
-              ).textTheme.bodyMedium?.copyWith(color: colors.onSurfaceVariant),
-            ),
-            const SizedBox(height: 10),
-            StreamBuilder<List<Appointment>>(
-              stream: db.watchAppointmentsForClientInRange(
-                clientId: widget.clientId,
-                fromInclusive: weekStart,
-                toExclusive: weekEndExclusive,
-              ),
-              builder: (context, snap) {
-                final items = snap.data ?? const <Appointment>[];
-                final byDay = <DateTime, List<Appointment>>{};
-                for (final a in items) {
-                  final key = DateTime(
-                    a.startAt.year,
-                    a.startAt.month,
-                    a.startAt.day,
-                  );
-                  byDay.putIfAbsent(key, () => <Appointment>[]).add(a);
-                }
-
-                return Column(
-                  children: [
-                    for (final day in days) ...[
-                      _WeekDayRecordsRow(
-                        dayLabel:
-                            '${_weekdayShortRu(day.weekday)} ${DateFormat('dd.MM').format(day)}',
-                        appointments: byDay[day] ?? const <Appointment>[],
-                      ),
-                      if (day != days.last) const SizedBox(height: 8),
-                    ],
-                  ],
-                );
-              },
-            ),
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [
+            colors.primary.withOpacity(0.08),
+            colors.secondary.withOpacity(0.03),
           ],
+        ),
+      ),
+      child: Card(
+        elevation: 0,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(20),
+          side: BorderSide(color: colors.outlineVariant.withOpacity(0.7)),
+        ),
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(14, 14, 14, 12),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Container(
+                    width: 30,
+                    height: 30,
+                    padding: const EdgeInsets.all(6),
+                    decoration: BoxDecoration(
+                      color: colors.primary.withOpacity(0.16),
+                      borderRadius: BorderRadius.circular(10),
+                      border: Border.all(
+                        color: colors.primary.withOpacity(0.2),
+                      ),
+                    ),
+                    child: Image.asset(
+                      'assets/clients/client_records.png',
+                      fit: BoxFit.contain,
+                      errorBuilder: (_, __, ___) => Icon(
+                        Icons.edit_calendar_outlined,
+                        size: 16,
+                        color: colors.primary,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Text(
+                    'Записи',
+                    style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                      fontWeight: FontWeight.w700,
+                      letterSpacing: 0.2,
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 6),
+              Text(
+                titleRange,
+                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                  color: colors.onSurfaceVariant,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+              const SizedBox(height: 10),
+              StreamBuilder<List<Appointment>>(
+                stream: db.watchAppointmentsForClientInRange(
+                  clientId: widget.clientId,
+                  fromInclusive: weekStart,
+                  toExclusive: weekEndExclusive,
+                ),
+                builder: (context, snap) {
+                  final items = snap.data ?? const <Appointment>[];
+                  final byDay = <DateTime, List<Appointment>>{};
+                  for (final a in items) {
+                    final key = DateTime(
+                      a.startAt.year,
+                      a.startAt.month,
+                      a.startAt.day,
+                    );
+                    byDay.putIfAbsent(key, () => <Appointment>[]).add(a);
+                  }
+
+                  return Column(
+                    children: [
+                      for (final day in days) ...[
+                        _WeekDayRecordsRow(
+                          dayLabel:
+                              '${_weekdayShortRu(day.weekday)} ${DateFormat('dd.MM').format(day)}',
+                          appointments: byDay[day] ?? const <Appointment>[],
+                        ),
+                        if (day != days.last) const SizedBox(height: 8),
+                      ],
+                    ],
+                  );
+                },
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -480,19 +501,20 @@ class _WeekDayRecordsRow extends StatelessWidget {
       width: double.infinity,
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
       decoration: BoxDecoration(
-        color: colors.surfaceContainerHighest.withOpacity(0.26),
+        color: colors.surfaceContainerHighest.withOpacity(0.3),
         borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: colors.outlineVariant.withOpacity(0.25)),
       ),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.center,
         children: [
           SizedBox(
-            width: 88,
+            width: 92,
             child: Text(
               dayLabel,
               style: Theme.of(context).textTheme.titleMedium?.copyWith(
                 color: colors.primary,
-                fontWeight: FontWeight.w600,
+                fontWeight: FontWeight.w700,
               ),
             ),
           ),
@@ -516,15 +538,18 @@ class _WeekDayRecordsRow extends StatelessWidget {
                             vertical: 5,
                           ),
                           decoration: BoxDecoration(
-                            color: colors.primary.withOpacity(0.18),
+                            color: colors.primary.withOpacity(0.2),
                             borderRadius: BorderRadius.circular(999),
+                            border: Border.all(
+                              color: colors.primary.withOpacity(0.25),
+                            ),
                           ),
                           child: Text(
                             DateFormat('HH:mm').format(a.startAt),
                             style: Theme.of(context).textTheme.titleSmall
                                 ?.copyWith(
                                   color: colors.primary,
-                                  fontWeight: FontWeight.w600,
+                                  fontWeight: FontWeight.w700,
                                 ),
                           ),
                         ),
