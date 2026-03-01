@@ -1099,6 +1099,22 @@ class AppDb extends _$AppDb {
     });
   }
 
+  Stream<List<Appointment>> watchAppointmentsForClientInRange({
+    required String clientId,
+    required DateTime fromInclusive,
+    required DateTime toExclusive,
+  }) {
+    final q = select(appointments)
+      ..where(
+        (t) =>
+            t.clientId.equals(clientId) &
+            t.startAt.isBiggerOrEqualValue(fromInclusive) &
+            t.startAt.isSmallerThanValue(toExclusive),
+      )
+      ..orderBy([(t) => OrderingTerm.asc(t.startAt)]);
+    return q.watch();
+  }
+
   Future<void> addAppointment({
     required String clientId,
     required DateTime startAt,

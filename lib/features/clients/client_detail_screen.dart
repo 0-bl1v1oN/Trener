@@ -149,6 +149,104 @@ class _ClientDetailScreenState extends State<ClientDetailScreen> {
     );
   }
 
+  DateTime _recordsWeekStart(DateTime now) {
+    final day = DateTime(now.year, now.month, now.day);
+    if (day.weekday == DateTime.sunday) {
+      return day.add(const Duration(days: 1));
+    }
+    return day.subtract(Duration(days: day.weekday - DateTime.monday));
+  }
+
+  String _weekdayShortRu(int weekday) {
+    const map = {
+      DateTime.monday: 'Пн',
+      DateTime.tuesday: 'Вт',
+      DateTime.wednesday: 'Ср',
+      DateTime.thursday: 'Чт',
+      DateTime.friday: 'Пт',
+      DateTime.saturday: 'Сб',
+    };
+    return map[weekday] ?? '';
+  }
+
+  Widget _buildWeekRecordsCard(ColorScheme colors) {
+    final now = DateTime.now();
+    final weekStart = _recordsWeekStart(now);
+    final weekEndExclusive = weekStart.add(const Duration(days: 6));
+    final days = List.generate(6, (i) => weekStart.add(Duration(days: i)));
+
+    final titleRange =
+        '${_fmtDate(weekStart)} — ${_fmtDate(weekEndExclusive.subtract(const Duration(days: 1)))}';
+
+    return Card(
+      elevation: 0,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(16),
+        side: BorderSide(color: colors.outlineVariant.withOpacity(0.7)),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(Icons.event_note, size: 18, color: colors.primary),
+                const SizedBox(width: 8),
+                Text(
+                  'Записи',
+                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 4),
+            Text(
+              titleRange,
+              style: Theme.of(
+                context,
+              ).textTheme.bodySmall?.copyWith(color: colors.onSurfaceVariant),
+            ),
+            const SizedBox(height: 10),
+            StreamBuilder<List<Appointment>>(
+              stream: db.watchAppointmentsForClientInRange(
+                clientId: widget.clientId,
+                fromInclusive: weekStart,
+                toExclusive: weekEndExclusive,
+              ),
+              builder: (context, snap) {
+                final items = snap.data ?? const <Appointment>[];
+                final byDay = <DateTime, List<Appointment>>{};
+                for (final a in items) {
+                  final key = DateTime(
+                    a.startAt.year,
+                    a.startAt.month,
+                    a.startAt.day,
+                  );
+                  byDay.putIfAbsent(key, () => <Appointment>[]).add(a);
+                }
+
+                return Column(
+                  children: [
+                    for (final day in days) ...[
+                      _WeekDayRecordsRow(
+                        dayLabel:
+                            '${_weekdayShortRu(day.weekday)} ${DateFormat('dd.MM').format(day)}',
+                        appointments: byDay[day] ?? const <Appointment>[],
+                      ),
+                      if (day != days.last) const SizedBox(height: 8),
+                    ],
+                  ],
+                );
+              },
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   @override
   void dispose() {
     _nameController.dispose();
@@ -322,6 +420,8 @@ class _ClientDetailScreenState extends State<ClientDetailScreen> {
                   ),
                 ),
               ),
+              const SizedBox(height: 12),
+              _buildWeekRecordsCard(colors),
               const SizedBox(height: 16),
               SizedBox(
                 width: double.infinity,
@@ -344,6 +444,80 @@ class _ClientDetailScreenState extends State<ClientDetailScreen> {
             ],
           ),
         ),
+      ),
+    );
+  }
+}
+
+class _WeekDayRecordsRow extends StatelessWidget {
+  const _WeekDayRecordsRow({
+    required this.dayLabel,
+    required this.appointments,
+  });
+
+  final String dayLabel;
+  final List<Appointment> appointments;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+      decoration: BoxDecoration(
+        color: colors.surfaceContainerHighest.withOpacity(0.35),
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SizedBox(
+            width: 76,
+            child: Text(
+              dayLabel,
+              style: Theme.of(context).textTheme.labelLarge?.copyWith(
+                color: colors.primary,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: appointments.isEmpty
+                ? Text(
+                    '—',
+                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                      color: colors.onSurfaceVariant,
+                    ),
+                  )
+                : Wrap(
+                    spacing: 6,
+                    runSpacing: 6,
+                    children: [
+                      for (final a in appointments)
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 8,
+                            vertical: 4,
+                          ),
+                          decoration: BoxDecoration(
+                            color: colors.primary.withOpacity(0.14),
+                            borderRadius: BorderRadius.circular(999),
+                          ),
+                          child: Text(
+                            DateFormat('HH:mm').format(a.startAt),
+                            style: Theme.of(context).textTheme.labelMedium
+                                ?.copyWith(
+                                  color: colors.primary,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                          ),
+                        ),
+                    ],
+                  ),
+          ),
+        ],
       ),
     );
   }

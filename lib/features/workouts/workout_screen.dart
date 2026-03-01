@@ -906,7 +906,7 @@ class _BottomBar extends StatelessWidget {
                 height: 44,
                 child: OutlinedButton.icon(
                   onPressed: saving ? null : onCancel,
-                  icon: const Icon(Icons.undo),
+                  icon: const _WorkoutAssetIcon('cancel_workout', size: 18),
                   label: const Text('Отменить тренировку'),
                   style: OutlinedButton.styleFrom(
                     foregroundColor: colors.error,
@@ -1080,7 +1080,7 @@ class _SuperSetCard extends StatelessWidget {
 }
 
 class _WorkoutAssetIcon extends StatelessWidget {
-  static const double _baseScale = 1.3;
+  static const double _baseScale = 2.13;
   static const Map<String, double> _opticalScale = {
     // Точная подстройка под все иконки тренировочного дня.
     'day_header': 1.1,
@@ -1090,7 +1090,8 @@ class _WorkoutAssetIcon extends StatelessWidget {
     'superset': 1.1,
     'weight': 0.92,
     'reps': 0.9,
-    'delete': 0.9,
+    'delete': 1.5,
+    'cancel_workout': 1.08,
   };
   final String name;
   final double size;
