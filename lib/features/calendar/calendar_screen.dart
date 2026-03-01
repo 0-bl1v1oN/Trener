@@ -11,6 +11,7 @@ import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:myfitness/theme_controller.dart';
 import 'dart:async';
+import 'dart:math' as math;
 
 class CalendarScreen extends StatefulWidget {
   const CalendarScreen({super.key});
@@ -119,7 +120,8 @@ class _CalendarScreenState extends State<CalendarScreen>
   bool _openingCategoriesFromRoute = false;
 
   late final AnimationController _fabPulseController;
-  late final Animation<double> _fabPulseScale;
+  late final Animation<double> _fabAuraScale;
+  late final Animation<double> _fabAuraOpacity;
 
   static const String _attendanceMarker = '[attended]';
 
@@ -245,10 +247,13 @@ class _CalendarScreenState extends State<CalendarScreen>
     super.initState();
     _fabPulseController = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 1150),
-    )..repeat(reverse: true);
-    _fabPulseScale = Tween<double>(begin: 1.0, end: 1.1).animate(
-      CurvedAnimation(parent: _fabPulseController, curve: Curves.easeInOut),
+      duration: const Duration(milliseconds: 1400),
+    )..repeat();
+    _fabAuraScale = Tween<double>(begin: 1.0, end: 1.75).animate(
+      CurvedAnimation(parent: _fabPulseController, curve: Curves.easeOutCubic),
+    );
+    _fabAuraOpacity = Tween<double>(begin: 0.5, end: 0.0).animate(
+      CurvedAnimation(parent: _fabPulseController, curve: Curves.easeOutCubic),
     );
   }
 
@@ -2529,10 +2534,58 @@ class _CalendarScreenState extends State<CalendarScreen>
           ],
         ),
 
-        floatingActionButton: ScaleTransition(
-          scale: _fabPulseScale,
+        floatingActionButton: AnimatedBuilder(
+          animation: _fabPulseController,
+          builder: (context, child) {
+            final t = _fabPulseController.value;
+            final dy = math.sin(t * math.pi * 2) * 0.9;
+            final tilt = math.sin(t * math.pi * 2) * 0.01;
+
+            return Transform.translate(
+              offset: Offset(0, dy),
+              child: Transform.rotate(
+                angle: tilt,
+                child: Stack(
+                  alignment: Alignment.center,
+                  clipBehavior: Clip.none,
+                  children: [
+                    IgnorePointer(
+                      child: Opacity(
+                        opacity: _fabAuraOpacity.value,
+                        child: Transform.scale(
+                          scale: _fabAuraScale.value,
+                          child: Container(
+                            width: 56,
+                            height: 56,
+                            decoration: BoxDecoration(
+                              shape: BoxShape.circle,
+                              color: colors.primaryContainer.withOpacity(0.72),
+                              boxShadow: [
+                                BoxShadow(
+                                  color: colors.primaryContainer.withOpacity(
+                                    0.75,
+                                  ),
+                                  blurRadius: 30,
+                                  spreadRadius: 4,
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                    child!,
+                  ],
+                ),
+              ),
+            );
+          },
           child: FloatingActionButton(
             onPressed: () => _openAddMenu(),
+            shape: const CircleBorder(),
+            backgroundColor: colors.primary,
+            foregroundColor: colors.onPrimary,
+            elevation: 6,
             child: const Icon(Icons.add),
           ),
         ),
