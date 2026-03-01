@@ -728,7 +728,7 @@ class _WorkoutScreenState extends State<WorkoutScreen> {
               child: hasNext
                   ? FilledButton.tonalIcon(
                       onPressed: () => _toggleSupersetForExercise(e),
-                      icon: const _WorkoutAssetIcon('superset', size: 16),
+                      icon: const _WorkoutAssetIcon('superset', size: 14),
                       label: Text(linkedWithNext ? 'Убрать сет' : 'Суперсет'),
                       style: FilledButton.styleFrom(
                         visualDensity: VisualDensity.compact,
@@ -746,7 +746,7 @@ class _WorkoutScreenState extends State<WorkoutScreen> {
               child: IconButton.filledTonal(
                 tooltip: 'Удалить упражнение',
                 onPressed: ex.length <= 1 ? null : () => _deleteExercise(e),
-                icon: const _WorkoutAssetIcon('delete', size: 20),
+                icon: const _WorkoutAssetIcon('delete', size: 16),
               ),
             ),
           ],
@@ -926,7 +926,7 @@ class _BottomBar extends StatelessWidget {
                           height: 18,
                           child: CircularProgressIndicator(strokeWidth: 2),
                         )
-                      : const _WorkoutAssetIcon('mark_done', size: 22),
+                      : const _WorkoutAssetIcon('mark_done', size: 16),
                   label: const Text('Отметить выполнено'),
                 ),
               ),
@@ -955,7 +955,7 @@ class _EditorToolbar extends StatelessWidget {
       ),
       child: Row(
         children: [
-          const _WorkoutAssetIcon('day_editor', size: 18),
+          const _WorkoutAssetIcon('day_editor', size: 16),
           const SizedBox(width: 8),
           Expanded(
             child: Text(
@@ -1041,7 +1041,7 @@ class _SuperSetCard extends StatelessWidget {
               child: Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  const _WorkoutAssetIcon('superset', size: 16),
+                  const _WorkoutAssetIcon('superset', size: 14),
                   const SizedBox(width: 6),
                   Text(
                     title,
@@ -1084,7 +1084,7 @@ class _WorkoutAssetIcon extends StatelessWidget {
   final double size;
   final Color? color;
 
-  const _WorkoutAssetIcon(this.name, {this.size = 20, this.color, super.key});
+  const _WorkoutAssetIcon(this.name, {this.size = 16, this.color, super.key});
 
   @override
   Widget build(BuildContext context) {
