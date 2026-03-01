@@ -11,7 +11,6 @@ import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:myfitness/theme_controller.dart';
 import 'dart:async';
-import 'dart:math' as math;
 
 class CalendarScreen extends StatefulWidget {
   const CalendarScreen({super.key});
@@ -247,12 +246,12 @@ class _CalendarScreenState extends State<CalendarScreen>
     super.initState();
     _fabPulseController = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 1400),
+      duration: const Duration(milliseconds: 2200),
     )..repeat();
-    _fabAuraScale = Tween<double>(begin: 1.0, end: 1.75).animate(
+    _fabAuraScale = Tween<double>(begin: 0.72, end: 1.55).animate(
       CurvedAnimation(parent: _fabPulseController, curve: Curves.easeOutCubic),
     );
-    _fabAuraOpacity = Tween<double>(begin: 0.5, end: 0.0).animate(
+    _fabAuraOpacity = Tween<double>(begin: 0.82, end: 0.08).animate(
       CurvedAnimation(parent: _fabPulseController, curve: Curves.easeOutCubic),
     );
   }
@@ -2538,53 +2537,49 @@ class _CalendarScreenState extends State<CalendarScreen>
           animation: _fabPulseController,
           builder: (context, child) {
             final t = _fabPulseController.value;
-            final wave = math.sin(t * math.pi * 2);
-            final pulse = (wave + 1) / 2;
-            final dy = wave * 0.9;
-            final tilt = wave * 0.01;
-            final auraShadowOpacity = 0.35 + pulse * 0.45;
-            final auraShadowBlur = 20 + pulse * 16;
-            final auraShadowSpread = 1.5 + pulse * 4;
+            final pulse = Curves.easeOutCubic.transform(t);
+            final auraGlowOpacity = 0.76 - pulse * 0.68;
+            final auraShadowOpacity = 0.72 - pulse * 0.64;
+            final auraShadowBlur = 10 + pulse * 28;
+            final auraShadowSpread = 0.5 + pulse * 3.5;
 
-            return Transform.translate(
-              offset: Offset(0, dy),
-              child: Transform.rotate(
-                angle: tilt,
-                child: Stack(
-                  alignment: Alignment.center,
-                  clipBehavior: Clip.none,
-                  children: [
-                    IgnorePointer(
-                      child: Opacity(
-                        opacity: _fabAuraOpacity.value,
-                        child: Transform.scale(
-                          scale: _fabAuraScale.value,
-                          child: Container(
-                            width: 56,
-                            height: 56,
-                            decoration: BoxDecoration(
-                              shape: BoxShape.circle,
-                              color: colors.primaryContainer.withOpacity(
-                                0.45 + pulse * 0.25,
-                              ),
-                              boxShadow: [
-                                BoxShadow(
-                                  color: colors.primaryContainer.withOpacity(
-                                    auraShadowOpacity,
-                                  ),
-                                  blurRadius: auraShadowBlur,
-                                  spreadRadius: auraShadowSpread,
-                                ),
-                              ],
-                            ),
+            return Stack(
+              alignment: Alignment.center,
+              clipBehavior: Clip.none,
+              children: [
+                IgnorePointer(
+                  child: Opacity(
+                    opacity: _fabAuraOpacity.value,
+                    child: Transform.scale(
+                      scale: _fabAuraScale.value,
+                      child: Container(
+                        width: 72,
+                        height: 72,
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          gradient: RadialGradient(
+                            colors: [
+                              colors.primary.withOpacity(auraGlowOpacity),
+                              colors.primary.withOpacity(0),
+                            ],
+                            stops: const [0.22, 1],
                           ),
+                          boxShadow: [
+                            BoxShadow(
+                              color: colors.primary.withOpacity(
+                                auraShadowOpacity,
+                              ),
+                              blurRadius: auraShadowBlur,
+                              spreadRadius: auraShadowSpread,
+                            ),
+                          ],
                         ),
                       ),
                     ),
-                    child!,
-                  ],
+                  ),
                 ),
-              ),
+                child!,
+              ],
             );
           },
           child: FloatingActionButton(
