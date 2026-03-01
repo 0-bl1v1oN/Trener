@@ -1080,14 +1080,17 @@ class _SuperSetCard extends StatelessWidget {
 }
 
 class _WorkoutAssetIcon extends StatelessWidget {
+  static const double _baseScale = 1.3;
   static const Map<String, double> _opticalScale = {
-    // Эти иконки визуально «тяжелее», поэтому слегка уменьшаем.
-    'reps': 0.86,
-    'weight': 0.9,
-    'delete': 0.9,
-    // Эти, наоборот, выглядят компактнее — немного увеличиваем.
-    'superset': 1.12,
+    // Точная подстройка под все иконки тренировочного дня.
+    'day_header': 1.1,
+    'mark_done': 1.06,
     'day_editor': 1.08,
+    'exercise_title_edit': 1.08,
+    'superset': 1.1,
+    'weight': 0.92,
+    'reps': 0.9,
+    'delete': 0.9,
   };
   final String name;
   final double size;
@@ -1098,7 +1101,7 @@ class _WorkoutAssetIcon extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final path = 'assets/workout_day_icons/$name.png';
-    final normalizedSize = size * (_opticalScale[name] ?? 1);
+    final normalizedSize = size * _baseScale * (_opticalScale[name] ?? 1);
     if (color == null) {
       return SizedBox.square(
         dimension: size,
