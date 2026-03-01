@@ -459,6 +459,12 @@ class _AnimatedBranchContainerState extends State<_AnimatedBranchContainer>
 }
 
 class _NavPngIcon extends StatelessWidget {
+  static const Map<String, double> _opticalScaleByAsset = {
+    'assets/nav/menu.png': 0.9,
+    'assets/nav/calendar.png': 0.92,
+    'assets/nav/clients.png': 0.96,
+    'assets/nav/program.png': 0.9,
+  };
   const _NavPngIcon({
     required this.assetPath,
     required this.fallback,
@@ -471,12 +477,19 @@ class _NavPngIcon extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Image.asset(
-      assetPath,
-      width: size,
-      height: size,
-      fit: BoxFit.contain,
-      errorBuilder: (_, __, ___) => Icon(fallback, size: size),
+    final normalizedSize = size * (_opticalScaleByAsset[assetPath] ?? 1);
+
+    return SizedBox.square(
+      dimension: size,
+      child: Center(
+        child: Image.asset(
+          assetPath,
+          width: normalizedSize,
+          height: normalizedSize,
+          fit: BoxFit.contain,
+          errorBuilder: (_, __, ___) => Icon(fallback, size: normalizedSize),
+        ),
+      ),
     );
   }
 }

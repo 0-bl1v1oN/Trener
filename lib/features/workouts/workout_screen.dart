@@ -1080,6 +1080,15 @@ class _SuperSetCard extends StatelessWidget {
 }
 
 class _WorkoutAssetIcon extends StatelessWidget {
+  static const Map<String, double> _opticalScale = {
+    // Эти иконки визуально «тяжелее», поэтому слегка уменьшаем.
+    'reps': 0.86,
+    'weight': 0.9,
+    'delete': 0.9,
+    // Эти, наоборот, выглядят компактнее — немного увеличиваем.
+    'superset': 1.12,
+    'day_editor': 1.08,
+  };
   final String name;
   final double size;
   final Color? color;
@@ -1089,10 +1098,26 @@ class _WorkoutAssetIcon extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final path = 'assets/workout_day_icons/$name.png';
+    final normalizedSize = size * (_opticalScale[name] ?? 1);
     if (color == null) {
-      return Image.asset(path, width: size, height: size, fit: BoxFit.contain);
+      return SizedBox.square(
+        dimension: size,
+        child: Center(
+          child: Image.asset(
+            path,
+            width: normalizedSize,
+            height: normalizedSize,
+            fit: BoxFit.contain,
+          ),
+        ),
+      );
     }
 
-    return ImageIcon(AssetImage(path), size: size, color: color);
+    return SizedBox.square(
+      dimension: size,
+      child: Center(
+        child: ImageIcon(AssetImage(path), size: normalizedSize, color: color),
+      ),
+    );
   }
 }
