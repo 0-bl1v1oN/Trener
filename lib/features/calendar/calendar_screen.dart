@@ -2564,32 +2564,35 @@ class _CalendarScreenState extends State<CalendarScreen>
             final phaseA = t;
             final phaseB = (t + 0.5) % 1.0;
             final brightnessBoost =
-                Theme.of(context).brightness == Brightness.dark ? 1.0 : 0.8;
-            final tapBoost = _fabTapController.value * 0.12;
+                Theme.of(context).brightness == Brightness.dark ? 1.25 : 1.0;
+            final tapBoost = _fabTapController.value * 0.18;
 
             Widget auraFill({required double ripple, required double size}) {
               final p = Curves.easeOutCubic.transform(ripple);
-              final o = ((1 - p) * 0.55) * brightnessBoost + tapBoost;
-              final opacity = o.clamp(0.0, 1.0);
-              final center = (0.30 * (1 - p)).clamp(0.0, 0.30);
-              final mid = (0.16 * (1 - p)).clamp(0.0, 0.16);
-              final edge = (0.06 * (1 - p)).clamp(0.0, 0.06);
-              final rimOpacity = (0.22 * (1 - p) + tapBoost * 0.8).clamp(
+              final o = ((0.9 * (1 - p) + 0.25) * brightnessBoost + tapBoost)
+                  .clamp(0.0, 1.0);
+              final opacity = o;
+              final fillOpacity = (0.3 * (1 - p) + 0.08).clamp(0.0, 0.38);
+              final center = (1.1 * (1 - p) + 0.26).clamp(0.0, 1.0);
+              final mid = (0.62 * (1 - p) + 0.16).clamp(0.0, 0.78);
+              final edge = (0.34 * (1 - p) + 0.06).clamp(0.0, 0.4);
+              final rimOpacity = (0.34 * (1 - p) + tapBoost * 0.9).clamp(
                 0.0,
-                0.35,
+                0.52,
               );
 
               return Opacity(
                 opacity: opacity,
                 child: Transform.scale(
-                  scale: 0.92 + p * 0.62,
+                  scale: 0.9 + p * 0.58,
                   child: Container(
                     width: size,
                     height: size,
                     decoration: BoxDecoration(
                       shape: BoxShape.circle,
+                      color: colors.primary.withOpacity(fillOpacity),
                       gradient: RadialGradient(
-                        stops: const [0.0, 0.55, 0.82, 1.0],
+                        stops: const [0.0, 0.52, 0.86, 1.0],
                         colors: [
                           colors.primary.withOpacity(center),
                           colors.primary.withOpacity(mid),
@@ -2599,13 +2602,13 @@ class _CalendarScreenState extends State<CalendarScreen>
                       ),
                       border: Border.all(
                         color: colors.primary.withOpacity(rimOpacity),
-                        width: 1.4 + (1 - p) * 1.2,
+                        width: 1.2 + (1 - p) * 1.3,
                       ),
                       boxShadow: [
                         BoxShadow(
-                          color: colors.primary.withOpacity(0.18 * (1 - p)),
-                          blurRadius: 22 * (1 - p),
-                          spreadRadius: 2.5 * (1 - p),
+                          color: colors.primary.withOpacity(0.3 * (1 - p)),
+                          blurRadius: 28 * (1 - p),
+                          spreadRadius: 4 * (1 - p),
                         ),
                       ],
                     ),
