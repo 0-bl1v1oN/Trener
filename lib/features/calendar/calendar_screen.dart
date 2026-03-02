@@ -52,7 +52,7 @@ class _CalendarCategory {
 }
 
 class _CalendarScreenState extends State<CalendarScreen>
-    with TickerProviderStateMixin {
+    with TickerProviderStateMixin, WidgetsBindingObserver {
   static const String _calendarBackgroundAsset =
       'assets/calendar/calendar_bg_boy.jpg';
   static const String _calendarBackgroundEnabledKey =
@@ -119,6 +119,7 @@ class _CalendarScreenState extends State<CalendarScreen>
   bool _openingCategoriesFromRoute = false;
 
   late final AnimationController _fabPulseController;
+  late final AnimationController _fabTapController;
   late final Animation<double> _fabAuraScale;
   late final Animation<double> _fabAuraOpacity;
 
@@ -244,14 +245,19 @@ class _CalendarScreenState extends State<CalendarScreen>
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _fabPulseController = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 2200),
+      duration: const Duration(milliseconds: 2300),
     )..repeat();
-    _fabAuraScale = Tween<double>(begin: 0.72, end: 1.55).animate(
+    _fabTapController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 360),
+    );
+    _fabAuraScale = Tween<double>(begin: 0.82, end: 1.42).animate(
       CurvedAnimation(parent: _fabPulseController, curve: Curves.easeOutCubic),
     );
-    _fabAuraOpacity = Tween<double>(begin: 0.82, end: 0.08).animate(
+    _fabAuraOpacity = Tween<double>(begin: 0.95, end: 0.28).animate(
       CurvedAnimation(parent: _fabPulseController, curve: Curves.easeOutCubic),
     );
   }
@@ -262,9 +268,35 @@ class _CalendarScreenState extends State<CalendarScreen>
     _trialCountsSub?.cancel();
     _planEndCountsSub?.cancel();
     _paymentReminderCountsSub?.cancel();
+    WidgetsBinding.instance.removeObserver(this);
+    _fabTapController.dispose();
     _fabPulseController.dispose();
     _appointmentsController.dispose();
     super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      if (!_fabPulseController.isAnimating) {
+        _fabPulseController.repeat();
+      }
+      return;
+    }
+
+    if (state == AppLifecycleState.inactive ||
+        state == AppLifecycleState.paused ||
+        state == AppLifecycleState.detached ||
+        state == AppLifecycleState.hidden) {
+      _fabPulseController.stop();
+    }
+  }
+
+  Future<void> _triggerFabImpact() async {
+    _fabTapController.forward(from: 0);
+    await Future<void>.delayed(const Duration(milliseconds: 180));
+    if (!mounted) return;
+    _fabTapController.reverse();
   }
 
   DateTime _dateOnly(DateTime d) => DateTime(d.year, d.month, d.day);
@@ -2534,48 +2566,105 @@ class _CalendarScreenState extends State<CalendarScreen>
         ),
 
         floatingActionButton: AnimatedBuilder(
-          animation: _fabPulseController,
+          animation: Listenable.merge([_fabPulseController, _fabTapController]),
           builder: (context, child) {
             final t = _fabPulseController.value;
-            final pulse = Curves.easeOutCubic.transform(t);
-            final auraGlowOpacity = 0.76 - pulse * 0.68;
-            final auraShadowOpacity = 0.72 - pulse * 0.64;
-            final auraShadowBlur = 10 + pulse * 28;
-            final auraShadowSpread = 0.5 + pulse * 3.5;
+            final phaseA = (t * 1.35) % 1;
+            final phaseB = (phaseA + 0.5) % 1;
+            final rippleA = Curves.easeOutCubic.transform(phaseA);
+            final rippleB = Curves.easeOutCubic.transform(phaseB);
+            final brightnessBoost =
+                Theme.of(context).brightness == Brightness.dark ? 1.0 : 0.7;
+            final tapBoost = _fabTapController.value * 0.24;
+
+            Widget auraLayer({
+              required double ripple,
+              required double size,
+              required double glowBase,
+              required double glowDrop,
+              required double shadowBase,
+              required double shadowDrop,
+              required double blurBase,
+              required double blurGrow,
+              required double spreadBase,
+              required double spreadGrow,
+            }) {
+              final glowOpacity =
+                  ((glowBase - ripple * glowDrop) * brightnessBoost + tapBoost)
+                      .clamp(0.0, 1.0);
+              final shadowOpacity =
+                  ((shadowBase - ripple * shadowDrop) * brightnessBoost +
+                          tapBoost * 0.9)
+                      .clamp(0.0, 1.0);
+              final layerOpacity =
+                  (0.3 + _fabAuraOpacity.value * (1 - ripple * 0.4)).clamp(
+                    0.0,
+                    1.0,
+                  );
+
+              return Opacity(
+                opacity: layerOpacity,
+                child: Transform.scale(
+                  scale: _fabAuraScale.value * (0.9 + ripple * 0.24),
+                  child: Container(
+                    width: size,
+                    height: size,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      gradient: RadialGradient(
+                        colors: [
+                          colors.primary.withOpacity(glowOpacity),
+                          colors.primary.withOpacity(0),
+                        ],
+                        stops: const [0.14, 1],
+                      ),
+                      boxShadow: [
+                        BoxShadow(
+                          color: colors.primary.withOpacity(shadowOpacity),
+                          blurRadius: blurBase + ripple * blurGrow,
+                          spreadRadius: spreadBase + ripple * spreadGrow,
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              );
+            }
 
             return Stack(
               alignment: Alignment.center,
               clipBehavior: Clip.none,
               children: [
                 IgnorePointer(
-                  child: Opacity(
-                    opacity: _fabAuraOpacity.value,
-                    child: Transform.scale(
-                      scale: _fabAuraScale.value,
-                      child: Container(
-                        width: 72,
-                        height: 72,
-                        decoration: BoxDecoration(
-                          shape: BoxShape.circle,
-                          gradient: RadialGradient(
-                            colors: [
-                              colors.primary.withOpacity(auraGlowOpacity),
-                              colors.primary.withOpacity(0),
-                            ],
-                            stops: const [0.22, 1],
-                          ),
-                          boxShadow: [
-                            BoxShadow(
-                              color: colors.primary.withOpacity(
-                                auraShadowOpacity,
-                              ),
-                              blurRadius: auraShadowBlur,
-                              spreadRadius: auraShadowSpread,
-                            ),
-                          ],
-                        ),
+                  child: Stack(
+                    alignment: Alignment.center,
+                    clipBehavior: Clip.none,
+                    children: [
+                      auraLayer(
+                        ripple: rippleB,
+                        size: 64,
+                        glowBase: 0.52,
+                        glowDrop: 0.5,
+                        shadowBase: 0.5,
+                        shadowDrop: 0.48,
+                        blurBase: 10,
+                        blurGrow: 20,
+                        spreadBase: 0.1,
+                        spreadGrow: 2.2,
                       ),
-                    ),
+                      auraLayer(
+                        ripple: rippleB,
+                        size: 72,
+                        glowBase: 0.75,
+                        glowDrop: 0.67,
+                        shadowBase: 0.72,
+                        shadowDrop: 0.63,
+                        blurBase: 11,
+                        blurGrow: 25,
+                        spreadBase: 0.4,
+                        spreadGrow: 3.2,
+                      ),
+                    ],
                   ),
                 ),
                 child!,
@@ -2583,7 +2672,10 @@ class _CalendarScreenState extends State<CalendarScreen>
             );
           },
           child: FloatingActionButton(
-            onPressed: () => _openAddMenu(),
+            onPressed: () {
+              _triggerFabImpact();
+              _openAddMenu();
+            },
             shape: const CircleBorder(),
             backgroundColor: colors.primary,
             foregroundColor: colors.onPrimary,
