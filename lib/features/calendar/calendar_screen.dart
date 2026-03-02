@@ -120,8 +120,6 @@ class _CalendarScreenState extends State<CalendarScreen>
 
   late final AnimationController _fabPulseController;
   late final AnimationController _fabTapController;
-  late final Animation<double> _fabAuraScale;
-  late final Animation<double> _fabAuraOpacity;
 
   static const String _attendanceMarker = '[attended]';
 
@@ -248,17 +246,11 @@ class _CalendarScreenState extends State<CalendarScreen>
     WidgetsBinding.instance.addObserver(this);
     _fabPulseController = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 2300),
+      duration: const Duration(milliseconds: 1800),
     )..repeat();
     _fabTapController = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 360),
-    );
-    _fabAuraScale = Tween<double>(begin: 0.82, end: 1.42).animate(
-      CurvedAnimation(parent: _fabPulseController, curve: Curves.easeOutCubic),
-    );
-    _fabAuraOpacity = Tween<double>(begin: 0.95, end: 0.28).animate(
-      CurvedAnimation(parent: _fabPulseController, curve: Curves.easeOutCubic),
     );
   }
 
@@ -2569,60 +2561,51 @@ class _CalendarScreenState extends State<CalendarScreen>
           animation: Listenable.merge([_fabPulseController, _fabTapController]),
           builder: (context, child) {
             final t = _fabPulseController.value;
-            final phaseA = (t * 1.35) % 1;
-            final phaseB = (phaseA + 0.5) % 1;
-            final rippleA = Curves.easeOutCubic.transform(phaseA);
-            final rippleB = Curves.easeOutCubic.transform(phaseB);
+            final phaseA = t;
+            final phaseB = (t + 0.5) % 1.0;
             final brightnessBoost =
-                Theme.of(context).brightness == Brightness.dark ? 1.0 : 0.7;
-            final tapBoost = _fabTapController.value * 0.24;
+                Theme.of(context).brightness == Brightness.dark ? 1.0 : 0.8;
+            final tapBoost = _fabTapController.value * 0.12;
 
-            Widget auraLayer({
-              required double ripple,
-              required double size,
-              required double glowBase,
-              required double glowDrop,
-              required double shadowBase,
-              required double shadowDrop,
-              required double blurBase,
-              required double blurGrow,
-              required double spreadBase,
-              required double spreadGrow,
-            }) {
-              final glowOpacity =
-                  ((glowBase - ripple * glowDrop) * brightnessBoost + tapBoost)
-                      .clamp(0.0, 1.0);
-              final shadowOpacity =
-                  ((shadowBase - ripple * shadowDrop) * brightnessBoost +
-                          tapBoost * 0.9)
-                      .clamp(0.0, 1.0);
-              final layerOpacity =
-                  (0.3 + _fabAuraOpacity.value * (1 - ripple * 0.4)).clamp(
-                    0.0,
-                    1.0,
-                  );
+            Widget auraFill({required double ripple, required double size}) {
+              final p = Curves.easeOutCubic.transform(ripple);
+              final o = ((1 - p) * 0.55) * brightnessBoost + tapBoost;
+              final opacity = o.clamp(0.0, 1.0);
+              final center = (0.30 * (1 - p)).clamp(0.0, 0.30);
+              final mid = (0.16 * (1 - p)).clamp(0.0, 0.16);
+              final edge = (0.06 * (1 - p)).clamp(0.0, 0.06);
+              final rimOpacity = (0.22 * (1 - p) + tapBoost * 0.8).clamp(
+                0.0,
+                0.35,
+              );
 
               return Opacity(
-                opacity: layerOpacity,
+                opacity: opacity,
                 child: Transform.scale(
-                  scale: _fabAuraScale.value * (0.9 + ripple * 0.24),
+                  scale: 0.92 + p * 0.62,
                   child: Container(
                     width: size,
                     height: size,
                     decoration: BoxDecoration(
                       shape: BoxShape.circle,
                       gradient: RadialGradient(
+                        stops: const [0.0, 0.55, 0.82, 1.0],
                         colors: [
-                          colors.primary.withOpacity(glowOpacity),
+                          colors.primary.withOpacity(center),
+                          colors.primary.withOpacity(mid),
+                          colors.primary.withOpacity(edge),
                           colors.primary.withOpacity(0),
                         ],
-                        stops: const [0.14, 1],
+                      ),
+                      border: Border.all(
+                        color: colors.primary.withOpacity(rimOpacity),
+                        width: 1.4 + (1 - p) * 1.2,
                       ),
                       boxShadow: [
                         BoxShadow(
-                          color: colors.primary.withOpacity(shadowOpacity),
-                          blurRadius: blurBase + ripple * blurGrow,
-                          spreadRadius: spreadBase + ripple * spreadGrow,
+                          color: colors.primary.withOpacity(0.18 * (1 - p)),
+                          blurRadius: 22 * (1 - p),
+                          spreadRadius: 2.5 * (1 - p),
                         ),
                       ],
                     ),
@@ -2640,30 +2623,8 @@ class _CalendarScreenState extends State<CalendarScreen>
                     alignment: Alignment.center,
                     clipBehavior: Clip.none,
                     children: [
-                      auraLayer(
-                        ripple: rippleB,
-                        size: 64,
-                        glowBase: 0.52,
-                        glowDrop: 0.5,
-                        shadowBase: 0.5,
-                        shadowDrop: 0.48,
-                        blurBase: 10,
-                        blurGrow: 20,
-                        spreadBase: 0.1,
-                        spreadGrow: 2.2,
-                      ),
-                      auraLayer(
-                        ripple: rippleB,
-                        size: 72,
-                        glowBase: 0.75,
-                        glowDrop: 0.67,
-                        shadowBase: 0.72,
-                        shadowDrop: 0.63,
-                        blurBase: 11,
-                        blurGrow: 25,
-                        spreadBase: 0.4,
-                        spreadGrow: 3.2,
-                      ),
+                      auraFill(ripple: phaseA, size: 64),
+                      auraFill(ripple: phaseB, size: 72),
                     ],
                   ),
                 ),
