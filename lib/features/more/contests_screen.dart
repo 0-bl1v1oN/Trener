@@ -204,9 +204,12 @@ class _ContestsScreenState extends State<ContestsScreen>
     final existing = await _db.getContestPrizes(eventKey: _eventKey);
     final hasAny = existing.isNotEmpty;
 
-    final hasNewMainPrize = existing.any(
-      (p) => p.title.trim().toLowerCase() == 'главный приз: абонемент',
-    );
+    final defaults = _selectedContest == _ContestType.feb23
+        ? _defaultPrizes
+        : _defaultMar8Prizes;
+
+    if (hasAny) return;
+
     await _db.replaceContestPrizes(
       eventKey: _eventKey,
       prizes: List.generate(
