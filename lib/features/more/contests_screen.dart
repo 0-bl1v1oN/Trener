@@ -985,26 +985,54 @@ class _ContestsScreenState extends State<ContestsScreen>
                                           alignment: Alignment.center,
                                           transform: Matrix4.identity()
                                             ..rotateY(isFrontVisible ? 0 : pi),
-                                          child: Text(
-                                            isFrontVisible
-                                                ? card.title
-                                                : 'TAROT',
-                                            textAlign: TextAlign.center,
-                                            style: Theme.of(context)
-                                                .textTheme
-                                                .titleSmall
-                                                ?.copyWith(
-                                                  color: Colors.white,
-                                                  fontWeight: FontWeight.w600,
-                                                  shadows: [
-                                                    Shadow(
-                                                      color: Colors.black
-                                                          .withOpacity(0.28),
-                                                      blurRadius: 8,
-                                                    ),
-                                                  ],
+                                          child: isFrontVisible
+                                              ? Text(
+                                                  card.title,
+                                                  textAlign: TextAlign.center,
+                                                  style: Theme.of(context)
+                                                      .textTheme
+                                                      .titleSmall
+                                                      ?.copyWith(
+                                                        color: Colors.white,
+                                                        fontWeight:
+                                                            FontWeight.w600,
+                                                        shadows: [
+                                                          Shadow(
+                                                            color: Colors.black
+                                                                .withOpacity(
+                                                                  0.28,
+                                                                ),
+                                                            blurRadius: 8,
+                                                          ),
+                                                        ],
+                                                      ),
+                                                )
+                                              : ClipRRect(
+                                                  borderRadius:
+                                                      BorderRadius.circular(10),
+                                                  child: Image.asset(
+                                                    'assets/branding/march8_tarot_cover.jpg',
+                                                    fit: BoxFit.cover,
+                                                    width: double.infinity,
+                                                    height: double.infinity,
+                                                    errorBuilder: (_, _, _) =>
+                                                        Text(
+                                                          'TAROT',
+                                                          textAlign:
+                                                              TextAlign.center,
+                                                          style: Theme.of(context)
+                                                              .textTheme
+                                                              .titleSmall
+                                                              ?.copyWith(
+                                                                color: Colors
+                                                                    .white,
+                                                                fontWeight:
+                                                                    FontWeight
+                                                                        .w600,
+                                                              ),
+                                                        ),
+                                                  ),
                                                 ),
-                                          ),
                                         ),
                                       ),
                                     ],
