@@ -875,51 +875,144 @@ class _ContestsScreenState extends State<ContestsScreen>
                         final card = _tarotCards[i];
                         final isOpened = _selectedIndex == i;
                         final showFace = !_tarotStarted || isOpened;
-                        return InkWell(
-                          onTap:
-                              (_tarotStarted &&
-                                  !_isFinalized &&
-                                  _remainingAttempts > 0 &&
-                                  (_currentPrize ?? '').isEmpty)
-                              ? () => _pickTarotCard(i)
-                              : null,
-                          borderRadius: BorderRadius.circular(14),
-                          child: AnimatedContainer(
-                            duration: const Duration(milliseconds: 260),
-                            padding: const EdgeInsets.all(8),
-                            decoration: BoxDecoration(
-                              borderRadius: BorderRadius.circular(14),
-                              gradient: showFace
-                                  ? LinearGradient(
-                                      colors: [
-                                        card.isGood
-                                            ? colors.primaryContainer
-                                            : colors.errorContainer,
-                                        colors.surface,
-                                      ],
-                                      begin: Alignment.topCenter,
-                                      end: Alignment.bottomCenter,
-                                    )
-                                  : LinearGradient(
-                                      colors: [
-                                        colors.secondaryContainer,
-                                        colors.primaryContainer,
-                                      ],
-                                      begin: Alignment.topLeft,
-                                      end: Alignment.bottomRight,
-                                    ),
-                              border: Border.all(
-                                color: colors.outlineVariant.withOpacity(0.8),
-                              ),
-                            ),
-                            child: Center(
-                              child: Text(
-                                showFace ? card.title : 'ТАРО',
-                                textAlign: TextAlign.center,
-                                style: Theme.of(context).textTheme.titleSmall,
-                              ),
-                            ),
+                        return TweenAnimationBuilder<double>(
+                          tween: Tween<double>(begin: 0, end: showFace ? 1 : 0),
+                          duration: Duration(
+                            milliseconds: isOpened ? 520 : 360,
                           ),
+                          curve: Curves.easeOutCubic,
+                          builder: (context, t, _) {
+                            final angle = (1 - t) * pi;
+                            final isFrontVisible = angle <= (pi / 2);
+                            final interactive =
+                                _tarotStarted &&
+                                !_isFinalized &&
+                                _remainingAttempts > 0 &&
+                                (_currentPrize ?? '').isEmpty;
+
+                            return Transform(
+                              alignment: Alignment.center,
+                              transform: Matrix4.identity()
+                                ..setEntry(3, 2, 0.0018)
+                                ..rotateY(angle),
+                              child: InkWell(
+                                onTap: interactive
+                                    ? () => _pickTarotCard(i)
+                                    : null,
+                                borderRadius: BorderRadius.circular(16),
+                                child: AnimatedContainer(
+                                  duration: const Duration(milliseconds: 280),
+                                  padding: const EdgeInsets.all(10),
+                                  decoration: BoxDecoration(
+                                    borderRadius: BorderRadius.circular(16),
+                                    gradient: isFrontVisible
+                                        ? LinearGradient(
+                                            colors: [
+                                              card.isGood
+                                                  ? const Color(0xFF6B5BFF)
+                                                  : const Color(0xFFFF2E63),
+                                              const Color(0xFF171A33),
+                                            ],
+                                            begin: Alignment.topLeft,
+                                            end: Alignment.bottomRight,
+                                          )
+                                        : const LinearGradient(
+                                            colors: [
+                                              Color(0xFF6E5ED8),
+                                              Color(0xFF2B2159),
+                                              Color(0xFF141733),
+                                            ],
+                                            begin: Alignment.topLeft,
+                                            end: Alignment.bottomRight,
+                                          ),
+                                    border: Border.all(
+                                      color:
+                                          (isOpened
+                                                  ? colors.primary
+                                                  : colors.outlineVariant)
+                                              .withOpacity(0.75),
+                                      width: isOpened ? 1.6 : 1.0,
+                                    ),
+                                    boxShadow: [
+                                      BoxShadow(
+                                        color:
+                                            (isFrontVisible
+                                                    ? (card.isGood
+                                                          ? const Color(
+                                                              0xFF8A7BFF,
+                                                            )
+                                                          : const Color(
+                                                              0xFFFF4D7C,
+                                                            ))
+                                                    : const Color(0xFF8F7BFF))
+                                                .withOpacity(0.30),
+                                        blurRadius: isOpened ? 18 : 12,
+                                        spreadRadius: isOpened ? 0.8 : 0,
+                                        offset: const Offset(0, 8),
+                                      ),
+                                    ],
+                                  ),
+                                  child: Stack(
+                                    children: [
+                                      Positioned.fill(
+                                        child: DecoratedBox(
+                                          decoration: BoxDecoration(
+                                            borderRadius: BorderRadius.circular(
+                                              12,
+                                            ),
+                                            border: Border.all(
+                                              color: Colors.white.withOpacity(
+                                                0.10,
+                                              ),
+                                            ),
+                                          ),
+                                        ),
+                                      ),
+                                      Align(
+                                        alignment: Alignment.topLeft,
+                                        child: Icon(
+                                          isFrontVisible
+                                              ? (card.isGood
+                                                    ? Icons.auto_awesome
+                                                    : Icons.whatshot)
+                                              : Icons.stars_rounded,
+                                          size: 16,
+                                          color: Colors.white.withOpacity(0.70),
+                                        ),
+                                      ),
+                                      Center(
+                                        child: Transform(
+                                          alignment: Alignment.center,
+                                          transform: Matrix4.identity()
+                                            ..rotateY(isFrontVisible ? 0 : pi),
+                                          child: Text(
+                                            isFrontVisible
+                                                ? card.title
+                                                : 'TAROT',
+                                            textAlign: TextAlign.center,
+                                            style: Theme.of(context)
+                                                .textTheme
+                                                .titleSmall
+                                                ?.copyWith(
+                                                  color: Colors.white,
+                                                  fontWeight: FontWeight.w600,
+                                                  shadows: [
+                                                    Shadow(
+                                                      color: Colors.black
+                                                          .withOpacity(0.28),
+                                                      blurRadius: 8,
+                                                    ),
+                                                  ],
+                                                ),
+                                          ),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ),
+                            );
+                          },
                         );
                       },
                     ),
