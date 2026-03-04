@@ -60,6 +60,31 @@ _PrizeMeta _prizeMetaByTitle(String title) {
       description:
           'Командная выдержка. Плечо к плечу, минута характера. Если один — 15 кг в руки.',
     ),
+    'любая вкусняшка': _PrizeMeta(
+      icon: Icons.icecream_rounded,
+      description: 'Выбираешь сама. Баланс — это тоже часть формы.',
+    ),
+    '+2 шанса': _PrizeMeta(
+      icon: Icons.casino_rounded,
+      description: 'Два дополнительных шанса изменить исход конкурса.',
+    ),
+    'канатики': _PrizeMeta(
+      icon: Icons.bolt_rounded,
+      description: '40 секунд ударного кардио × 3 подхода. Пульс — в космос.',
+    ),
+    'случайный жопный день': _PrizeMeta(
+      icon: Icons.shuffle_rounded,
+      description:
+          '6 упражнений на ягодицы выбирает случай. Работаем без пощады.',
+    ),
+    'железные браслеты': _PrizeMeta(
+      icon: Icons.fitness_center,
+      description: 'Утяжелители средней тяжести на всю тренировку.',
+    ),
+    '🏆 суперприз: абонемент в зал': _PrizeMeta(
+      icon: Icons.workspace_premium_rounded,
+      description: 'Месяц дисциплины, прогресса и видимых изменений.',
+    ),
   };
 
   return map[key] ??
@@ -68,6 +93,8 @@ _PrizeMeta _prizeMetaByTitle(String title) {
         description: 'Описание приза появится здесь.',
       );
 }
+
+enum _ContestType { feb23, mar8 }
 
 class ContestsScreen extends StatefulWidget {
   const ContestsScreen({super.key});
@@ -78,8 +105,12 @@ class ContestsScreen extends StatefulWidget {
 
 class _ContestsScreenState extends State<ContestsScreen>
     with SingleTickerProviderStateMixin {
-  static const _eventKey = '2026-02-23';
-  static const _extraSpinsPrizeTitle = 'Доп +2 крутки';
+  static const _eventKeyFeb23 = '2026-02-23';
+  static const _eventKeyMar8 = '2026-03-08';
+  static const Set<String> _extraSpinsPrizeTitles = {
+    'Доп +2 крутки',
+    '+2 шанса',
+  };
 
   late final AppDb _db;
   late final AnimationController _spinController;
@@ -93,6 +124,9 @@ class _ContestsScreenState extends State<ContestsScreen>
   ContestEntryVm? _entry;
 
   bool _loading = true;
+  _ContestType _selectedContest = _ContestType.feb23;
+  bool _tarotStarted = false;
+  List<_PrizeItem> _tarotCards = const [];
   bool _spinning = false;
   bool _initialized = false;
   String? _currentPrize;
@@ -125,6 +159,28 @@ class _ContestsScreenState extends State<ContestsScreen>
     _PrizeItem(id: 0, title: 'Доп +2 крутки', weight: 0.09, isGood: true),
   ];
 
+  static const List<_PrizeItem> _defaultMar8Prizes = [
+    _PrizeItem(
+      id: 0,
+      title: '🏆 Суперприз: Абонемент в зал',
+      weight: 0.01,
+      isGood: true,
+    ),
+    _PrizeItem(id: 0, title: 'Счастливый день', weight: 0.14, isGood: true),
+    _PrizeItem(id: 0, title: 'Ревёрс', weight: 0.11, isGood: true),
+    _PrizeItem(id: 0, title: 'Любая вкусняшка', weight: 0.12, isGood: true),
+    _PrizeItem(id: 0, title: '+2 шанса', weight: 0.10, isGood: true),
+    _PrizeItem(id: 0, title: 'Канатики', weight: 0.13, isGood: false),
+    _PrizeItem(id: 0, title: 'День ПП', weight: 0.11, isGood: false),
+    _PrizeItem(
+      id: 0,
+      title: 'Случайный жопный день',
+      weight: 0.14,
+      isGood: false,
+    ),
+    _PrizeItem(id: 0, title: 'Железные браслеты', weight: 0.14, isGood: false),
+  ];
+
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
@@ -147,21 +203,19 @@ class _ContestsScreenState extends State<ContestsScreen>
   Future<void> _ensurePrizesSeeded() async {
     final existing = await _db.getContestPrizes(eventKey: _eventKey);
     final hasAny = existing.isNotEmpty;
+
     final hasNewMainPrize = existing.any(
       (p) => p.title.trim().toLowerCase() == 'главный приз: абонемент',
     );
-
-    if (hasAny && hasNewMainPrize) return;
-
     await _db.replaceContestPrizes(
       eventKey: _eventKey,
       prizes: List.generate(
-        _defaultPrizes.length,
+        defaults.length,
         (i) => ContestPrizeVm(
           id: 0,
-          title: _defaultPrizes[i].title,
-          weight: _defaultPrizes[i].weight,
-          isGood: _defaultPrizes[i].isGood,
+          title: defaults[i].title,
+          weight: defaults[i].weight,
+          isGood: defaults[i].isGood,
           sortOrder: i,
         ),
       ),
@@ -177,8 +231,10 @@ class _ContestsScreenState extends State<ContestsScreen>
     final winners = await _db.getContestWinners(eventKey: _eventKey);
     final winnerIds = winners.map((w) => w.clientId).toSet();
 
+    final targetGender = _selectedContest == _ContestType.feb23 ? 'М' : 'Ж';
+
     final clients = (await _db.getAllClients())
-        .where((c) => c.gender == 'М' && !winnerIds.contains(c.id))
+        .where((c) => c.gender == targetGender && !winnerIds.contains(c.id))
         .toList(growable: false);
     final prizeRows = await _db.getContestPrizes(eventKey: _eventKey);
 
@@ -220,6 +276,8 @@ class _ContestsScreenState extends State<ContestsScreen>
       _prizes = prizes;
       _currentPrize = entry?.currentPrize;
       _selectedIndex = _indexForPrize(entry?.currentPrize);
+      _tarotCards = List<_PrizeItem>.from(prizes)..shuffle(_rng);
+      _tarotStarted = false;
       _loading = false;
     });
   }
@@ -232,6 +290,14 @@ class _ContestsScreenState extends State<ContestsScreen>
     }
     return null;
   }
+
+  String get _eventKey =>
+      _selectedContest == _ContestType.feb23 ? _eventKeyFeb23 : _eventKeyMar8;
+
+  bool get _isFemaleClient => _selectedClient?.gender == 'Ж';
+
+  bool get _isGenderAllowed =>
+      _selectedContest == _ContestType.feb23 ? _isMaleClient : _isFemaleClient;
 
   int _attemptsForPlan(String? plan) {
     return switch (plan) {
@@ -353,10 +419,14 @@ class _ContestsScreenState extends State<ContestsScreen>
       );
       return;
     }
-    if (!_isMaleClient) {
+    if (!_isGenderAllowed) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Конкурс 23 февраля доступен только мужчинам.'),
+        SnackBar(
+          content: Text(
+            _selectedContest == _ContestType.feb23
+                ? 'Конкурс 23 февраля доступен только мужчинам.'
+                : 'Конкурс 8 марта доступен только девушкам.',
+          ),
         ),
       );
       return;
@@ -419,7 +489,7 @@ class _ContestsScreenState extends State<ContestsScreen>
       prize: _prizes[prizeIndex].title,
     );
 
-    if (_prizes[prizeIndex].title == _extraSpinsPrizeTitle) {
+    if (_extraSpinsPrizeTitles.contains(_prizes[prizeIndex].title)) {
       updated = await _db.addContestExtraAttempts(
         eventKey: _eventKey,
         clientId: _selectedClientId!,
@@ -435,11 +505,73 @@ class _ContestsScreenState extends State<ContestsScreen>
       _spinning = false;
     });
 
-    if (_prizes[prizeIndex].title == _extraSpinsPrizeTitle) {
+    if (_extraSpinsPrizeTitles.contains(_prizes[prizeIndex].title)) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Бонус: +2 попытки крутки!')),
       );
     }
+  }
+
+  Future<void> _startTarot() async {
+    if (_selectedClientId == null) return;
+    setState(() {
+      _tarotStarted = true;
+      _tarotCards = List<_PrizeItem>.from(_prizes)..shuffle(_rng);
+      _currentPrize = null;
+      _selectedIndex = -1;
+    });
+  }
+
+  Future<void> _reshuffleTarot() async {
+    if (!_tarotStarted || _spinning || _isFinalized) return;
+    setState(() {
+      _tarotCards = List<_PrizeItem>.from(_prizes)..shuffle(_rng);
+      _currentPrize = null;
+      _selectedIndex = -1;
+    });
+  }
+
+  Future<void> _pickTarotCard(int index) async {
+    if (_spinning || !_tarotStarted || _selectedClientId == null) return;
+    if (!_isGenderAllowed) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Конкурс 8 марта доступен только девушкам.'),
+        ),
+      );
+      return;
+    }
+    if (_effectiveMaxAttempts <= 0 || _remainingAttempts <= 0 || _isFinalized) {
+      return;
+    }
+
+    final prize = _tarotCards[index];
+    setState(() {
+      _spinning = true;
+      _selectedIndex = index;
+      _currentPrize = prize.title;
+    });
+
+    var updated = await _db.recordContestSpin(
+      eventKey: _eventKey,
+      clientId: _selectedClientId!,
+      maxAttempts: _effectiveMaxAttempts,
+      prize: prize.title,
+    );
+
+    if (_extraSpinsPrizeTitles.contains(prize.title)) {
+      updated = await _db.addContestExtraAttempts(
+        eventKey: _eventKey,
+        clientId: _selectedClientId!,
+        delta: 2,
+      );
+    }
+
+    if (!mounted) return;
+    setState(() {
+      _entry = updated;
+      _spinning = false;
+    });
   }
 
   Future<void> _takePrize() async {
@@ -602,363 +734,692 @@ class _ContestsScreenState extends State<ContestsScreen>
             : ListView(
                 padding: const EdgeInsets.fromLTRB(16, 10, 16, 20),
                 children: [
-                  Card(
-                    elevation: 0,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(16),
-                      side: BorderSide(
-                        color: colors.outlineVariant.withOpacity(0.7),
+                  SegmentedButton<_ContestType>(
+                    segments: const [
+                      ButtonSegment<_ContestType>(
+                        value: _ContestType.feb23,
+                        label: Text('23 февраля'),
+                        icon: Icon(Icons.military_tech_outlined),
                       ),
-                    ),
-                    child: Padding(
-                      padding: const EdgeInsets.all(14),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            'Конкурс на 23 февраля',
-                            style: Theme.of(context).textTheme.titleMedium,
-                          ),
-                          const SizedBox(height: 10),
-                          DropdownButtonFormField<String>(
-                            value: _selectedClientId,
-                            decoration: const InputDecoration(
-                              labelText: 'Клиент',
-                              border: OutlineInputBorder(),
-                            ),
-                            items: _clients
-                                .map(
-                                  (c) => DropdownMenuItem(
-                                    value: c.id,
-                                    child: Text(c.name),
-                                  ),
-                                )
-                                .toList(),
-                            onChanged: _selectClient,
-                          ),
-                          const SizedBox(height: 10),
-                          if (_selectedClient != null)
-                            Text(
-                              'Абонемент: ${_selectedClient!.plan ?? '—'} • Попыток: $_effectiveMaxAttempts • Осталось: $_remainingAttempts',
-                              style: Theme.of(context).textTheme.bodyMedium,
-                            ),
-                          if (_selectedClient != null && !_isMaleClient)
-                            Padding(
-                              padding: const EdgeInsets.only(top: 8),
-                              child: Text(
-                                'Для события 23 февраля рулетка доступна только мужчинам.',
-                                style: TextStyle(color: colors.error),
-                              ),
-                            ),
-                          if (_isFinalized)
-                            Padding(
-                              padding: const EdgeInsets.only(top: 8),
-                              child: Text(
-                                'Приз уже забран: ${_entry?.finalPrize}',
-                                style: TextStyle(
-                                  color: colors.primary,
-                                  fontWeight: FontWeight.w600,
-                                ),
-                              ),
-                            ),
-                          const SizedBox(height: 10),
-                          OutlinedButton.icon(
-                            onPressed: _selectedClientId == null
-                                ? null
-                                : _resetSelectedForTest,
-                            icon: const Icon(Icons.restart_alt),
-                            label: const Text('Тестовый сброс участия'),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                  _RouletteCard(
-                    prizes: _prizes,
-                    selectedIndex: _selectedIndex,
-                    turns: _wheelTurns,
-                    currentPrize: _currentPrize,
-                    spinning: _spinning,
-                  ),
-                  const SizedBox(height: 10),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: FilledButton.icon(
-                          onPressed:
-                              (_spinning ||
-                                  _isFinalized ||
-                                  !_isMaleClient ||
-                                  _remainingAttempts <= 0)
-                              ? null
-                              : _spinRoulette,
-                          icon: const Icon(Icons.casino_outlined),
-                          label: Text(
-                            _usedAttempts == 0 ? 'Крутить рулетку' : 'Переброс',
-                          ),
-                        ),
-                      ),
-                      const SizedBox(width: 10),
-                      Expanded(
-                        child: OutlinedButton.icon(
-                          onPressed:
-                              (_spinning ||
-                                  (_entry?.currentPrize ?? '').isEmpty ||
-                                  _isFinalized)
-                              ? null
-                              : _takePrize,
-                          icon: const Icon(Icons.redeem_outlined),
-                          label: const Text('Забрать приз'),
-                        ),
+                      ButtonSegment<_ContestType>(
+                        value: _ContestType.mar8,
+                        label: Text('8 марта'),
+                        icon: Icon(Icons.local_florist_outlined),
                       ),
                     ],
+                    selected: {_selectedContest},
+                    onSelectionChanged: (selection) {
+                      if (selection.isEmpty) return;
+                      setState(() => _selectedContest = selection.first);
+                      _load();
+                    },
                   ),
-                  const SizedBox(height: 16),
-                  Card(
-                    elevation: 0,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(16),
-                      side: BorderSide(
-                        color: colors.outlineVariant.withOpacity(0.7),
+                  const SizedBox(height: 12),
+                  if (_selectedContest == _ContestType.mar8) ...[
+                    Card(
+                      elevation: 0,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(16),
+                        side: BorderSide(
+                          color: colors.outlineVariant.withOpacity(0.7),
+                        ),
                       ),
-                    ),
-                    child: Padding(
-                      padding: const EdgeInsets.all(14),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Row(
-                            children: [
-                              Text(
-                                'Список призов',
-                                style: Theme.of(context).textTheme.titleMedium,
-                              ),
-                              const Spacer(),
-                              IconButton(
-                                tooltip: 'Добавить приз',
-                                onPressed: () =>
-                                    _openPrizeEditor(sortOrder: _prizes.length),
-                                icon: const Icon(Icons.add_circle_outline),
-                              ),
-                            ],
-                          ),
-                          const SizedBox(height: 4),
-                          if (_prizes.isEmpty)
-                            const Text('Пока призов нет')
-                          else
-                            Column(
-                              children: List.generate(_prizes.length, (i) {
-                                final p = _prizes[i];
-                                final meta = _metaForPrize(p.title);
-                                final opened = _expandedPrizeTitles.contains(
-                                  p.title,
-                                );
-                                return Container(
-                                  margin: const EdgeInsets.only(bottom: 8),
-                                  decoration: BoxDecoration(
-                                    borderRadius: BorderRadius.circular(14),
-                                    border: Border.all(
-                                      color: colors.outlineVariant.withOpacity(
-                                        0.6,
-                                      ),
-                                    ),
-                                  ),
-                                  child: ExpansionTile(
-                                    initiallyExpanded: opened,
-                                    onExpansionChanged: (v) {
-                                      setState(() {
-                                        if (v) {
-                                          _expandedPrizeTitles.add(p.title);
-                                        } else {
-                                          _expandedPrizeTitles.remove(p.title);
-                                        }
-                                      });
-                                    },
-                                    leading: CircleAvatar(
-                                      radius: 16,
-                                      backgroundColor: p.isGood
-                                          ? colors.primaryContainer
-                                          : colors.errorContainer,
-                                      child: Icon(
-                                        meta.icon,
-                                        size: 18,
-                                        color: p.isGood
-                                            ? colors.onPrimaryContainer
-                                            : colors.onErrorContainer,
-                                      ),
-                                    ),
-                                    tilePadding: const EdgeInsets.symmetric(
-                                      horizontal: 10,
-                                    ),
-                                    childrenPadding: const EdgeInsets.fromLTRB(
-                                      14,
-                                      0,
-                                      14,
-                                      12,
-                                    ),
-                                    title: Text(p.title),
-                                    subtitle: Text(
-                                      p.isGood ? 'Приз' : 'Анти-приз',
-                                    ),
-                                    trailing: Row(
-                                      mainAxisSize: MainAxisSize.min,
-                                      children: [
-                                        IconButton(
-                                          tooltip: 'Редактировать приз',
-                                          icon: const Icon(Icons.edit_outlined),
-                                          onPressed: () => _openPrizeEditor(
-                                            prize: p,
-                                            sortOrder: i,
-                                          ),
-                                        ),
-                                        Icon(
-                                          opened
-                                              ? Icons.expand_less
-                                              : Icons.expand_more,
-                                        ),
-                                      ],
-                                    ),
-                                    children: [
-                                      Align(
-                                        alignment: Alignment.centerLeft,
-                                        child: Text(
-                                          meta.description,
-                                          style: Theme.of(
-                                            context,
-                                          ).textTheme.bodyMedium,
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                );
-                              }),
+                      child: Padding(
+                        padding: const EdgeInsets.all(14),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'Конкурс на 8 марта (Таро)',
+                              style: Theme.of(context).textTheme.titleMedium,
                             ),
-                        ],
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-                  Card(
-                    elevation: 0,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(16),
-                      side: BorderSide(
-                        color: colors.outlineVariant.withOpacity(0.7),
-                      ),
-                    ),
-                    child: Padding(
-                      padding: const EdgeInsets.all(14),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Row(
-                            children: [
-                              Text(
-                                'Архив выдачи призов',
-                                style: Theme.of(context).textTheme.titleMedium,
+                            const SizedBox(height: 10),
+                            DropdownButtonFormField<String>(
+                              value: _selectedClientId,
+                              decoration: const InputDecoration(
+                                labelText: 'Клиент',
+                                border: OutlineInputBorder(),
                               ),
-                              const Spacer(),
-                              Text(
-                                'Выполнено: ${_winners.where((w) => w.isCompleted).length}/${_winners.length}',
-                                style: Theme.of(context).textTheme.bodySmall,
-                              ),
-                            ],
-                          ),
-                          const SizedBox(height: 8),
-                          if (_winners.isEmpty)
-                            const Text('Пока никто не забрал приз')
-                          else
-                            Column(
-                              children: _winners
+                              items: _clients
                                   .map(
-                                    (w) => Container(
-                                      margin: const EdgeInsets.only(bottom: 8),
-                                      decoration: BoxDecoration(
-                                        borderRadius: BorderRadius.circular(14),
-                                        color: w.isCompleted
-                                            ? colors.surfaceContainerHighest
-                                            : colors.surface,
-                                        border: Border.all(
-                                          color: w.isCompleted
-                                              ? colors.outline.withOpacity(0.35)
-                                              : colors.primary.withOpacity(
-                                                  0.35,
-                                                ),
-                                        ),
-                                      ),
-                                      child: ListTile(
-                                        contentPadding:
-                                            const EdgeInsets.symmetric(
-                                              horizontal: 10,
-                                              vertical: 2,
-                                            ),
-                                        leading: CircleAvatar(
-                                          backgroundColor: w.isCompleted
-                                              ? Colors.green.withOpacity(0.16)
-                                              : colors.primaryContainer,
-                                          child: Icon(
-                                            w.isCompleted
-                                                ? Icons.verified_rounded
-                                                : Icons.redeem_rounded,
-                                            color: w.isCompleted
-                                                ? Colors.green.shade700
-                                                : colors.onPrimaryContainer,
-                                          ),
-                                        ),
-                                        title: Text(
-                                          w.clientName,
-                                          style: w.isCompleted
-                                              ? Theme.of(context)
-                                                    .textTheme
-                                                    .titleSmall
-                                                    ?.copyWith(
-                                                      decoration: TextDecoration
-                                                          .lineThrough,
-                                                      color: colors
-                                                          .onSurfaceVariant,
-                                                    )
-                                              : null,
-                                        ),
-                                        subtitle: Text(
-                                          '${w.prize} • ${_fmtDate(w.finalizedAt)}',
-                                        ),
-                                        trailing: Row(
-                                          mainAxisSize: MainAxisSize.min,
-                                          children: [
-                                            IconButton.filledTonal(
-                                              tooltip: w.isCompleted
-                                                  ? 'Отметить как не выполнено'
-                                                  : 'Отметить как выполнено',
-                                              onPressed: () =>
-                                                  _toggleWinnerCompleted(w),
-                                              icon: Icon(
-                                                w.isCompleted
-                                                    ? Icons.check_circle
-                                                    : Icons
-                                                          .check_circle_outline,
-                                              ),
-                                            ),
-                                            IconButton(
-                                              tooltip:
-                                                  'Удалить из архива (тест)',
-                                              onPressed: () =>
-                                                  _removeWinnerForTest(w),
-                                              icon: const Icon(
-                                                Icons.delete_outline,
-                                              ),
-                                            ),
-                                          ],
-                                        ),
-                                      ),
+                                    (c) => DropdownMenuItem(
+                                      value: c.id,
+                                      child: Text(c.name),
                                     ),
                                   )
                                   .toList(),
+                              onChanged: _selectClient,
                             ),
-                        ],
+                            const SizedBox(height: 10),
+                            if (_selectedClient != null)
+                              Text(
+                                'Абонемент: ${_selectedClient!.plan ?? '—'} • Попыток: $_effectiveMaxAttempts • Осталось: $_remainingAttempts',
+                                style: Theme.of(context).textTheme.bodyMedium,
+                              ),
+                            if (_selectedClient != null && !_isGenderAllowed)
+                              Padding(
+                                padding: const EdgeInsets.only(top: 8),
+                                child: Text(
+                                  'Для события 8 марта выбор доступен только девушкам.',
+                                  style: TextStyle(color: colors.error),
+                                ),
+                              ),
+                            if (_isFinalized)
+                              Padding(
+                                padding: const EdgeInsets.only(top: 8),
+                                child: Text(
+                                  'Приз уже забран: ${_entry?.finalPrize}',
+                                  style: TextStyle(
+                                    color: colors.primary,
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                ),
+                              ),
+                            const SizedBox(height: 10),
+                            Row(
+                              children: [
+                                Expanded(
+                                  child: FilledButton.icon(
+                                    onPressed:
+                                        _selectedClientId == null ||
+                                            _isFinalized
+                                        ? null
+                                        : _startTarot,
+                                    icon: const Icon(Icons.auto_awesome),
+                                    label: const Text('Начать гадать'),
+                                  ),
+                                ),
+                                const SizedBox(width: 10),
+                                Expanded(
+                                  child: OutlinedButton.icon(
+                                    onPressed:
+                                        (!_tarotStarted ||
+                                            _spinning ||
+                                            _isFinalized)
+                                        ? null
+                                        : _reshuffleTarot,
+                                    icon: const Icon(Icons.shuffle),
+                                    label: const Text('Перетасовать'),
+                                  ),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 10),
+                            OutlinedButton.icon(
+                              onPressed: _selectedClientId == null
+                                  ? null
+                                  : _resetSelectedForTest,
+                              icon: const Icon(Icons.restart_alt),
+                              label: const Text('Тестовый сброс участия'),
+                            ),
+                          ],
+                        ),
                       ),
                     ),
-                  ),
+                    const SizedBox(height: 12),
+                    GridView.builder(
+                      shrinkWrap: true,
+                      physics: const NeverScrollableScrollPhysics(),
+                      itemCount: _tarotCards.length,
+                      gridDelegate:
+                          const SliverGridDelegateWithFixedCrossAxisCount(
+                            crossAxisCount: 3,
+                            crossAxisSpacing: 8,
+                            mainAxisSpacing: 8,
+                            childAspectRatio: 0.72,
+                          ),
+                      itemBuilder: (context, i) {
+                        final card = _tarotCards[i];
+                        final isOpened = _selectedIndex == i;
+                        final showFace = !_tarotStarted || isOpened;
+                        return InkWell(
+                          onTap:
+                              (_tarotStarted &&
+                                  !_isFinalized &&
+                                  _remainingAttempts > 0 &&
+                                  (_currentPrize ?? '').isEmpty)
+                              ? () => _pickTarotCard(i)
+                              : null,
+                          borderRadius: BorderRadius.circular(14),
+                          child: AnimatedContainer(
+                            duration: const Duration(milliseconds: 260),
+                            padding: const EdgeInsets.all(8),
+                            decoration: BoxDecoration(
+                              borderRadius: BorderRadius.circular(14),
+                              gradient: showFace
+                                  ? LinearGradient(
+                                      colors: [
+                                        card.isGood
+                                            ? colors.primaryContainer
+                                            : colors.errorContainer,
+                                        colors.surface,
+                                      ],
+                                      begin: Alignment.topCenter,
+                                      end: Alignment.bottomCenter,
+                                    )
+                                  : LinearGradient(
+                                      colors: [
+                                        colors.secondaryContainer,
+                                        colors.primaryContainer,
+                                      ],
+                                      begin: Alignment.topLeft,
+                                      end: Alignment.bottomRight,
+                                    ),
+                              border: Border.all(
+                                color: colors.outlineVariant.withOpacity(0.8),
+                              ),
+                            ),
+                            child: Center(
+                              child: Text(
+                                showFace ? card.title : 'ТАРО',
+                                textAlign: TextAlign.center,
+                                style: Theme.of(context).textTheme.titleSmall,
+                              ),
+                            ),
+                          ),
+                        );
+                      },
+                    ),
+                    const SizedBox(height: 10),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: OutlinedButton.icon(
+                            onPressed:
+                                (_spinning ||
+                                    (_entry?.currentPrize ?? '').isEmpty ||
+                                    _isFinalized)
+                                ? null
+                                : _takePrize,
+                            icon: const Icon(Icons.redeem_outlined),
+                            label: const Text('Забрать приз'),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 12),
+                    Card(
+                      elevation: 0,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(16),
+                        side: BorderSide(
+                          color: colors.outlineVariant.withOpacity(0.7),
+                        ),
+                      ),
+                      child: Padding(
+                        padding: const EdgeInsets.all(14),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Row(
+                              children: [
+                                Text(
+                                  'Архив выдачи призов',
+                                  style: Theme.of(
+                                    context,
+                                  ).textTheme.titleMedium,
+                                ),
+                                const Spacer(),
+                                Text(
+                                  'Выполнено: ${_winners.where((w) => w.isCompleted).length}/${_winners.length}',
+                                  style: Theme.of(context).textTheme.bodySmall,
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 8),
+                            if (_winners.isEmpty)
+                              const Text('Пока никто не забрал приз')
+                            else
+                              Column(
+                                children: _winners
+                                    .map(
+                                      (w) => Container(
+                                        margin: const EdgeInsets.only(
+                                          bottom: 8,
+                                        ),
+                                        decoration: BoxDecoration(
+                                          borderRadius: BorderRadius.circular(
+                                            14,
+                                          ),
+                                          color: w.isCompleted
+                                              ? colors.surfaceContainerHighest
+                                              : colors.surface,
+                                          border: Border.all(
+                                            color: w.isCompleted
+                                                ? colors.outline.withOpacity(
+                                                    0.35,
+                                                  )
+                                                : colors.primary.withOpacity(
+                                                    0.35,
+                                                  ),
+                                          ),
+                                        ),
+                                        child: ListTile(
+                                          contentPadding:
+                                              const EdgeInsets.symmetric(
+                                                horizontal: 10,
+                                                vertical: 2,
+                                              ),
+                                          title: Text(w.clientName),
+                                          subtitle: Text(
+                                            '${w.prize} • ${_fmtDate(w.finalizedAt)}',
+                                          ),
+                                          trailing: Row(
+                                            mainAxisSize: MainAxisSize.min,
+                                            children: [
+                                              IconButton.filledTonal(
+                                                tooltip: w.isCompleted
+                                                    ? 'Отметить как не выполнено'
+                                                    : 'Отметить как выполнено',
+                                                onPressed: () =>
+                                                    _toggleWinnerCompleted(w),
+                                                icon: Icon(
+                                                  w.isCompleted
+                                                      ? Icons.check_circle
+                                                      : Icons
+                                                            .check_circle_outline,
+                                                ),
+                                              ),
+                                              IconButton(
+                                                tooltip:
+                                                    'Удалить из архива (тест)',
+                                                onPressed: () =>
+                                                    _removeWinnerForTest(w),
+                                                icon: const Icon(
+                                                  Icons.delete_outline,
+                                                ),
+                                              ),
+                                            ],
+                                          ),
+                                        ),
+                                      ),
+                                    )
+                                    .toList(),
+                              ),
+                          ],
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                  ] else ...[
+                    Card(
+                      elevation: 0,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(16),
+                        side: BorderSide(
+                          color: colors.outlineVariant.withOpacity(0.7),
+                        ),
+                      ),
+                      child: Padding(
+                        padding: const EdgeInsets.all(14),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'Конкурс на 23 февраля',
+                              style: Theme.of(context).textTheme.titleMedium,
+                            ),
+                            const SizedBox(height: 10),
+                            DropdownButtonFormField<String>(
+                              value: _selectedClientId,
+                              decoration: const InputDecoration(
+                                labelText: 'Клиент',
+                                border: OutlineInputBorder(),
+                              ),
+                              items: _clients
+                                  .map(
+                                    (c) => DropdownMenuItem(
+                                      value: c.id,
+                                      child: Text(c.name),
+                                    ),
+                                  )
+                                  .toList(),
+                              onChanged: _selectClient,
+                            ),
+                            const SizedBox(height: 10),
+                            if (_selectedClient != null)
+                              Text(
+                                'Абонемент: ${_selectedClient!.plan ?? '—'} • Попыток: $_effectiveMaxAttempts • Осталось: $_remainingAttempts',
+                                style: Theme.of(context).textTheme.bodyMedium,
+                              ),
+                            if (_selectedClient != null && !_isGenderAllowed)
+                              Padding(
+                                padding: const EdgeInsets.only(top: 8),
+                                child: Text(
+                                  _selectedContest == _ContestType.feb23
+                                      ? 'Для события 23 февраля рулетка доступна только мужчинам.'
+                                      : 'Для события 8 марта выбор доступен только девушкам.',
+                                  style: TextStyle(color: colors.error),
+                                ),
+                              ),
+                            if (_isFinalized)
+                              Padding(
+                                padding: const EdgeInsets.only(top: 8),
+                                child: Text(
+                                  'Приз уже забран: ${_entry?.finalPrize}',
+                                  style: TextStyle(
+                                    color: colors.primary,
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                ),
+                              ),
+                            const SizedBox(height: 10),
+                            OutlinedButton.icon(
+                              onPressed: _selectedClientId == null
+                                  ? null
+                                  : _resetSelectedForTest,
+                              icon: const Icon(Icons.restart_alt),
+                              label: const Text('Тестовый сброс участия'),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    _RouletteCard(
+                      prizes: _prizes,
+                      selectedIndex: _selectedIndex,
+                      turns: _wheelTurns,
+                      currentPrize: _currentPrize,
+                      spinning: _spinning,
+                    ),
+                    const SizedBox(height: 10),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: FilledButton.icon(
+                            onPressed:
+                                (_spinning ||
+                                    _isFinalized ||
+                                    !_isGenderAllowed ||
+                                    _remainingAttempts <= 0)
+                                ? null
+                                : _spinRoulette,
+                            icon: const Icon(Icons.casino_outlined),
+                            label: Text(
+                              _usedAttempts == 0
+                                  ? 'Крутить рулетку'
+                                  : 'Переброс',
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: OutlinedButton.icon(
+                            onPressed:
+                                (_spinning ||
+                                    (_entry?.currentPrize ?? '').isEmpty ||
+                                    _isFinalized)
+                                ? null
+                                : _takePrize,
+                            icon: const Icon(Icons.redeem_outlined),
+                            label: const Text('Забрать приз'),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 16),
+                    Card(
+                      elevation: 0,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(16),
+                        side: BorderSide(
+                          color: colors.outlineVariant.withOpacity(0.7),
+                        ),
+                      ),
+                      child: Padding(
+                        padding: const EdgeInsets.all(14),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Row(
+                              children: [
+                                Text(
+                                  'Список призов',
+                                  style: Theme.of(
+                                    context,
+                                  ).textTheme.titleMedium,
+                                ),
+                                const Spacer(),
+                                IconButton(
+                                  tooltip: 'Добавить приз',
+                                  onPressed: () => _openPrizeEditor(
+                                    sortOrder: _prizes.length,
+                                  ),
+                                  icon: const Icon(Icons.add_circle_outline),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 4),
+                            if (_prizes.isEmpty)
+                              const Text('Пока призов нет')
+                            else
+                              Column(
+                                children: List.generate(_prizes.length, (i) {
+                                  final p = _prizes[i];
+                                  final meta = _metaForPrize(p.title);
+                                  final opened = _expandedPrizeTitles.contains(
+                                    p.title,
+                                  );
+                                  return Container(
+                                    margin: const EdgeInsets.only(bottom: 8),
+                                    decoration: BoxDecoration(
+                                      borderRadius: BorderRadius.circular(14),
+                                      border: Border.all(
+                                        color: colors.outlineVariant
+                                            .withOpacity(0.6),
+                                      ),
+                                    ),
+                                    child: ExpansionTile(
+                                      initiallyExpanded: opened,
+                                      onExpansionChanged: (v) {
+                                        setState(() {
+                                          if (v) {
+                                            _expandedPrizeTitles.add(p.title);
+                                          } else {
+                                            _expandedPrizeTitles.remove(
+                                              p.title,
+                                            );
+                                          }
+                                        });
+                                      },
+                                      leading: CircleAvatar(
+                                        radius: 16,
+                                        backgroundColor: p.isGood
+                                            ? colors.primaryContainer
+                                            : colors.errorContainer,
+                                        child: Icon(
+                                          meta.icon,
+                                          size: 18,
+                                          color: p.isGood
+                                              ? colors.onPrimaryContainer
+                                              : colors.onErrorContainer,
+                                        ),
+                                      ),
+                                      tilePadding: const EdgeInsets.symmetric(
+                                        horizontal: 10,
+                                      ),
+                                      childrenPadding:
+                                          const EdgeInsets.fromLTRB(
+                                            14,
+                                            0,
+                                            14,
+                                            12,
+                                          ),
+                                      title: Text(p.title),
+                                      subtitle: Text(
+                                        p.isGood ? 'Приз' : 'Анти-приз',
+                                      ),
+                                      trailing: Row(
+                                        mainAxisSize: MainAxisSize.min,
+                                        children: [
+                                          IconButton(
+                                            tooltip: 'Редактировать приз',
+                                            icon: const Icon(
+                                              Icons.edit_outlined,
+                                            ),
+                                            onPressed: () => _openPrizeEditor(
+                                              prize: p,
+                                              sortOrder: i,
+                                            ),
+                                          ),
+                                          Icon(
+                                            opened
+                                                ? Icons.expand_less
+                                                : Icons.expand_more,
+                                          ),
+                                        ],
+                                      ),
+                                      children: [
+                                        Align(
+                                          alignment: Alignment.centerLeft,
+                                          child: Text(
+                                            meta.description,
+                                            style: Theme.of(
+                                              context,
+                                            ).textTheme.bodyMedium,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  );
+                                }),
+                              ),
+                          ],
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    Card(
+                      elevation: 0,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(16),
+                        side: BorderSide(
+                          color: colors.outlineVariant.withOpacity(0.7),
+                        ),
+                      ),
+                      child: Padding(
+                        padding: const EdgeInsets.all(14),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Row(
+                              children: [
+                                Text(
+                                  'Архив выдачи призов',
+                                  style: Theme.of(
+                                    context,
+                                  ).textTheme.titleMedium,
+                                ),
+                                const Spacer(),
+                                Text(
+                                  'Выполнено: ${_winners.where((w) => w.isCompleted).length}/${_winners.length}',
+                                  style: Theme.of(context).textTheme.bodySmall,
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 8),
+                            if (_winners.isEmpty)
+                              const Text('Пока никто не забрал приз')
+                            else
+                              Column(
+                                children: _winners
+                                    .map(
+                                      (w) => Container(
+                                        margin: const EdgeInsets.only(
+                                          bottom: 8,
+                                        ),
+                                        decoration: BoxDecoration(
+                                          borderRadius: BorderRadius.circular(
+                                            14,
+                                          ),
+                                          color: w.isCompleted
+                                              ? colors.surfaceContainerHighest
+                                              : colors.surface,
+                                          border: Border.all(
+                                            color: w.isCompleted
+                                                ? colors.outline.withOpacity(
+                                                    0.35,
+                                                  )
+                                                : colors.primary.withOpacity(
+                                                    0.35,
+                                                  ),
+                                          ),
+                                        ),
+                                        child: ListTile(
+                                          contentPadding:
+                                              const EdgeInsets.symmetric(
+                                                horizontal: 10,
+                                                vertical: 2,
+                                              ),
+                                          leading: CircleAvatar(
+                                            backgroundColor: w.isCompleted
+                                                ? Colors.green.withOpacity(0.16)
+                                                : colors.primaryContainer,
+                                            child: Icon(
+                                              w.isCompleted
+                                                  ? Icons.verified_rounded
+                                                  : Icons.redeem_rounded,
+                                              color: w.isCompleted
+                                                  ? Colors.green.shade700
+                                                  : colors.onPrimaryContainer,
+                                            ),
+                                          ),
+                                          title: Text(
+                                            w.clientName,
+                                            style: w.isCompleted
+                                                ? Theme.of(context)
+                                                      .textTheme
+                                                      .titleSmall
+                                                      ?.copyWith(
+                                                        decoration:
+                                                            TextDecoration
+                                                                .lineThrough,
+                                                        color: colors
+                                                            .onSurfaceVariant,
+                                                      )
+                                                : null,
+                                          ),
+                                          subtitle: Text(
+                                            '${w.prize} • ${_fmtDate(w.finalizedAt)}',
+                                          ),
+                                          trailing: Row(
+                                            mainAxisSize: MainAxisSize.min,
+                                            children: [
+                                              IconButton.filledTonal(
+                                                tooltip: w.isCompleted
+                                                    ? 'Отметить как не выполнено'
+                                                    : 'Отметить как выполнено',
+                                                onPressed: () =>
+                                                    _toggleWinnerCompleted(w),
+                                                icon: Icon(
+                                                  w.isCompleted
+                                                      ? Icons.check_circle
+                                                      : Icons
+                                                            .check_circle_outline,
+                                                ),
+                                              ),
+                                              IconButton(
+                                                tooltip:
+                                                    'Удалить из архива (тест)',
+                                                onPressed: () =>
+                                                    _removeWinnerForTest(w),
+                                                icon: const Icon(
+                                                  Icons.delete_outline,
+                                                ),
+                                              ),
+                                            ],
+                                          ),
+                                        ),
+                                      ),
+                                    )
+                                    .toList(),
+                              ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ],
                 ],
               ),
       ),

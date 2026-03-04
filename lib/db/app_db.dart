@@ -816,6 +816,20 @@ class AppDb extends _$AppDb {
     };
   }
 
+  Future<void> deleteProgressSnapshot(int snapshotId) async {
+    await ensureProgressTables();
+
+    await transaction(() async {
+      await customStatement(
+        'DELETE FROM app_progress_snapshot_clients WHERE snapshot_id = ?',
+        [snapshotId],
+      );
+      await customStatement('DELETE FROM app_progress_snapshots WHERE id = ?', [
+        snapshotId,
+      ]);
+    });
+  }
+
   Future<List<({int id, int templateId, int orderIndex, String name})>>
   _getEffectiveExercisesForClientTemplate({
     required String clientId,

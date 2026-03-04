@@ -6,6 +6,7 @@ import 'package:intl/intl.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../app/app_db_scope.dart';
 import '../../db/app_db.dart';
@@ -18,8 +19,11 @@ class ProgressScreen extends StatefulWidget {
 }
 
 class _ProgressScreenState extends State<ProgressScreen> {
+  static const String _progressCollectionEnabledKey =
+      'progress_collection_enabled';
   bool _loading = true;
   bool _sharing = false;
+  bool _collectionEnabled = true;
 
   List<ProgressSnapshotVm> _snapshots = const [];
   int? _selectedSnapshotId;
@@ -42,7 +46,13 @@ class _ProgressScreenState extends State<ProgressScreen> {
 
   Future<void> _reload() async {
     final db = AppDbScope.of(context);
-    await db.ensurePreviousMonthProgressSnapshot();
+    final prefs = await SharedPreferences.getInstance();
+    final collectionEnabled =
+        prefs.getBool(_progressCollectionEnabledKey) ?? true;
+
+    if (collectionEnabled) {
+      await db.ensurePreviousMonthProgressSnapshot();
+    }
     final snapshots = await db.getProgressSnapshots();
 
     int? selected = _selectedSnapshotId;
@@ -59,6 +69,7 @@ class _ProgressScreenState extends State<ProgressScreen> {
       _snapshots = snapshots;
       _selectedSnapshotId = selected;
       _clients = clients;
+      _collectionEnabled = collectionEnabled;
       _loading = false;
     });
   }
@@ -71,6 +82,69 @@ class _ProgressScreenState extends State<ProgressScreen> {
       _selectedSnapshotId = id;
       _clients = clients;
     });
+  }
+
+  Future<void> _toggleCollection(bool enabled) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_progressCollectionEnabledKey, enabled);
+    if (!mounted) return;
+
+    setState(() {
+      _collectionEnabled = enabled;
+      _loading = true;
+    });
+
+    await _reload();
+
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          enabled
+              ? 'Сбор данных прогресса включён'
+              : 'Сбор данных прогресса выключен',
+        ),
+      ),
+    );
+  }
+
+  Future<void> _deleteSelectedMonthData() async {
+    final selected = _selectedSnapshot;
+    if (selected == null) return;
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Удалить данные за месяц?'),
+        content: Text(
+          'Будут удалены все данные прогресса за период ${selected.periodKey}. Это действие нельзя отменить.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Отмена'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Удалить'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed != true) return;
+
+    final db = AppDbScope.of(context);
+    await db.deleteProgressSnapshot(selected.snapshotId);
+
+    if (!mounted) return;
+    setState(() => _loading = true);
+    await _reload();
+
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('Данные за ${selected.periodKey} удалены')),
+    );
   }
 
   Future<void> _exportSelectedSnapshot() async {
@@ -163,11 +237,34 @@ class _ProgressScreenState extends State<ProgressScreen> {
                           style: Theme.of(context).textTheme.bodyMedium
                               ?.copyWith(color: colors.onSurfaceVariant),
                         ),
+                        const SizedBox(height: 8),
+                        SwitchListTile.adaptive(
+                          contentPadding: EdgeInsets.zero,
+                          value: _collectionEnabled,
+                          title: const Text('Сбор данных прогресса'),
+                          subtitle: const Text(
+                            'Автосбор среза за предыдущий месяц',
+                          ),
+                          onChanged: _toggleCollection,
+                        ),
+                        const SizedBox(height: 8),
+                        SizedBox(
+                          width: double.infinity,
+                          child: OutlinedButton.icon(
+                            onPressed: _selectedSnapshot == null
+                                ? null
+                                : _deleteSelectedMonthData,
+                            icon: const Icon(Icons.delete_outline),
+                            label: const Text(
+                              'Удалить данные за выбранный месяц',
+                            ),
+                          ),
+                        ),
                         const SizedBox(height: 10),
                         SizedBox(
                           width: double.infinity,
                           child: FilledButton.icon(
-                            onPressed: _sharing
+                            onPressed: _sharing || _selectedSnapshot == null
                                 ? null
                                 : _exportSelectedSnapshot,
                             icon: const Icon(Icons.ios_share),

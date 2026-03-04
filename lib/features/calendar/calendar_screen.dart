@@ -57,6 +57,11 @@ class _CalendarScreenState extends State<CalendarScreen>
       'assets/calendar/calendar_bg_boy.jpg';
   static const String _calendarBackgroundEnabledKey =
       'calendar_background_enabled';
+  static const int _infiniteScheduleWeeks = 0;
+  static const int _infiniteScheduleTargetWeeks = 12;
+  static const int _infiniteScheduleExtendThresholdWeeks = 6;
+  static const String _infiniteScheduleClientsKey =
+      'calendar_infinite_schedule_clients';
   static const AssetImage _calendarBackgroundImage = AssetImage(
     _calendarBackgroundAsset,
   );
@@ -198,6 +203,7 @@ class _CalendarScreenState extends State<CalendarScreen>
       db = AppDbScope.of(context);
       _dbInited = true;
       _setCountsWindow(_focusedDay);
+      unawaited(_maintainInfiniteSchedules());
     }
     _loadCalendarBackgroundState();
   }
@@ -238,6 +244,84 @@ class _CalendarScreenState extends State<CalendarScreen>
         ),
       ),
     );
+  }
+
+  Future<Set<String>> _getInfiniteScheduleClientIds() async {
+    final prefs = await SharedPreferences.getInstance();
+    final ids = prefs.getStringList(_infiniteScheduleClientsKey) ?? const [];
+    return ids.toSet();
+  }
+
+  Future<void> _setInfiniteScheduleForClient(
+    String clientId,
+    bool isInfinite,
+  ) async {
+    final prefs = await SharedPreferences.getInstance();
+    final ids =
+        prefs.getStringList(_infiniteScheduleClientsKey)?.toSet() ?? <String>{};
+    if (isInfinite) {
+      ids.add(clientId);
+    } else {
+      ids.remove(clientId);
+    }
+    await prefs.setStringList(_infiniteScheduleClientsKey, ids.toList());
+  }
+
+  Future<void> _maintainInfiniteSchedules() async {
+    final clientIds = await _getInfiniteScheduleClientIds();
+    if (clientIds.isEmpty) return;
+
+    final today = DateTime.now();
+    final from = DateTime(today.year, today.month, today.day);
+    final targetEnd = from.add(
+      const Duration(days: _infiniteScheduleTargetWeeks * 7),
+    );
+    final thresholdEnd = from.add(
+      const Duration(days: _infiniteScheduleExtendThresholdWeeks * 7),
+    );
+
+    for (final clientId in clientIds) {
+      final upcoming = await db.getFutureAppointmentsForClient(
+        clientId: clientId,
+        from: from,
+      );
+      if (upcoming.isEmpty) continue;
+
+      final last = upcoming.last.startAt;
+      if (!last.isBefore(thresholdEnd)) continue;
+
+      final weekdays = upcoming.map((e) => e.startAt.weekday).toSet();
+      if (weekdays.isEmpty) continue;
+
+      final first = upcoming.first.startAt;
+      final startAt = DateTime(
+        first.year,
+        first.month,
+        first.day,
+        first.hour,
+        first.minute,
+      );
+
+      var day = DateTime(
+        last.year,
+        last.month,
+        last.day,
+      ).add(const Duration(days: 1));
+      final endDay = DateTime(targetEnd.year, targetEnd.month, targetEnd.day);
+      while (!day.isAfter(endDay)) {
+        if (weekdays.contains(day.weekday)) {
+          final slot = DateTime(
+            day.year,
+            day.month,
+            day.day,
+            startAt.hour,
+            startAt.minute,
+          );
+          await db.addAppointmentIfNotExists(clientId: clientId, startAt: slot);
+        }
+        day = day.add(const Duration(days: 1));
+      }
+    }
   }
 
   @override
@@ -1126,16 +1210,16 @@ class _CalendarScreenState extends State<CalendarScreen>
                                     child: Text('2 недели'),
                                   ),
                                   DropdownMenuItem(
+                                    value: 3,
+                                    child: Text('3 недели'),
+                                  ),
+                                  DropdownMenuItem(
                                     value: 4,
                                     child: Text('4 недели'),
                                   ),
                                   DropdownMenuItem(
-                                    value: 8,
-                                    child: Text('8 недель'),
-                                  ),
-                                  DropdownMenuItem(
-                                    value: 12,
-                                    child: Text('12 недель'),
+                                    value: _infiniteScheduleWeeks,
+                                    child: Text('Бесконечно'),
                                   ),
                                 ],
                                 onChanged: (v) =>
@@ -1188,7 +1272,12 @@ class _CalendarScreenState extends State<CalendarScreen>
         time: time,
         weeks: weeks,
       );
+      await _setInfiniteScheduleForClient(
+        selectedClientId,
+        weeks == _infiniteScheduleWeeks,
+      );
     } else {
+      await _setInfiniteScheduleForClient(selectedClientId, false);
       final startAt = DateTime(
         startDate.year,
         startDate.month,
@@ -1685,15 +1774,15 @@ class _CalendarScreenState extends State<CalendarScreen>
                                   ),
                                   DropdownMenuItem(
                                     value: 4,
-                                    child: Text('4 недели'),
+                                    child: Text('3 недели'),
                                   ),
                                   DropdownMenuItem(
                                     value: 8,
-                                    child: Text('8 недель'),
+                                    child: Text('4 недели'),
                                   ),
                                   DropdownMenuItem(
-                                    value: 12,
-                                    child: Text('12 недель'),
+                                    value: _infiniteScheduleWeeks,
+                                    child: Text('Бесконечно'),
                                   ),
                                 ],
                                 onChanged: (v) =>
@@ -1760,7 +1849,12 @@ class _CalendarScreenState extends State<CalendarScreen>
         time: time,
         weeks: weeks,
       );
+      await _setInfiniteScheduleForClient(
+        clientId,
+        weeks == _infiniteScheduleWeeks,
+      );
     } else {
+      await _setInfiniteScheduleForClient(clientId, false);
       final startAt = DateTime(
         startDate.year,
         startDate.month,
@@ -1783,6 +1877,10 @@ class _CalendarScreenState extends State<CalendarScreen>
     final selectedWeekdays = <int>{_selectedDay.weekday};
     int weeks = 4;
     bool scheduleEnabled = hasSchedule;
+    final infiniteClientIds = await _getInfiniteScheduleClientIds();
+    if (infiniteClientIds.contains(client.id)) {
+      weeks = _infiniteScheduleWeeks;
+    }
 
     if (hasSchedule) {
       final upcoming = await db.getFutureAppointmentsForClient(
@@ -1871,10 +1969,16 @@ class _CalendarScreenState extends State<CalendarScreen>
                       decoration: const InputDecoration(
                         labelText: 'Период (недель)',
                       ),
-                      items: const [4, 8, 12, 16]
+                      items: const [1, 2, 3, 4, _infiniteScheduleWeeks]
                           .map(
-                            (v) =>
-                                DropdownMenuItem(value: v, child: Text('$v')),
+                            (v) => DropdownMenuItem(
+                              value: v,
+                              child: Text(
+                                v == _infiniteScheduleWeeks
+                                    ? 'Бесконечно'
+                                    : '$v',
+                              ),
+                            ),
                           )
                           .toList(),
                       onChanged: (v) => setLocal(() => weeks = v ?? 4),
@@ -1915,7 +2019,13 @@ class _CalendarScreenState extends State<CalendarScreen>
         time: time,
         weeks: weeks,
       );
+      await _setInfiniteScheduleForClient(
+        client.id,
+        weeks == _infiniteScheduleWeeks,
+      );
       _lastTime = time;
+    } else {
+      await _setInfiniteScheduleForClient(client.id, false);
     }
 
     if (!mounted) return;
@@ -2092,7 +2202,9 @@ class _CalendarScreenState extends State<CalendarScreen>
     required int weeks,
   }) async {
     final start = DateTime(startDay.year, startDay.month, startDay.day);
-    final totalDays = weeks * 7;
+    final totalDays = weeks == _infiniteScheduleWeeks
+        ? _infiniteScheduleTargetWeeks * 7
+        : weeks * 7;
 
     int created = 0;
     for (int i = 0; i < totalDays; i++) {
