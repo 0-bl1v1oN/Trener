@@ -111,6 +111,9 @@ class _ContestsScreenState extends State<ContestsScreen>
     'Доп +2 крутки',
     '+2 шанса',
   };
+  static const AssetImage _mar8TarotCoverImage = AssetImage(
+    'assets/branding/march8_tarot_cover.jpg',
+  );
 
   late final AppDb _db;
   late final AnimationController _spinController;
@@ -129,6 +132,7 @@ class _ContestsScreenState extends State<ContestsScreen>
   List<_PrizeItem> _tarotCards = const [];
   bool _spinning = false;
   bool _initialized = false;
+  bool _tarotCoverReady = false;
   String? _currentPrize;
   final Set<String> _expandedPrizeTitles = <String>{};
 
@@ -191,6 +195,10 @@ class _ContestsScreenState extends State<ContestsScreen>
       vsync: this,
       duration: const Duration(milliseconds: 4200),
     );
+    precacheImage(_mar8TarotCoverImage, context).then((_) {
+      if (!mounted) return;
+      setState(() => _tarotCoverReady = true);
+    });
     _load();
   }
 
@@ -902,7 +910,7 @@ class _ContestsScreenState extends State<ContestsScreen>
                                 borderRadius: BorderRadius.circular(16),
                                 child: AnimatedContainer(
                                   duration: const Duration(milliseconds: 280),
-                                  padding: const EdgeInsets.all(10),
+                                  padding: EdgeInsets.zero,
                                   decoration: BoxDecoration(
                                     borderRadius: BorderRadius.circular(16),
                                     gradient: isFrontVisible
@@ -968,73 +976,109 @@ class _ContestsScreenState extends State<ContestsScreen>
                                           ),
                                         ),
                                       ),
-                                      Align(
-                                        alignment: Alignment.topLeft,
-                                        child: Icon(
-                                          isFrontVisible
-                                              ? (card.isGood
-                                                    ? Icons.auto_awesome
-                                                    : Icons.whatshot)
-                                              : Icons.stars_rounded,
-                                          size: 16,
-                                          color: Colors.white.withOpacity(0.70),
+                                      if (isFrontVisible)
+                                        Align(
+                                          alignment: Alignment.topLeft,
+                                          child: Padding(
+                                            padding: const EdgeInsets.fromLTRB(
+                                              10,
+                                              10,
+                                              0,
+                                              0,
+                                            ),
+                                            child: Icon(
+                                              card.isGood
+                                                  ? Icons.auto_awesome
+                                                  : Icons.whatshot,
+                                              size: 16,
+                                              color: Colors.white.withOpacity(
+                                                0.70,
+                                              ),
+                                            ),
+                                          ),
                                         ),
-                                      ),
                                       Center(
                                         child: Transform(
                                           alignment: Alignment.center,
                                           transform: Matrix4.identity()
                                             ..rotateY(isFrontVisible ? 0 : pi),
                                           child: isFrontVisible
-                                              ? Text(
-                                                  card.title,
-                                                  textAlign: TextAlign.center,
-                                                  style: Theme.of(context)
-                                                      .textTheme
-                                                      .titleSmall
-                                                      ?.copyWith(
-                                                        color: Colors.white,
-                                                        fontWeight:
-                                                            FontWeight.w600,
-                                                        shadows: [
-                                                          Shadow(
-                                                            color: Colors.black
-                                                                .withOpacity(
-                                                                  0.28,
-                                                                ),
-                                                            blurRadius: 8,
-                                                          ),
-                                                        ],
-                                                      ),
+                                              ? Padding(
+                                                  padding: const EdgeInsets.all(
+                                                    10,
+                                                  ),
+                                                  child: Text(
+                                                    card.title,
+                                                    textAlign: TextAlign.center,
+                                                    style: Theme.of(context)
+                                                        .textTheme
+                                                        .titleSmall
+                                                        ?.copyWith(
+                                                          color: Colors.white,
+                                                          fontWeight:
+                                                              FontWeight.w600,
+                                                          shadows: [
+                                                            Shadow(
+                                                              color: Colors
+                                                                  .black
+                                                                  .withOpacity(
+                                                                    0.28,
+                                                                  ),
+                                                              blurRadius: 8,
+                                                            ),
+                                                          ],
+                                                        ),
+                                                  ),
                                                 )
                                               : ClipRRect(
                                                   borderRadius:
-                                                      BorderRadius.circular(10),
-                                                  child: Image.asset(
-                                                    'assets/branding/march8_tarot_cover.jpg',
-                                                    fit: BoxFit.cover,
-                                                    width: double.infinity,
-                                                    height: double.infinity,
-                                                    errorBuilder: (_, _, _) =>
-                                                        Text(
-                                                          'TAROT',
-                                                          textAlign:
-                                                              TextAlign.center,
-                                                          style: Theme.of(context)
-                                                              .textTheme
-                                                              .titleSmall
-                                                              ?.copyWith(
-                                                                color: Colors
-                                                                    .white,
-                                                                fontWeight:
-                                                                    FontWeight
-                                                                        .w600,
-                                                              ),
-                                                        ),
+                                                      BorderRadius.circular(12),
+                                                  child: Transform.scale(
+                                                    scale: 1.08,
+                                                    child: Image(
+                                                      image:
+                                                          _mar8TarotCoverImage,
+                                                      fit: BoxFit.cover,
+                                                      width: double.infinity,
+                                                      height: double.infinity,
+                                                      filterQuality:
+                                                          FilterQuality.medium,
+                                                      gaplessPlayback: true,
+                                                      errorBuilder: (_, _, _) =>
+                                                          Text(
+                                                            'TAROT',
+                                                            textAlign: TextAlign
+                                                                .center,
+                                                            style: Theme.of(context)
+                                                                .textTheme
+                                                                .titleSmall
+                                                                ?.copyWith(
+                                                                  color: Colors
+                                                                      .white,
+                                                                  fontWeight:
+                                                                      FontWeight
+                                                                          .w600,
+                                                                ),
+                                                          ),
+                                                    ),
                                                   ),
                                                 ),
                                         ),
                                       ),
+                                      if (!isFrontVisible && !_tarotCoverReady)
+                                        Center(
+                                          child: Text(
+                                            'TAROT',
+                                            textAlign: TextAlign.center,
+                                            style: Theme.of(context)
+                                                .textTheme
+                                                .titleSmall
+                                                ?.copyWith(
+                                                  color: Colors.white,
+                                                  fontWeight: FontWeight.w600,
+                                                ),
+                                          ),
+                                        ),
                                     ],
                                   ),
                                 ),
@@ -1067,7 +1111,7 @@ class _ContestsScreenState extends State<ContestsScreen>
                       shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(16),
                         side: BorderSide(
-                          color: colors.outlineVariant.withOpacity(0.7),
+                          color: colors.outlineVariant.withValues(alpha: 0.7),
                         ),
                       ),
                       child: Padding(
@@ -1171,7 +1215,7 @@ class _ContestsScreenState extends State<ContestsScreen>
                       shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(16),
                         side: BorderSide(
-                          color: colors.outlineVariant.withOpacity(0.7),
+                          color: colors.outlineVariant.withValues(alpha: 0.7),
                         ),
                       ),
                       child: Padding(
@@ -1288,7 +1332,7 @@ class _ContestsScreenState extends State<ContestsScreen>
                       shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(16),
                         side: BorderSide(
-                          color: colors.outlineVariant.withOpacity(0.7),
+                          color: colors.outlineVariant.withValues(alpha: 0.7),
                         ),
                       ),
                       child: Padding(
@@ -1419,7 +1463,7 @@ class _ContestsScreenState extends State<ContestsScreen>
                       shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(16),
                         side: BorderSide(
-                          color: colors.outlineVariant.withOpacity(0.7),
+                          color: colors.outlineVariant.withValues(alpha: 0.7),
                         ),
                       ),
                       child: Padding(
