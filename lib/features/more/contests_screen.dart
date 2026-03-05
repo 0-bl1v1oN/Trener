@@ -107,6 +107,7 @@ class _ContestsScreenState extends State<ContestsScreen>
     with SingleTickerProviderStateMixin {
   static const _eventKeyFeb23 = '2026-02-23';
   static const _eventKeyMar8 = '2026-03-08';
+  static const _tarotFlipDuration = Duration(milliseconds: 680);
   static const Set<String> _extraSpinsPrizeTitles = {
     'Доп +2 крутки',
     '+2 шанса',
@@ -966,7 +967,7 @@ class _ContestsScreenState extends State<ContestsScreen>
                             Row(
                               children: [
                                 Expanded(
-                                  child: FilledButton.icon(
+                                  child: _ContestActionButton(
                                     onPressed:
                                         _selectedClientId == null ||
                                             _isFinalized
@@ -978,7 +979,7 @@ class _ContestsScreenState extends State<ContestsScreen>
                                 ),
                                 const SizedBox(width: 10),
                                 Expanded(
-                                  child: OutlinedButton.icon(
+                                  child: _ContestActionButton(
                                     onPressed:
                                         (!_tarotStarted ||
                                             _spinning ||
@@ -986,17 +987,19 @@ class _ContestsScreenState extends State<ContestsScreen>
                                         ? null
                                         : _reshuffleTarot,
                                     icon: const Icon(Icons.shuffle),
+                                    variant: _ActionButtonVariant.secondary,
                                     label: const Text('Перетасовать'),
                                   ),
                                 ),
                               ],
                             ),
                             const SizedBox(height: 10),
-                            OutlinedButton.icon(
+                            _ContestActionButton(
                               onPressed: _selectedClientId == null
                                   ? null
                                   : _resetSelectedForTest,
                               icon: const Icon(Icons.restart_alt),
+                              variant: _ActionButtonVariant.secondary,
                               label: const Text('Тестовый сброс участия'),
                             ),
                           ],
@@ -1031,9 +1034,9 @@ class _ContestsScreenState extends State<ContestsScreen>
 
                         return TweenAnimationBuilder<double>(
                           tween: Tween<double>(begin: 0, end: showFace ? 1 : 0),
-                          duration: Duration(
-                            milliseconds: isOpened ? 680 : 460,
-                          ),
+                          duration: !_tarotStarted && showFace
+                              ? Duration.zero
+                              : _tarotFlipDuration,
                           curve: Curves.easeInOutCubic,
                           builder: (context, t, _) {
                             final angle = (1 - t) * pi;
@@ -1054,7 +1057,7 @@ class _ContestsScreenState extends State<ContestsScreen>
                     Row(
                       children: [
                         Expanded(
-                          child: OutlinedButton.icon(
+                          child: _ContestActionButton(
                             onPressed:
                                 (_spinning ||
                                     (_entry?.currentPrize ?? '').isEmpty ||
@@ -1062,6 +1065,7 @@ class _ContestsScreenState extends State<ContestsScreen>
                                 ? null
                                 : _takePrize,
                             icon: const Icon(Icons.redeem_outlined),
+                            variant: _ActionButtonVariant.reward,
                             label: const Text('Забрать приз'),
                           ),
                         ),
@@ -1234,11 +1238,12 @@ class _ContestsScreenState extends State<ContestsScreen>
                                 ),
                               ),
                             const SizedBox(height: 10),
-                            OutlinedButton.icon(
+                            _ContestActionButton(
                               onPressed: _selectedClientId == null
                                   ? null
                                   : _resetSelectedForTest,
                               icon: const Icon(Icons.restart_alt),
+                              variant: _ActionButtonVariant.secondary,
                               label: const Text('Тестовый сброс участия'),
                             ),
                           ],
@@ -1257,7 +1262,7 @@ class _ContestsScreenState extends State<ContestsScreen>
                     Row(
                       children: [
                         Expanded(
-                          child: FilledButton.icon(
+                          child: _ContestActionButton(
                             onPressed:
                                 (_spinning ||
                                     _isFinalized ||
@@ -1266,6 +1271,7 @@ class _ContestsScreenState extends State<ContestsScreen>
                                 ? null
                                 : _spinRoulette,
                             icon: const Icon(Icons.casino_outlined),
+                            variant: _ActionButtonVariant.primary,
                             label: Text(
                               _usedAttempts == 0
                                   ? 'Крутить рулетку'
@@ -1275,7 +1281,7 @@ class _ContestsScreenState extends State<ContestsScreen>
                         ),
                         const SizedBox(width: 10),
                         Expanded(
-                          child: OutlinedButton.icon(
+                          child: _ContestActionButton(
                             onPressed:
                                 (_spinning ||
                                     (_entry?.currentPrize ?? '').isEmpty ||
@@ -1283,6 +1289,7 @@ class _ContestsScreenState extends State<ContestsScreen>
                                 ? null
                                 : _takePrize,
                             icon: const Icon(Icons.redeem_outlined),
+                            variant: _ActionButtonVariant.reward,
                             label: const Text('Забрать приз'),
                           ),
                         ),
@@ -1552,6 +1559,206 @@ class _ContestsScreenState extends State<ContestsScreen>
                   ],
                 ],
               ),
+      ),
+    );
+  }
+}
+
+enum _ActionButtonVariant { primary, secondary, reward }
+
+class _ContestActionButton extends StatelessWidget {
+  const _ContestActionButton({
+    required this.onPressed,
+    required this.icon,
+    required this.label,
+    this.variant = _ActionButtonVariant.primary,
+  });
+
+  final VoidCallback? onPressed;
+  final Widget icon;
+  final Widget label;
+  final _ActionButtonVariant variant;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    final enabled = onPressed != null;
+
+    final (
+      gradient,
+      borderColor,
+      foregroundColor,
+      glowColor,
+      iconBgColor,
+    ) = switch (variant) {
+      _ActionButtonVariant.primary => (
+        const [Color(0xFFD9CBFF), Color(0xFFA793FF)],
+        const Color(0xFFECE3FF),
+        const Color(0xFF241A4B),
+        const Color(0x668A6FFF),
+        const Color(0x33FFFFFF),
+      ),
+      _ActionButtonVariant.secondary => (
+        const [Color(0xFF1E1D2F), Color(0xFF111321)],
+        colors.outlineVariant.withOpacity(0.55),
+        const Color(0xFFF3EDFF),
+        const Color(0x22101C44),
+        const Color(0x14FFFFFF),
+      ),
+      _ActionButtonVariant.reward => (
+        const [Color(0xFFFFD978), Color(0xFFFFA64D)],
+        const Color(0xFFFFE7B7),
+        const Color(0xFF36220B),
+        const Color(0x66FFB347),
+        const Color(0x33FFFFFF),
+      ),
+    };
+
+    final disabledGradient = [
+      colors.surfaceContainerHighest.withOpacity(0.55),
+      colors.surfaceContainer.withOpacity(0.55),
+    ];
+    final disabledBorder = colors.outlineVariant.withOpacity(0.28);
+    final disabledForeground = colors.onSurface.withOpacity(0.42);
+    final labelStyle = Theme.of(context).textTheme.titleSmall?.copyWith(
+      color: enabled ? foregroundColor : disabledForeground,
+      fontFamily: 'Georgia',
+      fontFamilyFallback: const ['Times New Roman', 'Noto Serif'],
+      fontWeight: FontWeight.w700,
+      letterSpacing: 0.22,
+      height: 1.0,
+    );
+
+    return SizedBox(
+      height: 64,
+      width: double.infinity,
+      child: AnimatedOpacity(
+        duration: const Duration(milliseconds: 180),
+        opacity: enabled ? 1 : 0.72,
+        child: DecoratedBox(
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(22),
+            gradient: LinearGradient(
+              colors: enabled ? gradient : disabledGradient,
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+            ),
+            border: Border.all(color: enabled ? borderColor : disabledBorder),
+            boxShadow: enabled
+                ? [
+                    BoxShadow(
+                      color: glowColor,
+                      blurRadius: 18,
+                      spreadRadius: 0.5,
+                      offset: const Offset(0, 10),
+                    ),
+                  ]
+                : const [],
+          ),
+          child: Material(
+            color: Colors.transparent,
+            child: InkWell(
+              onTap: onPressed,
+              borderRadius: BorderRadius.circular(22),
+              child: Stack(
+                children: [
+                  if (variant == _ActionButtonVariant.reward)
+                    Positioned(
+                      right: 12,
+                      top: 0,
+                      bottom: 0,
+                      child: _buildActionIconChip(
+                        enabled: enabled,
+                        iconBgColor: iconBgColor,
+                        foregroundColor: foregroundColor,
+                        disabledForeground: disabledForeground,
+                      ),
+                    )
+                  else
+                    Positioned(
+                      left: 12,
+                      top: 0,
+                      bottom: 0,
+                      child: _buildActionIconChip(
+                        enabled: enabled,
+                        iconBgColor: iconBgColor,
+                        foregroundColor: foregroundColor,
+                        disabledForeground: disabledForeground,
+                      ),
+                    ),
+                  Center(
+                    child: Padding(
+                      padding: EdgeInsets.symmetric(
+                        horizontal: switch (variant) {
+                          _ActionButtonVariant.secondary => 42,
+                          _ActionButtonVariant.reward => 48,
+                          _ActionButtonVariant.primary => 54,
+                        },
+                      ),
+                      child: DefaultTextStyle.merge(
+                        style: labelStyle,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        textAlign: TextAlign.center,
+                        child: FittedBox(
+                          fit: BoxFit.scaleDown,
+                          child: Center(child: label),
+                        ),
+                      ),
+                    ),
+                  ),
+                  Positioned.fill(
+                    child: IgnorePointer(
+                      child: DecoratedBox(
+                        decoration: BoxDecoration(
+                          borderRadius: BorderRadius.circular(22),
+                          gradient: LinearGradient(
+                            begin: Alignment.topCenter,
+                            end: Alignment.bottomCenter,
+                            colors: [
+                              Colors.white.withOpacity(enabled ? 0.16 : 0.06),
+                              Colors.transparent,
+                            ],
+                            stops: const [0, 0.45],
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildActionIconChip({
+    required bool enabled,
+    required Color iconBgColor,
+    required Color foregroundColor,
+    required Color disabledForeground,
+  }) {
+    return Center(
+      child: Container(
+        width: 34,
+        height: 34,
+        decoration: BoxDecoration(
+          shape: BoxShape.circle,
+          color: enabled ? iconBgColor : Colors.white.withOpacity(0.08),
+          border: Border.all(
+            color: Colors.white.withOpacity(enabled ? 0.22 : 0.08),
+          ),
+        ),
+        alignment: Alignment.center,
+        child: IconTheme(
+          data: IconThemeData(
+            size: 18,
+            color: enabled ? foregroundColor : disabledForeground,
+          ),
+          child: icon,
+        ),
       ),
     );
   }
