@@ -1,6 +1,7 @@
 import 'dart:math';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart' show rootBundle;
 
 import '../../app/app_db_scope.dart';
 import '../../db/app_db.dart';
@@ -133,6 +134,8 @@ class _ContestsScreenState extends State<ContestsScreen>
   bool _spinning = false;
   bool _initialized = false;
   bool _tarotCoverReady = false;
+  Future<void>? _tarotCoverWarmup;
+  ImageProvider<Object> _tarotCoverImageProvider = _mar8TarotCoverImage;
   String? _currentPrize;
   final Set<String> _expandedPrizeTitles = <String>{};
 
@@ -195,10 +198,7 @@ class _ContestsScreenState extends State<ContestsScreen>
       vsync: this,
       duration: const Duration(milliseconds: 4200),
     );
-    precacheImage(_mar8TarotCoverImage, context).then((_) {
-      if (!mounted) return;
-      setState(() => _tarotCoverReady = true);
-    });
+    _warmupTarotCover();
     _load();
   }
 
@@ -206,6 +206,30 @@ class _ContestsScreenState extends State<ContestsScreen>
   void dispose() {
     _spinController.dispose();
     super.dispose();
+  }
+
+  Future<void> _warmupTarotCover() {
+    if (_tarotCoverReady) return Future.value();
+    return _tarotCoverWarmup ??= (() async {
+      ImageProvider<Object> coverImage = _mar8TarotCoverImage;
+      try {
+        final bytes = await rootBundle.load(
+          'assets/branding/march8_tarot_cover.jpg',
+        );
+        coverImage = MemoryImage(bytes.buffer.asUint8List());
+      } catch (_) {}
+
+      if (!mounted) return;
+      try {
+        await precacheImage(coverImage, context);
+      } catch (_) {}
+
+      if (!mounted || _tarotCoverReady) return;
+      setState(() {
+        _tarotCoverImageProvider = coverImage;
+        _tarotCoverReady = true;
+      });
+    })().catchError((_) {}).whenComplete(() => _tarotCoverWarmup = null);
   }
 
   Future<void> _ensurePrizesSeeded() async {
@@ -278,6 +302,9 @@ class _ContestsScreenState extends State<ContestsScreen>
           .toList(growable: false),
     );
 
+    if (_selectedContest == _ContestType.mar8 && !_tarotCoverReady) {
+      await _warmupTarotCover();
+    }
     if (!mounted) return;
     setState(() {
       _clients = clients;
@@ -287,7 +314,7 @@ class _ContestsScreenState extends State<ContestsScreen>
       _prizes = prizes;
       _currentPrize = entry?.currentPrize;
       _selectedIndex = _indexForPrize(entry?.currentPrize);
-      _tarotCards = List<_PrizeItem?>.from(prizes)..shuffle(_rng);
+      _tarotCards = _buildTarotDeck(prizes);
       _tarotStarted = false;
       _loading = false;
     });
@@ -380,6 +407,12 @@ class _ContestsScreenState extends State<ContestsScreen>
     }
 
     return arranged;
+  }
+
+  List<_PrizeItem?> _buildTarotDeck([List<_PrizeItem>? source]) {
+    final deck = List<_PrizeItem?>.from(source ?? _prizes);
+    deck.shuffle(_rng);
+    return deck;
   }
 
   _PrizeMeta _metaForPrize(String title) => _prizeMetaByTitle(title);
@@ -525,9 +558,11 @@ class _ContestsScreenState extends State<ContestsScreen>
 
   Future<void> _startTarot() async {
     if (_selectedClientId == null) return;
+    await _warmupTarotCover();
+    if (!mounted) return;
     setState(() {
       _tarotStarted = true;
-      _tarotCards = List<_PrizeItem?>.filled(_prizes.length, null);
+      _tarotCards = _buildTarotDeck();
       _currentPrize = null;
       _selectedIndex = -1;
     });
@@ -535,8 +570,10 @@ class _ContestsScreenState extends State<ContestsScreen>
 
   Future<void> _reshuffleTarot() async {
     if (!_tarotStarted || _spinning || _isFinalized) return;
+    await _warmupTarotCover();
+    if (!mounted) return;
     setState(() {
-      _tarotCards = List<_PrizeItem?>.filled(_prizes.length, null);
+      _tarotCards = _buildTarotDeck();
       _currentPrize = null;
       _selectedIndex = -1;
     });
@@ -889,9 +926,7 @@ class _ContestsScreenState extends State<ContestsScreen>
                             !_tarotStarted || (isOpened && card != null);
                         return TweenAnimationBuilder<double>(
                           tween: Tween<double>(begin: 0, end: showFace ? 1 : 0),
-                          duration: Duration(
-                            milliseconds: isOpened ? 520 : 360,
-                          ),
+                          duration: Duration(milliseconds: isOpened ? 520 : 0),
                           curve: Curves.easeOutCubic,
                           builder: (context, t, _) {
                             final angle = (1 - t) * pi;
@@ -912,8 +947,7 @@ class _ContestsScreenState extends State<ContestsScreen>
                                     ? () => _pickTarotCard(i)
                                     : null,
                                 borderRadius: BorderRadius.circular(16),
-                                child: AnimatedContainer(
-                                  duration: const Duration(milliseconds: 280),
+                                child: Container(
                                   padding: EdgeInsets.zero,
                                   decoration: BoxDecoration(
                                     borderRadius: BorderRadius.circular(16),
@@ -928,15 +962,17 @@ class _ContestsScreenState extends State<ContestsScreen>
                                             begin: Alignment.topLeft,
                                             end: Alignment.bottomRight,
                                           )
-                                        : const LinearGradient(
-                                            colors: [
-                                              Color(0xFF6E5ED8),
-                                              Color(0xFF2B2159),
-                                              Color(0xFF141733),
-                                            ],
-                                            begin: Alignment.topLeft,
-                                            end: Alignment.bottomRight,
-                                          ),
+                                        : null,
+                                    color: isFrontVisible
+                                        ? null
+                                        : const Color(0xFF0F1730),
+                                    image: !isFrontVisible && _tarotCoverReady
+                                        ? DecorationImage(
+                                            image: _tarotCoverImageProvider,
+                                            fit: BoxFit.cover,
+                                            filterQuality: FilterQuality.medium,
+                                          )
+                                        : null,
                                     border: Border.all(
                                       color:
                                           (isOpened
@@ -1034,39 +1070,7 @@ class _ContestsScreenState extends State<ContestsScreen>
                                                         ),
                                                   ),
                                                 )
-                                              : ClipRRect(
-                                                  borderRadius:
-                                                      BorderRadius.circular(12),
-                                                  child: Transform.scale(
-                                                    scale: 1.08,
-                                                    child: Image(
-                                                      image:
-                                                          _mar8TarotCoverImage,
-                                                      fit: BoxFit.cover,
-                                                      width: double.infinity,
-                                                      height: double.infinity,
-                                                      filterQuality:
-                                                          FilterQuality.medium,
-                                                      gaplessPlayback: true,
-                                                      errorBuilder: (_, _, _) =>
-                                                          Text(
-                                                            'TAROT',
-                                                            textAlign: TextAlign
-                                                                .center,
-                                                            style: Theme.of(context)
-                                                                .textTheme
-                                                                .titleSmall
-                                                                ?.copyWith(
-                                                                  color: Colors
-                                                                      .white,
-                                                                  fontWeight:
-                                                                      FontWeight
-                                                                          .w600,
-                                                                ),
-                                                          ),
-                                                    ),
-                                                  ),
-                                                ),
+                                              : const SizedBox.expand(),
                                         ),
                                       ),
                                       if (!isFrontVisible && !_tarotCoverReady)
