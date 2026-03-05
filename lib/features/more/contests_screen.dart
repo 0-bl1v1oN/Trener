@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:math';
 
 import 'package:flutter/material.dart';
@@ -208,6 +209,29 @@ class _ContestsScreenState extends State<ContestsScreen>
     super.dispose();
   }
 
+  Future<void> _waitForImageFrame(ImageProvider<Object> image) async {
+    final stream = image.resolve(createLocalImageConfiguration(context));
+    final completer = Completer<void>();
+    late final ImageStreamListener listener;
+    listener = ImageStreamListener(
+      (_, __) {
+        if (!completer.isCompleted) completer.complete();
+      },
+      onError: (Object error, StackTrace? stackTrace) {
+        if (!completer.isCompleted) {
+          completer.completeError(error, stackTrace);
+        }
+      },
+    );
+
+    stream.addListener(listener);
+    try {
+      await completer.future.timeout(const Duration(seconds: 4));
+    } finally {
+      stream.removeListener(listener);
+    }
+  }
+
   Future<void> _warmupTarotCover() {
     if (_tarotCoverReady) return Future.value();
     return _tarotCoverWarmup ??= (() async {
@@ -220,11 +244,21 @@ class _ContestsScreenState extends State<ContestsScreen>
       } catch (_) {}
 
       if (!mounted) return;
+      var resolved = false;
       try {
-        await precacheImage(coverImage, context);
+        await _waitForImageFrame(coverImage);
+        resolved = true;
       } catch (_) {}
 
-      if (!mounted || _tarotCoverReady) return;
+      if (!mounted) return;
+      if (!resolved) {
+        try {
+          await precacheImage(coverImage, context);
+          resolved = true;
+        } catch (_) {}
+      }
+
+      if (!mounted || _tarotCoverReady || !resolved) return;
       setState(() {
         _tarotCoverImageProvider = coverImage;
         _tarotCoverReady = true;
@@ -559,7 +593,7 @@ class _ContestsScreenState extends State<ContestsScreen>
   Future<void> _startTarot() async {
     if (_selectedClientId == null) return;
     await _warmupTarotCover();
-    if (!mounted) return;
+    if (!mounted || !_tarotCoverReady) return;
     setState(() {
       _tarotStarted = true;
       _tarotCards = _buildTarotDeck();
@@ -571,7 +605,7 @@ class _ContestsScreenState extends State<ContestsScreen>
   Future<void> _reshuffleTarot() async {
     if (!_tarotStarted || _spinning || _isFinalized) return;
     await _warmupTarotCover();
-    if (!mounted) return;
+    if (!mounted || !_tarotCoverReady) return;
     setState(() {
       _tarotCards = _buildTarotDeck();
       _currentPrize = null;
@@ -873,7 +907,8 @@ class _ContestsScreenState extends State<ContestsScreen>
                                   child: FilledButton.icon(
                                     onPressed:
                                         _selectedClientId == null ||
-                                            _isFinalized
+                                            _isFinalized ||
+                                            !_tarotCoverReady
                                         ? null
                                         : _startTarot,
                                     icon: const Icon(Icons.auto_awesome),
