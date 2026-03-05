@@ -1,8 +1,6 @@
-import 'dart:async';
 import 'dart:math';
 
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart' show rootBundle;
 
 import '../../app/app_db_scope.dart';
 import '../../db/app_db.dart';
@@ -135,8 +133,6 @@ class _ContestsScreenState extends State<ContestsScreen>
   bool _spinning = false;
   bool _initialized = false;
   bool _tarotCoverReady = false;
-  Future<void>? _tarotCoverWarmup;
-  ImageProvider<Object> _tarotCoverImageProvider = _mar8TarotCoverImage;
   String? _currentPrize;
   final Set<String> _expandedPrizeTitles = <String>{};
 
@@ -199,7 +195,10 @@ class _ContestsScreenState extends State<ContestsScreen>
       vsync: this,
       duration: const Duration(milliseconds: 4200),
     );
-    _warmupTarotCover();
+    precacheImage(_mar8TarotCoverImage, context).then((_) {
+      if (!mounted) return;
+      setState(() => _tarotCoverReady = true);
+    });
     _load();
   }
 
@@ -207,63 +206,6 @@ class _ContestsScreenState extends State<ContestsScreen>
   void dispose() {
     _spinController.dispose();
     super.dispose();
-  }
-
-  Future<void> _waitForImageFrame(ImageProvider<Object> image) async {
-    final stream = image.resolve(createLocalImageConfiguration(context));
-    final completer = Completer<void>();
-    late final ImageStreamListener listener;
-    listener = ImageStreamListener(
-      (_, __) {
-        if (!completer.isCompleted) completer.complete();
-      },
-      onError: (Object error, StackTrace? stackTrace) {
-        if (!completer.isCompleted) {
-          completer.completeError(error, stackTrace);
-        }
-      },
-    );
-
-    stream.addListener(listener);
-    try {
-      await completer.future.timeout(const Duration(seconds: 4));
-    } finally {
-      stream.removeListener(listener);
-    }
-  }
-
-  Future<void> _warmupTarotCover() {
-    if (_tarotCoverReady) return Future.value();
-    return _tarotCoverWarmup ??= (() async {
-      ImageProvider<Object> coverImage = _mar8TarotCoverImage;
-      try {
-        final bytes = await rootBundle.load(
-          'assets/branding/march8_tarot_cover.jpg',
-        );
-        coverImage = MemoryImage(bytes.buffer.asUint8List());
-      } catch (_) {}
-
-      if (!mounted) return;
-      var resolved = false;
-      try {
-        await _waitForImageFrame(coverImage);
-        resolved = true;
-      } catch (_) {}
-
-      if (!mounted) return;
-      if (!resolved) {
-        try {
-          await precacheImage(coverImage, context);
-          resolved = true;
-        } catch (_) {}
-      }
-
-      if (!mounted || _tarotCoverReady || !resolved) return;
-      setState(() {
-        _tarotCoverImageProvider = coverImage;
-        _tarotCoverReady = true;
-      });
-    })().catchError((_) {}).whenComplete(() => _tarotCoverWarmup = null);
   }
 
   Future<void> _ensurePrizesSeeded() async {
@@ -336,9 +278,6 @@ class _ContestsScreenState extends State<ContestsScreen>
           .toList(growable: false),
     );
 
-    if (_selectedContest == _ContestType.mar8 && !_tarotCoverReady) {
-      await _warmupTarotCover();
-    }
     if (!mounted) return;
     setState(() {
       _clients = clients;
@@ -348,7 +287,7 @@ class _ContestsScreenState extends State<ContestsScreen>
       _prizes = prizes;
       _currentPrize = entry?.currentPrize;
       _selectedIndex = _indexForPrize(entry?.currentPrize);
-      _tarotCards = _buildTarotDeck(prizes);
+      _tarotCards = List<_PrizeItem?>.from(prizes)..shuffle(_rng);
       _tarotStarted = false;
       _loading = false;
     });
@@ -443,10 +382,136 @@ class _ContestsScreenState extends State<ContestsScreen>
     return arranged;
   }
 
-  List<_PrizeItem?> _buildTarotDeck([List<_PrizeItem>? source]) {
-    final deck = List<_PrizeItem?>.from(source ?? _prizes);
-    deck.shuffle(_rng);
-    return deck;
+  Widget _buildTarotCardView(
+    BuildContext context, {
+    required _PrizeItem? card,
+    required bool isFrontVisible,
+    required bool isOpened,
+    required VoidCallback? onTap,
+    required double rotationY,
+  }) {
+    final colors = Theme.of(context).colorScheme;
+
+    return Transform(
+      alignment: Alignment.center,
+      transform: Matrix4.identity()
+        ..setEntry(3, 2, 0.0018)
+        ..rotateY(rotationY),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(16),
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 280),
+          padding: EdgeInsets.zero,
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(16),
+            gradient: isFrontVisible
+                ? LinearGradient(
+                    colors: [
+                      (card?.isGood ?? true)
+                          ? const Color(0xFF6B5BFF)
+                          : const Color(0xFFFF2E63),
+                      const Color(0xFF171A33),
+                    ],
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                  )
+                : null,
+            color: isFrontVisible ? null : const Color(0xFF0F1730),
+            image: !isFrontVisible && _tarotCoverReady
+                ? DecorationImage(
+                    image: _mar8TarotCoverImage,
+                    fit: BoxFit.cover,
+                    filterQuality: FilterQuality.medium,
+                  )
+                : null,
+            border: Border.all(
+              color: (isOpened ? colors.primary : colors.outlineVariant)
+                  .withOpacity(0.75),
+              width: isOpened ? 1.6 : 1.0,
+            ),
+            boxShadow: [
+              BoxShadow(
+                color:
+                    (isFrontVisible
+                            ? ((card?.isGood ?? true)
+                                  ? const Color(0xFF8A7BFF)
+                                  : const Color(0xFFFF4D7C))
+                            : const Color(0xFF8F7BFF))
+                        .withOpacity(0.30),
+                blurRadius: isOpened ? 18 : 12,
+                spreadRadius: isOpened ? 0.8 : 0,
+                offset: const Offset(0, 8),
+              ),
+            ],
+          ),
+          child: Stack(
+            children: [
+              Positioned.fill(
+                child: DecoratedBox(
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: Colors.white.withOpacity(0.10)),
+                  ),
+                ),
+              ),
+              if (isFrontVisible)
+                Align(
+                  alignment: Alignment.topLeft,
+                  child: Padding(
+                    padding: const EdgeInsets.fromLTRB(10, 10, 0, 0),
+                    child: Icon(
+                      (card?.isGood ?? true)
+                          ? Icons.auto_awesome
+                          : Icons.whatshot,
+                      size: 16,
+                      color: Colors.white.withOpacity(0.70),
+                    ),
+                  ),
+                ),
+              Center(
+                child: Transform(
+                  alignment: Alignment.center,
+                  transform: Matrix4.identity()
+                    ..rotateY(isFrontVisible ? 0 : pi),
+                  child: isFrontVisible
+                      ? Padding(
+                          padding: const EdgeInsets.all(10),
+                          child: Text(
+                            card?.title ?? '',
+                            textAlign: TextAlign.center,
+                            style: Theme.of(context).textTheme.titleSmall
+                                ?.copyWith(
+                                  color: Colors.white,
+                                  fontWeight: FontWeight.w600,
+                                  shadows: [
+                                    Shadow(
+                                      color: Colors.black.withOpacity(0.28),
+                                      blurRadius: 8,
+                                    ),
+                                  ],
+                                ),
+                          ),
+                        )
+                      : const SizedBox.expand(),
+                ),
+              ),
+              if (!isFrontVisible && !_tarotCoverReady)
+                Center(
+                  child: Text(
+                    'TAROT',
+                    textAlign: TextAlign.center,
+                    style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                      color: Colors.white,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 
   _PrizeMeta _metaForPrize(String title) => _prizeMetaByTitle(title);
@@ -592,11 +657,9 @@ class _ContestsScreenState extends State<ContestsScreen>
 
   Future<void> _startTarot() async {
     if (_selectedClientId == null) return;
-    await _warmupTarotCover();
-    if (!mounted || !_tarotCoverReady) return;
     setState(() {
       _tarotStarted = true;
-      _tarotCards = _buildTarotDeck();
+      _tarotCards = List<_PrizeItem?>.filled(_prizes.length, null);
       _currentPrize = null;
       _selectedIndex = -1;
     });
@@ -604,10 +667,8 @@ class _ContestsScreenState extends State<ContestsScreen>
 
   Future<void> _reshuffleTarot() async {
     if (!_tarotStarted || _spinning || _isFinalized) return;
-    await _warmupTarotCover();
-    if (!mounted || !_tarotCoverReady) return;
     setState(() {
-      _tarotCards = _buildTarotDeck();
+      _tarotCards = List<_PrizeItem?>.filled(_prizes.length, null);
       _currentPrize = null;
       _selectedIndex = -1;
     });
@@ -907,8 +968,7 @@ class _ContestsScreenState extends State<ContestsScreen>
                                   child: FilledButton.icon(
                                     onPressed:
                                         _selectedClientId == null ||
-                                            _isFinalized ||
-                                            !_tarotCoverReady
+                                            _isFinalized
                                         ? null
                                         : _startTarot,
                                     icon: const Icon(Icons.auto_awesome),
@@ -959,173 +1019,31 @@ class _ContestsScreenState extends State<ContestsScreen>
                         final isOpened = _selectedIndex == i;
                         final showFace =
                             !_tarotStarted || (isOpened && card != null);
+                        final interactive =
+                            _tarotStarted &&
+                            !_isFinalized &&
+                            _remainingAttempts > 0 &&
+                            (_currentPrize ?? '').isEmpty;
+                        final onTap = interactive
+                            ? () => _pickTarotCard(i)
+                            : null;
+
                         return TweenAnimationBuilder<double>(
                           tween: Tween<double>(begin: 0, end: showFace ? 1 : 0),
-                          duration: Duration(milliseconds: isOpened ? 520 : 0),
+                          duration: Duration(
+                            milliseconds: isOpened ? 520 : 360,
+                          ),
                           curve: Curves.easeOutCubic,
                           builder: (context, t, _) {
                             final angle = (1 - t) * pi;
                             final isFrontVisible = angle <= (pi / 2);
-                            final interactive =
-                                _tarotStarted &&
-                                !_isFinalized &&
-                                _remainingAttempts > 0 &&
-                                (_currentPrize ?? '').isEmpty;
-
-                            return Transform(
-                              alignment: Alignment.center,
-                              transform: Matrix4.identity()
-                                ..setEntry(3, 2, 0.0018)
-                                ..rotateY(angle),
-                              child: InkWell(
-                                onTap: interactive
-                                    ? () => _pickTarotCard(i)
-                                    : null,
-                                borderRadius: BorderRadius.circular(16),
-                                child: Container(
-                                  padding: EdgeInsets.zero,
-                                  decoration: BoxDecoration(
-                                    borderRadius: BorderRadius.circular(16),
-                                    gradient: isFrontVisible
-                                        ? LinearGradient(
-                                            colors: [
-                                              (card?.isGood ?? true)
-                                                  ? const Color(0xFF6B5BFF)
-                                                  : const Color(0xFFFF2E63),
-                                              const Color(0xFF171A33),
-                                            ],
-                                            begin: Alignment.topLeft,
-                                            end: Alignment.bottomRight,
-                                          )
-                                        : null,
-                                    color: isFrontVisible
-                                        ? null
-                                        : const Color(0xFF0F1730),
-                                    image: !isFrontVisible && _tarotCoverReady
-                                        ? DecorationImage(
-                                            image: _tarotCoverImageProvider,
-                                            fit: BoxFit.cover,
-                                            filterQuality: FilterQuality.medium,
-                                          )
-                                        : null,
-                                    border: Border.all(
-                                      color:
-                                          (isOpened
-                                                  ? colors.primary
-                                                  : colors.outlineVariant)
-                                              .withOpacity(0.75),
-                                      width: isOpened ? 1.6 : 1.0,
-                                    ),
-                                    boxShadow: [
-                                      BoxShadow(
-                                        color:
-                                            (isFrontVisible
-                                                    ? ((card?.isGood ?? true)
-                                                          ? const Color(
-                                                              0xFF8A7BFF,
-                                                            )
-                                                          : const Color(
-                                                              0xFFFF4D7C,
-                                                            ))
-                                                    : const Color(0xFF8F7BFF))
-                                                .withOpacity(0.30),
-                                        blurRadius: isOpened ? 18 : 12,
-                                        spreadRadius: isOpened ? 0.8 : 0,
-                                        offset: const Offset(0, 8),
-                                      ),
-                                    ],
-                                  ),
-                                  child: Stack(
-                                    children: [
-                                      Positioned.fill(
-                                        child: DecoratedBox(
-                                          decoration: BoxDecoration(
-                                            borderRadius: BorderRadius.circular(
-                                              12,
-                                            ),
-                                            border: Border.all(
-                                              color: Colors.white.withOpacity(
-                                                0.10,
-                                              ),
-                                            ),
-                                          ),
-                                        ),
-                                      ),
-                                      if (isFrontVisible)
-                                        Align(
-                                          alignment: Alignment.topLeft,
-                                          child: Padding(
-                                            padding: const EdgeInsets.fromLTRB(
-                                              10,
-                                              10,
-                                              0,
-                                              0,
-                                            ),
-                                            child: Icon(
-                                              (card?.isGood ?? true)
-                                                  ? Icons.auto_awesome
-                                                  : Icons.whatshot,
-                                              size: 16,
-                                              color: Colors.white.withOpacity(
-                                                0.70,
-                                              ),
-                                            ),
-                                          ),
-                                        ),
-                                      Center(
-                                        child: Transform(
-                                          alignment: Alignment.center,
-                                          transform: Matrix4.identity()
-                                            ..rotateY(isFrontVisible ? 0 : pi),
-                                          child: isFrontVisible
-                                              ? Padding(
-                                                  padding: const EdgeInsets.all(
-                                                    10,
-                                                  ),
-                                                  child: Text(
-                                                    card?.title ?? '',
-                                                    textAlign: TextAlign.center,
-                                                    style: Theme.of(context)
-                                                        .textTheme
-                                                        .titleSmall
-                                                        ?.copyWith(
-                                                          color: Colors.white,
-                                                          fontWeight:
-                                                              FontWeight.w600,
-                                                          shadows: [
-                                                            Shadow(
-                                                              color: Colors
-                                                                  .black
-                                                                  .withOpacity(
-                                                                    0.28,
-                                                                  ),
-                                                              blurRadius: 8,
-                                                            ),
-                                                          ],
-                                                        ),
-                                                  ),
-                                                )
-                                              : const SizedBox.expand(),
-                                        ),
-                                      ),
-                                      if (!isFrontVisible && !_tarotCoverReady)
-                                        Center(
-                                          child: Text(
-                                            'TAROT',
-                                            textAlign: TextAlign.center,
-                                            style: Theme.of(context)
-                                                .textTheme
-                                                .titleSmall
-                                                ?.copyWith(
-                                                  color: Colors.white,
-                                                  fontWeight: FontWeight.w600,
-                                                ),
-                                          ),
-                                        ),
-                                    ],
-                                  ),
-                                ),
-                              ),
+                            return _buildTarotCardView(
+                              context,
+                              card: card,
+                              isFrontVisible: isFrontVisible,
+                              isOpened: isOpened,
+                              onTap: onTap,
+                              rotationY: angle,
                             );
                           },
                         );
