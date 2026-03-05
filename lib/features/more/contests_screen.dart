@@ -988,7 +988,7 @@ class _ContestsScreenState extends State<ContestsScreen>
                                         : _reshuffleTarot,
                                     icon: const Icon(Icons.shuffle),
                                     variant: _ActionButtonVariant.secondary,
-                                    label: const Text('Перетасовать'),
+                                    label: const Text('Смешать'),
                                   ),
                                 ),
                               ],
@@ -1592,25 +1592,25 @@ class _ContestActionButton extends StatelessWidget {
       iconBgColor,
     ) = switch (variant) {
       _ActionButtonVariant.primary => (
-        const [Color(0xFFD9CBFF), Color(0xFFA793FF)],
-        const Color(0xFFECE3FF),
+        const [Color(0xFFDDD2FF), Color(0xFFB4A1FF)],
+        const Color(0xFFE9DFFF),
         const Color(0xFF241A4B),
-        const Color(0x668A6FFF),
-        const Color(0x33FFFFFF),
+        const Color(0x3F8A6FFF),
+        const Color(0x29FFFFFF),
       ),
       _ActionButtonVariant.secondary => (
-        const [Color(0xFF1E1D2F), Color(0xFF111321)],
-        colors.outlineVariant.withOpacity(0.55),
+        const [Color(0xFF1C1D2D), Color(0xFF141625)],
+        colors.outlineVariant.withOpacity(0.4),
         const Color(0xFFF3EDFF),
-        const Color(0x22101C44),
-        const Color(0x14FFFFFF),
+        const Color(0x18101C44),
+        const Color(0x10FFFFFF),
       ),
       _ActionButtonVariant.reward => (
-        const [Color(0xFFFFD978), Color(0xFFFFA64D)],
-        const Color(0xFFFFE7B7),
+        const [Color(0xFFFFDE84), Color(0xFFFFB968)],
+        const Color(0xFFFFE4B2),
         const Color(0xFF36220B),
-        const Color(0x66FFB347),
-        const Color(0x33FFFFFF),
+        const Color(0x40FFB347),
+        const Color(0x24FFFFFF),
       ),
     };
 
@@ -1620,24 +1620,28 @@ class _ContestActionButton extends StatelessWidget {
     ];
     final disabledBorder = colors.outlineVariant.withOpacity(0.28);
     final disabledForeground = colors.onSurface.withOpacity(0.42);
-    final labelStyle = Theme.of(context).textTheme.titleSmall?.copyWith(
+    final fontSize = switch (variant) {
+      _ActionButtonVariant.primary => 17.0,
+      _ActionButtonVariant.secondary => 15.5,
+      _ActionButtonVariant.reward => 16.0,
+    };
+    final labelStyle = Theme.of(context).textTheme.titleMedium?.copyWith(
       color: enabled ? foregroundColor : disabledForeground,
-      fontFamily: 'Georgia',
-      fontFamilyFallback: const ['Times New Roman', 'Noto Serif'],
-      fontWeight: FontWeight.w700,
-      letterSpacing: 0.22,
-      height: 1.0,
+      fontWeight: FontWeight.w600,
+      fontSize: fontSize,
+      letterSpacing: 0.1,
+      height: 1.15,
     );
 
     return SizedBox(
-      height: 64,
+      height: 60,
       width: double.infinity,
       child: AnimatedOpacity(
         duration: const Duration(milliseconds: 180),
         opacity: enabled ? 1 : 0.72,
         child: DecoratedBox(
           decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(22),
+            borderRadius: BorderRadius.circular(20),
             gradient: LinearGradient(
               colors: enabled ? gradient : disabledGradient,
               begin: Alignment.topLeft,
@@ -1648,9 +1652,9 @@ class _ContestActionButton extends StatelessWidget {
                 ? [
                     BoxShadow(
                       color: glowColor,
-                      blurRadius: 18,
-                      spreadRadius: 0.5,
-                      offset: const Offset(0, 10),
+                      blurRadius: 12,
+                      spreadRadius: 0,
+                      offset: const Offset(0, 6),
                     ),
                   ]
                 : const [],
@@ -1659,26 +1663,13 @@ class _ContestActionButton extends StatelessWidget {
             color: Colors.transparent,
             child: InkWell(
               onTap: onPressed,
-              borderRadius: BorderRadius.circular(22),
-              child: Stack(
-                children: [
-                  if (variant == _ActionButtonVariant.reward)
-                    Positioned(
-                      right: 12,
-                      top: 0,
-                      bottom: 0,
-                      child: _buildActionIconChip(
-                        enabled: enabled,
-                        iconBgColor: iconBgColor,
-                        foregroundColor: foregroundColor,
-                        disabledForeground: disabledForeground,
-                      ),
-                    )
-                  else
-                    Positioned(
-                      left: 12,
-                      top: 0,
-                      bottom: 0,
+              borderRadius: BorderRadius.circular(20),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 14),
+                child: Stack(
+                  children: [
+                    Align(
+                      alignment: Alignment.centerLeft,
                       child: _buildActionIconChip(
                         enabled: enabled,
                         iconBgColor: iconBgColor,
@@ -1686,46 +1677,22 @@ class _ContestActionButton extends StatelessWidget {
                         disabledForeground: disabledForeground,
                       ),
                     ),
-                  Center(
-                    child: Padding(
-                      padding: EdgeInsets.symmetric(
-                        horizontal: switch (variant) {
-                          _ActionButtonVariant.secondary => 42,
-                          _ActionButtonVariant.reward => 48,
-                          _ActionButtonVariant.primary => 54,
-                        },
-                      ),
-                      child: DefaultTextStyle.merge(
-                        style: labelStyle,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        textAlign: TextAlign.center,
-                        child: FittedBox(
-                          fit: BoxFit.scaleDown,
-                          child: Center(child: label),
+                    Center(
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 44),
+                        child: DefaultTextStyle.merge(
+                          style: labelStyle,
+                          maxLines: variant == _ActionButtonVariant.primary
+                              ? 2
+                              : 1,
+                          overflow: TextOverflow.ellipsis,
+                          textAlign: TextAlign.center,
+                          child: label,
                         ),
                       ),
                     ),
-                  ),
-                  Positioned.fill(
-                    child: IgnorePointer(
-                      child: DecoratedBox(
-                        decoration: BoxDecoration(
-                          borderRadius: BorderRadius.circular(22),
-                          gradient: LinearGradient(
-                            begin: Alignment.topCenter,
-                            end: Alignment.bottomCenter,
-                            colors: [
-                              Colors.white.withOpacity(enabled ? 0.16 : 0.06),
-                              Colors.transparent,
-                            ],
-                            stops: const [0, 0.45],
-                          ),
-                        ),
-                      ),
-                    ),
-                  ),
-                ],
+                  ],
+                ),
               ),
             ),
           ),
@@ -1742,19 +1709,19 @@ class _ContestActionButton extends StatelessWidget {
   }) {
     return Center(
       child: Container(
-        width: 34,
-        height: 34,
+        width: 32,
+        height: 32,
         decoration: BoxDecoration(
           shape: BoxShape.circle,
           color: enabled ? iconBgColor : Colors.white.withOpacity(0.08),
           border: Border.all(
-            color: Colors.white.withOpacity(enabled ? 0.22 : 0.08),
+            color: Colors.white.withOpacity(enabled ? 0.16 : 0.08),
           ),
         ),
         alignment: Alignment.center,
         child: IconTheme(
           data: IconThemeData(
-            size: 18,
+            size: 17,
             color: enabled ? foregroundColor : disabledForeground,
           ),
           child: icon,
