@@ -395,13 +395,14 @@ class _ContestsScreenState extends State<ContestsScreen>
     return Transform(
       alignment: Alignment.center,
       transform: Matrix4.identity()
-        ..setEntry(3, 2, 0.0018)
+        ..setEntry(3, 2, 0.0012)
         ..rotateY(rotationY),
       child: InkWell(
         onTap: onTap,
         borderRadius: BorderRadius.circular(16),
         child: AnimatedContainer(
-          duration: const Duration(milliseconds: 280),
+          duration: const Duration(milliseconds: 360),
+          curve: Curves.easeInOutCubic,
           padding: EdgeInsets.zero,
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(16),
@@ -1031,9 +1032,9 @@ class _ContestsScreenState extends State<ContestsScreen>
                         return TweenAnimationBuilder<double>(
                           tween: Tween<double>(begin: 0, end: showFace ? 1 : 0),
                           duration: Duration(
-                            milliseconds: isOpened ? 520 : 360,
+                            milliseconds: isOpened ? 680 : 460,
                           ),
-                          curve: Curves.easeOutCubic,
+                          curve: Curves.easeInOutCubic,
                           builder: (context, t, _) {
                             final angle = (1 - t) * pi;
                             final isFrontVisible = angle <= (pi / 2);
