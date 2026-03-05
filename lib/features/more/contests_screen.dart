@@ -129,7 +129,7 @@ class _ContestsScreenState extends State<ContestsScreen>
   bool _loading = true;
   _ContestType _selectedContest = _ContestType.feb23;
   bool _tarotStarted = false;
-  List<_PrizeItem> _tarotCards = const [];
+  List<_PrizeItem?> _tarotCards = const [];
   bool _spinning = false;
   bool _initialized = false;
   bool _tarotCoverReady = false;
@@ -287,7 +287,7 @@ class _ContestsScreenState extends State<ContestsScreen>
       _prizes = prizes;
       _currentPrize = entry?.currentPrize;
       _selectedIndex = _indexForPrize(entry?.currentPrize);
-      _tarotCards = List<_PrizeItem>.from(prizes)..shuffle(_rng);
+      _tarotCards = List<_PrizeItem?>.from(prizes)..shuffle(_rng);
       _tarotStarted = false;
       _loading = false;
     });
@@ -527,7 +527,7 @@ class _ContestsScreenState extends State<ContestsScreen>
     if (_selectedClientId == null) return;
     setState(() {
       _tarotStarted = true;
-      _tarotCards = List<_PrizeItem>.from(_prizes)..shuffle(_rng);
+      _tarotCards = List<_PrizeItem?>.filled(_prizes.length, null);
       _currentPrize = null;
       _selectedIndex = -1;
     });
@@ -536,7 +536,7 @@ class _ContestsScreenState extends State<ContestsScreen>
   Future<void> _reshuffleTarot() async {
     if (!_tarotStarted || _spinning || _isFinalized) return;
     setState(() {
-      _tarotCards = List<_PrizeItem>.from(_prizes)..shuffle(_rng);
+      _tarotCards = List<_PrizeItem?>.filled(_prizes.length, null);
       _currentPrize = null;
       _selectedIndex = -1;
     });
@@ -556,10 +556,13 @@ class _ContestsScreenState extends State<ContestsScreen>
       return;
     }
 
-    final prize = _tarotCards[index];
+    final prize = _prizes[_pickWeightedIndex()];
+    final updatedCards = List<_PrizeItem?>.from(_tarotCards);
+    updatedCards[index] = prize;
     setState(() {
       _spinning = true;
       _selectedIndex = index;
+      _tarotCards = updatedCards;
       _currentPrize = prize.title;
     });
 
@@ -882,7 +885,8 @@ class _ContestsScreenState extends State<ContestsScreen>
                       itemBuilder: (context, i) {
                         final card = _tarotCards[i];
                         final isOpened = _selectedIndex == i;
-                        final showFace = !_tarotStarted || isOpened;
+                        final showFace =
+                            !_tarotStarted || (isOpened && card != null);
                         return TweenAnimationBuilder<double>(
                           tween: Tween<double>(begin: 0, end: showFace ? 1 : 0),
                           duration: Duration(
@@ -916,7 +920,7 @@ class _ContestsScreenState extends State<ContestsScreen>
                                     gradient: isFrontVisible
                                         ? LinearGradient(
                                             colors: [
-                                              card.isGood
+                                              (card?.isGood ?? true)
                                                   ? const Color(0xFF6B5BFF)
                                                   : const Color(0xFFFF2E63),
                                               const Color(0xFF171A33),
@@ -945,7 +949,7 @@ class _ContestsScreenState extends State<ContestsScreen>
                                       BoxShadow(
                                         color:
                                             (isFrontVisible
-                                                    ? (card.isGood
+                                                    ? ((card?.isGood ?? true)
                                                           ? const Color(
                                                               0xFF8A7BFF,
                                                             )
@@ -987,7 +991,7 @@ class _ContestsScreenState extends State<ContestsScreen>
                                               0,
                                             ),
                                             child: Icon(
-                                              card.isGood
+                                              (card?.isGood ?? true)
                                                   ? Icons.auto_awesome
                                                   : Icons.whatshot,
                                               size: 16,
@@ -1008,7 +1012,7 @@ class _ContestsScreenState extends State<ContestsScreen>
                                                     10,
                                                   ),
                                                   child: Text(
-                                                    card.title,
+                                                    card?.title ?? '',
                                                     textAlign: TextAlign.center,
                                                     style: Theme.of(context)
                                                         .textTheme
