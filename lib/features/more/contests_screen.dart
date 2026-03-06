@@ -974,6 +974,8 @@ class _ContestsScreenState extends State<ContestsScreen>
                                         ? null
                                         : _startTarot,
                                     icon: const Icon(Icons.auto_awesome),
+                                    compact: true,
+                                    labelMaxLines: 2,
                                     label: const Text('Начать гадать'),
                                   ),
                                 ),
@@ -988,6 +990,7 @@ class _ContestsScreenState extends State<ContestsScreen>
                                         : _reshuffleTarot,
                                     icon: const Icon(Icons.shuffle),
                                     variant: _ActionButtonVariant.secondary,
+                                    compact: true,
                                     label: const Text('Смешать'),
                                   ),
                                 ),
@@ -1572,12 +1575,16 @@ class _ContestActionButton extends StatelessWidget {
     required this.icon,
     required this.label,
     this.variant = _ActionButtonVariant.primary,
+    this.compact = false,
+    this.labelMaxLines = 1,
   });
 
   final VoidCallback? onPressed;
   final Widget icon;
   final Widget label;
   final _ActionButtonVariant variant;
+  final bool compact;
+  final int labelMaxLines;
 
   @override
   Widget build(BuildContext context) {
@@ -1620,11 +1627,12 @@ class _ContestActionButton extends StatelessWidget {
     ];
     final disabledBorder = colors.outlineVariant.withOpacity(0.28);
     final disabledForeground = colors.onSurface.withOpacity(0.42);
-    final fontSize = switch (variant) {
+    final baseFontSize = switch (variant) {
       _ActionButtonVariant.primary => 17.0,
       _ActionButtonVariant.secondary => 15.5,
       _ActionButtonVariant.reward => 16.0,
     };
+    final fontSize = compact ? (baseFontSize - 2) : baseFontSize;
     final labelStyle = Theme.of(context).textTheme.titleMedium?.copyWith(
       color: enabled ? foregroundColor : disabledForeground,
       fontWeight: FontWeight.w600,
@@ -1632,6 +1640,8 @@ class _ContestActionButton extends StatelessWidget {
       letterSpacing: 0.1,
       height: 1.15,
     );
+
+    final trailingSpacerWidth = compact ? 8.0 : 42.0;
 
     return SizedBox(
       height: 60,
@@ -1666,31 +1676,25 @@ class _ContestActionButton extends StatelessWidget {
               borderRadius: BorderRadius.circular(20),
               child: Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 14),
-                child: Stack(
+                child: Row(
                   children: [
-                    Align(
-                      alignment: Alignment.centerLeft,
-                      child: _buildActionIconChip(
-                        enabled: enabled,
-                        iconBgColor: iconBgColor,
-                        foregroundColor: foregroundColor,
-                        disabledForeground: disabledForeground,
+                    _buildActionIconChip(
+                      enabled: enabled,
+                      iconBgColor: iconBgColor,
+                      foregroundColor: foregroundColor,
+                      disabledForeground: disabledForeground,
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: DefaultTextStyle.merge(
+                        style: labelStyle,
+                        maxLines: labelMaxLines,
+                        overflow: TextOverflow.ellipsis,
+                        textAlign: TextAlign.center,
+                        child: label,
                       ),
                     ),
-                    Center(
-                      child: Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 44),
-                        child: DefaultTextStyle.merge(
-                          style: labelStyle,
-                          maxLines: variant == _ActionButtonVariant.primary
-                              ? 2
-                              : 1,
-                          overflow: TextOverflow.ellipsis,
-                          textAlign: TextAlign.center,
-                          child: label,
-                        ),
-                      ),
-                    ),
+                    SizedBox(width: trailingSpacerWidth),
                   ],
                 ),
               ),
@@ -1707,25 +1711,23 @@ class _ContestActionButton extends StatelessWidget {
     required Color foregroundColor,
     required Color disabledForeground,
   }) {
-    return Center(
-      child: Container(
-        width: 32,
-        height: 32,
-        decoration: BoxDecoration(
-          shape: BoxShape.circle,
-          color: enabled ? iconBgColor : Colors.white.withOpacity(0.08),
-          border: Border.all(
-            color: Colors.white.withOpacity(enabled ? 0.16 : 0.08),
-          ),
+    return Container(
+      width: 32,
+      height: 32,
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        color: enabled ? iconBgColor : Colors.white.withOpacity(0.08),
+        border: Border.all(
+          color: Colors.white.withOpacity(enabled ? 0.16 : 0.08),
         ),
-        alignment: Alignment.center,
-        child: IconTheme(
-          data: IconThemeData(
-            size: 17,
-            color: enabled ? foregroundColor : disabledForeground,
-          ),
-          child: icon,
+      ),
+      alignment: Alignment.center,
+      child: IconTheme(
+        data: IconThemeData(
+          size: 17,
+          color: enabled ? foregroundColor : disabledForeground,
         ),
+        child: icon,
       ),
     );
   }
