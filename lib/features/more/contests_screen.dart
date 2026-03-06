@@ -113,19 +113,8 @@ class _ContestsScreenState extends State<ContestsScreen>
     '+2 шанса',
   };
   static const AssetImage _mar8TarotCoverImage = AssetImage(
-    'assets/branding/march8_tarot_cover.jpg',
+    'assets/branding/march8_cards/Обложка.png',
   );
-  static const List<String> _mar8TarotCardImagePaths = [
-    'assets/branding/march8_cards/march8_card_superprize.png',
-    'assets/branding/march8_cards/march8_card_lucky_day.png',
-    'assets/branding/march8_cards/march8_card_reverse.png',
-    'assets/branding/march8_cards/march8_card_treat.png',
-    'assets/branding/march8_cards/march8_card_plus2.png',
-    'assets/branding/march8_cards/march8_card_ropes.png',
-    'assets/branding/march8_cards/march8_card_pp_day.png',
-    'assets/branding/march8_cards/march8_card_random_glute_day.png',
-    'assets/branding/march8_cards/march8_card_iron_bracelets.png',
-  ];
 
   late final AppDb _db;
   late final AnimationController _spinController;
@@ -142,7 +131,6 @@ class _ContestsScreenState extends State<ContestsScreen>
   _ContestType _selectedContest = _ContestType.feb23;
   bool _tarotStarted = false;
   List<_PrizeItem?> _tarotCards = const [];
-  List<String> _mar8TarotImageDeck = const [];
   bool _spinning = false;
   bool _initialized = false;
   bool _tarotCoverReady = false;
@@ -304,9 +292,10 @@ class _ContestsScreenState extends State<ContestsScreen>
       _entry = entry;
       _prizes = prizes;
       _currentPrize = entry?.currentPrize;
-      _selectedIndex = _indexForPrize(entry?.currentPrize);
+      _selectedIndex = _selectedContest == _ContestType.mar8
+          ? -1
+          : _indexForPrize(entry?.currentPrize);
       _tarotCards = List<_PrizeItem?>.from(prizes)..shuffle(_rng);
-      _mar8TarotImageDeck = _buildMar8TarotImageDeck(prizes.length);
       _tarotStarted = false;
       _loading = false;
     });
@@ -364,7 +353,9 @@ class _ContestsScreenState extends State<ContestsScreen>
       _selectedClientId = id;
       _entry = entry;
       _currentPrize = entry?.currentPrize;
-      _selectedIndex = _indexForPrize(entry?.currentPrize);
+      _selectedIndex = _selectedContest == _ContestType.mar8
+          ? -1
+          : _indexForPrize(entry?.currentPrize);
     });
   }
 
@@ -410,8 +401,6 @@ class _ContestsScreenState extends State<ContestsScreen>
     required double rotationY,
     String? imagePath,
   }) {
-    final colors = Theme.of(context).colorScheme;
-
     return Transform(
       alignment: Alignment.center,
       transform: Matrix4.identity()
@@ -426,67 +415,33 @@ class _ContestsScreenState extends State<ContestsScreen>
           padding: EdgeInsets.zero,
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(16),
-            gradient: isFrontVisible
-                ? LinearGradient(
-                    colors: [
-                      (card?.isGood ?? true)
-                          ? const Color(0xFF6B5BFF)
-                          : const Color(0xFFFF2E63),
-                      const Color(0xFF171A33),
-                    ],
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
-                  )
-                : null,
-            color: isFrontVisible ? null : const Color(0xFF0F1730),
-            image: !isFrontVisible && _tarotCoverReady
-                ? DecorationImage(
-                    image: _mar8TarotCoverImage,
-                    fit: BoxFit.cover,
-                    filterQuality: FilterQuality.medium,
-                  )
-                : null,
-            border: Border.all(
-              color: (isOpened ? colors.primary : colors.outlineVariant)
-                  .withOpacity(0.75),
-              width: isOpened ? 1.6 : 1.0,
-            ),
+            color: isFrontVisible
+                ? Colors.transparent
+                : const Color(0xFF0F1730),
+
             boxShadow: [
               BoxShadow(
-                color:
-                    (isFrontVisible
-                            ? ((card?.isGood ?? true)
-                                  ? const Color(0xFF8A7BFF)
-                                  : const Color(0xFFFF4D7C))
-                            : const Color(0xFF8F7BFF))
-                        .withOpacity(0.30),
-                blurRadius: isOpened ? 18 : 12,
-                spreadRadius: isOpened ? 0.8 : 0,
+                color: const Color(0xFF060A1F).withOpacity(0.34),
+                blurRadius: isOpened ? 16 : 10,
+                spreadRadius: isOpened ? 0.4 : 0,
                 offset: const Offset(0, 8),
               ),
             ],
           ),
           child: Stack(
             children: [
-              Positioned.fill(
-                child: DecoratedBox(
-                  decoration: BoxDecoration(
-                    borderRadius: BorderRadius.circular(12),
-                    border: Border.all(color: Colors.white.withOpacity(0.10)),
-                  ),
-                ),
-              ),
-              if (isFrontVisible)
-                Align(
-                  alignment: Alignment.topLeft,
-                  child: Padding(
-                    padding: const EdgeInsets.fromLTRB(10, 10, 0, 0),
-                    child: Icon(
-                      (card?.isGood ?? true)
-                          ? Icons.auto_awesome
-                          : Icons.whatshot,
-                      size: 16,
-                      color: Colors.white.withOpacity(0.70),
+              if (!isFrontVisible && _tarotCoverReady)
+                Positioned.fill(
+                  child: Transform(
+                    alignment: Alignment.center,
+                    transform: Matrix4.identity()..rotateY(pi),
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(16),
+                      child: Image(
+                        image: _mar8TarotCoverImage,
+                        fit: BoxFit.cover,
+                        filterQuality: FilterQuality.medium,
+                      ),
                     ),
                   ),
                 ),
@@ -496,29 +451,29 @@ class _ContestsScreenState extends State<ContestsScreen>
                   transform: Matrix4.identity()
                     ..rotateY(isFrontVisible ? 0 : pi),
                   child: isFrontVisible
-                      ? Padding(
-                          padding: const EdgeInsets.all(10),
-                          child: imagePath == null
-                              ? _buildTarotFrontTitle(
+                      ? (imagePath == null
+                            ? Padding(
+                                padding: const EdgeInsets.all(10),
+                                child: _buildTarotFrontTitle(
                                   context,
                                   card?.title ?? '',
-                                )
-                              : ClipRRect(
-                                  borderRadius: BorderRadius.circular(12),
-                                  child: Image.asset(
-                                    imagePath,
-                                    fit: BoxFit.cover,
-                                    width: double.infinity,
-                                    height: double.infinity,
-                                    filterQuality: FilterQuality.medium,
-                                    errorBuilder: (_, _, _) =>
-                                        _buildTarotFrontTitle(
-                                          context,
-                                          card?.title ?? '',
-                                        ),
-                                  ),
                                 ),
-                        )
+                              )
+                            : ClipRRect(
+                                borderRadius: BorderRadius.circular(16),
+                                child: Image.asset(
+                                  imagePath,
+                                  fit: BoxFit.cover,
+                                  width: double.infinity,
+                                  height: double.infinity,
+                                  filterQuality: FilterQuality.medium,
+                                  errorBuilder: (_, _, _) =>
+                                      _buildTarotFrontTitle(
+                                        context,
+                                        card?.title ?? '',
+                                      ),
+                                ),
+                              ))
                       : const SizedBox.expand(),
                 ),
               ),
@@ -556,18 +511,38 @@ class _ContestsScreenState extends State<ContestsScreen>
     );
   }
 
-  List<String> _buildMar8TarotImageDeck(int cardCount) {
-    if (cardCount <= 0) return const [];
-    final pool = List<String>.from(_mar8TarotCardImagePaths)..shuffle(_rng);
-    if (pool.length >= cardCount) {
-      return pool.take(cardCount).toList(growable: false);
+  String? _imagePathForPrize(String? title) {
+    if (title == null || title.isEmpty) return null;
+    final key = title.trim().toLowerCase();
+    if (key.contains('суперприз')) {
+      return 'assets/branding/march8_cards/march8_card_superprize.png';
     }
 
-    final result = <String>[];
-    while (result.length < cardCount) {
-      result.addAll(pool);
+    if (key == 'счастливый день') {
+      return 'assets/branding/march8_cards/march8_card_lucky_day.png';
     }
-    return result.take(cardCount).toList(growable: false);
+    if (key == 'ревёрс') {
+      return 'assets/branding/march8_cards/march8_card_reverse.png';
+    }
+    if (key == 'любая вкусняшка') {
+      return 'assets/branding/march8_cards/march8_card_treat.png';
+    }
+    if (key == '+2 шанса') {
+      return 'assets/branding/march8_cards/march8_card_plus2.png';
+    }
+    if (key == 'канатики') {
+      return 'assets/branding/march8_cards/march8_card_ropes.png';
+    }
+    if (key == 'день пп') {
+      return 'assets/branding/march8_cards/march8_card_pp_day.png';
+    }
+    if (key == 'случайный жопный день') {
+      return 'assets/branding/march8_cards/march8_card_random_glute_day.png';
+    }
+    if (key == 'железные браслеты') {
+      return 'assets/branding/march8_cards/march8_card_iron_bracelets.png';
+    }
+    return null;
   }
 
   _PrizeMeta _metaForPrize(String title) => _prizeMetaByTitle(title);
@@ -716,7 +691,7 @@ class _ContestsScreenState extends State<ContestsScreen>
     setState(() {
       _tarotStarted = true;
       _tarotCards = List<_PrizeItem?>.filled(_prizes.length, null);
-      _mar8TarotImageDeck = _buildMar8TarotImageDeck(_prizes.length);
+
       _currentPrize = null;
       _selectedIndex = -1;
     });
@@ -726,7 +701,7 @@ class _ContestsScreenState extends State<ContestsScreen>
     if (!_tarotStarted || _spinning || _isFinalized) return;
     setState(() {
       _tarotCards = List<_PrizeItem?>.filled(_prizes.length, null);
-      _mar8TarotImageDeck = _buildMar8TarotImageDeck(_prizes.length);
+
       _currentPrize = null;
       _selectedIndex = -1;
     });
@@ -1091,10 +1066,8 @@ class _ContestsScreenState extends State<ContestsScreen>
                             ? () => _pickTarotCard(i)
                             : null;
 
-                        final imagePath =
-                            _selectedContest == _ContestType.mar8 &&
-                                i < _mar8TarotImageDeck.length
-                            ? _mar8TarotImageDeck[i]
+                        final imagePath = _selectedContest == _ContestType.mar8
+                            ? _imagePathForPrize(card?.title)
                             : null;
 
                         return TweenAnimationBuilder<double>(
