@@ -115,6 +115,20 @@ class _ContestsScreenState extends State<ContestsScreen>
   static const AssetImage _mar8TarotCoverImage = AssetImage(
     'assets/branding/march8_tarot_cover.jpg',
   );
+  static const Map<String, String> _mar8TarotCardImagesByTitle = {
+    '🏆 суперприз: абонемент в зал':
+        'assets/branding/march8_cards/march8_card_superprize.png',
+    'счастливый день': 'assets/branding/march8_cards/march8_card_lucky_day.png',
+    'ревёрс': 'assets/branding/march8_cards/march8_card_reverse.png',
+    'любая вкусняшка': 'assets/branding/march8_cards/march8_card_treat.png',
+    '+2 шанса': 'assets/branding/march8_cards/march8_card_plus2.png',
+    'канатики': 'assets/branding/march8_cards/march8_card_ropes.png',
+    'день пп': 'assets/branding/march8_cards/march8_card_pp_day.png',
+    'случайный жопный день':
+        'assets/branding/march8_cards/march8_card_random_glute_day.png',
+    'железные браслеты':
+        'assets/branding/march8_cards/march8_card_iron_bracelets.png',
+  };
 
   late final AppDb _db;
   late final AnimationController _spinController;
@@ -196,10 +210,15 @@ class _ContestsScreenState extends State<ContestsScreen>
       vsync: this,
       duration: const Duration(milliseconds: 4200),
     );
-    precacheImage(_mar8TarotCoverImage, context).then((_) {
-      if (!mounted) return;
-      setState(() => _tarotCoverReady = true);
-    });
+    precacheImage(_mar8TarotCoverImage, context)
+        .then((_) {
+          if (!mounted) return;
+          setState(() => _tarotCoverReady = true);
+        })
+        .catchError((_) {
+          if (!mounted) return;
+          setState(() => _tarotCoverReady = false);
+        });
     _load();
   }
 
@@ -392,6 +411,8 @@ class _ContestsScreenState extends State<ContestsScreen>
     required double rotationY,
   }) {
     final colors = Theme.of(context).colorScheme;
+    final cardImagePath =
+        _mar8TarotCardImagesByTitle[card?.title.trim().toLowerCase() ?? ''];
 
     return Transform(
       alignment: Alignment.center,
@@ -479,21 +500,26 @@ class _ContestsScreenState extends State<ContestsScreen>
                   child: isFrontVisible
                       ? Padding(
                           padding: const EdgeInsets.all(10),
-                          child: Text(
-                            card?.title ?? '',
-                            textAlign: TextAlign.center,
-                            style: Theme.of(context).textTheme.titleSmall
-                                ?.copyWith(
-                                  color: Colors.white,
-                                  fontWeight: FontWeight.w600,
-                                  shadows: [
-                                    Shadow(
-                                      color: Colors.black.withOpacity(0.28),
-                                      blurRadius: 8,
-                                    ),
-                                  ],
+                          child: cardImagePath == null
+                              ? _buildTarotFrontTitle(
+                                  context,
+                                  card?.title ?? '',
+                                )
+                              : ClipRRect(
+                                  borderRadius: BorderRadius.circular(12),
+                                  child: Image.asset(
+                                    cardImagePath,
+                                    fit: BoxFit.cover,
+                                    width: double.infinity,
+                                    height: double.infinity,
+                                    filterQuality: FilterQuality.medium,
+                                    errorBuilder: (_, _, _) =>
+                                        _buildTarotFrontTitle(
+                                          context,
+                                          card?.title ?? '',
+                                        ),
+                                  ),
                                 ),
-                          ),
                         )
                       : const SizedBox.expand(),
                 ),
@@ -511,6 +537,22 @@ class _ContestsScreenState extends State<ContestsScreen>
                 ),
             ],
           ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildTarotFrontTitle(BuildContext context, String title) {
+    return Center(
+      child: Text(
+        title,
+        textAlign: TextAlign.center,
+        style: Theme.of(context).textTheme.titleSmall?.copyWith(
+          color: Colors.white,
+          fontWeight: FontWeight.w600,
+          shadows: [
+            Shadow(color: Colors.black.withOpacity(0.28), blurRadius: 8),
+          ],
         ),
       ),
     );
