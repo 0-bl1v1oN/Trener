@@ -115,20 +115,17 @@ class _ContestsScreenState extends State<ContestsScreen>
   static const AssetImage _mar8TarotCoverImage = AssetImage(
     'assets/branding/march8_tarot_cover.jpg',
   );
-  static const Map<String, String> _mar8TarotCardImagesByTitle = {
-    '🏆 суперприз: абонемент в зал':
-        'assets/branding/march8_cards/march8_card_superprize.png',
-    'счастливый день': 'assets/branding/march8_cards/march8_card_lucky_day.png',
-    'ревёрс': 'assets/branding/march8_cards/march8_card_reverse.png',
-    'любая вкусняшка': 'assets/branding/march8_cards/march8_card_treat.png',
-    '+2 шанса': 'assets/branding/march8_cards/march8_card_plus2.png',
-    'канатики': 'assets/branding/march8_cards/march8_card_ropes.png',
-    'день пп': 'assets/branding/march8_cards/march8_card_pp_day.png',
-    'случайный жопный день':
-        'assets/branding/march8_cards/march8_card_random_glute_day.png',
-    'железные браслеты':
-        'assets/branding/march8_cards/march8_card_iron_bracelets.png',
-  };
+  static const List<String> _mar8TarotCardImagePaths = [
+    'assets/branding/march8_cards/march8_card_superprize.png',
+    'assets/branding/march8_cards/march8_card_lucky_day.png',
+    'assets/branding/march8_cards/march8_card_reverse.png',
+    'assets/branding/march8_cards/march8_card_treat.png',
+    'assets/branding/march8_cards/march8_card_plus2.png',
+    'assets/branding/march8_cards/march8_card_ropes.png',
+    'assets/branding/march8_cards/march8_card_pp_day.png',
+    'assets/branding/march8_cards/march8_card_random_glute_day.png',
+    'assets/branding/march8_cards/march8_card_iron_bracelets.png',
+  ];
 
   late final AppDb _db;
   late final AnimationController _spinController;
@@ -145,6 +142,7 @@ class _ContestsScreenState extends State<ContestsScreen>
   _ContestType _selectedContest = _ContestType.feb23;
   bool _tarotStarted = false;
   List<_PrizeItem?> _tarotCards = const [];
+  List<String> _mar8TarotImageDeck = const [];
   bool _spinning = false;
   bool _initialized = false;
   bool _tarotCoverReady = false;
@@ -308,6 +306,7 @@ class _ContestsScreenState extends State<ContestsScreen>
       _currentPrize = entry?.currentPrize;
       _selectedIndex = _indexForPrize(entry?.currentPrize);
       _tarotCards = List<_PrizeItem?>.from(prizes)..shuffle(_rng);
+      _mar8TarotImageDeck = _buildMar8TarotImageDeck(prizes.length);
       _tarotStarted = false;
       _loading = false;
     });
@@ -409,10 +408,9 @@ class _ContestsScreenState extends State<ContestsScreen>
     required bool isOpened,
     required VoidCallback? onTap,
     required double rotationY,
+    String? imagePath,
   }) {
     final colors = Theme.of(context).colorScheme;
-    final cardImagePath =
-        _mar8TarotCardImagesByTitle[card?.title.trim().toLowerCase() ?? ''];
 
     return Transform(
       alignment: Alignment.center,
@@ -500,7 +498,7 @@ class _ContestsScreenState extends State<ContestsScreen>
                   child: isFrontVisible
                       ? Padding(
                           padding: const EdgeInsets.all(10),
-                          child: cardImagePath == null
+                          child: imagePath == null
                               ? _buildTarotFrontTitle(
                                   context,
                                   card?.title ?? '',
@@ -508,7 +506,7 @@ class _ContestsScreenState extends State<ContestsScreen>
                               : ClipRRect(
                                   borderRadius: BorderRadius.circular(12),
                                   child: Image.asset(
-                                    cardImagePath,
+                                    imagePath,
                                     fit: BoxFit.cover,
                                     width: double.infinity,
                                     height: double.infinity,
@@ -556,6 +554,20 @@ class _ContestsScreenState extends State<ContestsScreen>
         ),
       ),
     );
+  }
+
+  List<String> _buildMar8TarotImageDeck(int cardCount) {
+    if (cardCount <= 0) return const [];
+    final pool = List<String>.from(_mar8TarotCardImagePaths)..shuffle(_rng);
+    if (pool.length >= cardCount) {
+      return pool.take(cardCount).toList(growable: false);
+    }
+
+    final result = <String>[];
+    while (result.length < cardCount) {
+      result.addAll(pool);
+    }
+    return result.take(cardCount).toList(growable: false);
   }
 
   _PrizeMeta _metaForPrize(String title) => _prizeMetaByTitle(title);
@@ -704,6 +716,7 @@ class _ContestsScreenState extends State<ContestsScreen>
     setState(() {
       _tarotStarted = true;
       _tarotCards = List<_PrizeItem?>.filled(_prizes.length, null);
+      _mar8TarotImageDeck = _buildMar8TarotImageDeck(_prizes.length);
       _currentPrize = null;
       _selectedIndex = -1;
     });
@@ -713,6 +726,7 @@ class _ContestsScreenState extends State<ContestsScreen>
     if (!_tarotStarted || _spinning || _isFinalized) return;
     setState(() {
       _tarotCards = List<_PrizeItem?>.filled(_prizes.length, null);
+      _mar8TarotImageDeck = _buildMar8TarotImageDeck(_prizes.length);
       _currentPrize = null;
       _selectedIndex = -1;
     });
@@ -1077,6 +1091,12 @@ class _ContestsScreenState extends State<ContestsScreen>
                             ? () => _pickTarotCard(i)
                             : null;
 
+                        final imagePath =
+                            _selectedContest == _ContestType.mar8 &&
+                                i < _mar8TarotImageDeck.length
+                            ? _mar8TarotImageDeck[i]
+                            : null;
+
                         return TweenAnimationBuilder<double>(
                           tween: Tween<double>(begin: 0, end: showFace ? 1 : 0),
                           duration: !_tarotStarted && showFace
@@ -1093,6 +1113,7 @@ class _ContestsScreenState extends State<ContestsScreen>
                               isOpened: isOpened,
                               onTap: onTap,
                               rotationY: angle,
+                              imagePath: imagePath,
                             );
                           },
                         );
