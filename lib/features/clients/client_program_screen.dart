@@ -1,7 +1,11 @@
 // lib/features/clients/client_program_screen.dart
 
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
+import 'package:path_provider/path_provider.dart';
+import 'package:share_plus/share_plus.dart';
 
 import '../../app/app_db_scope.dart';
 import '../../db/app_db.dart';
@@ -21,6 +25,7 @@ class _ClientProgramScreenState extends State<ClientProgramScreen> {
   late Future<_ProgramData> _future;
   bool _loaded = false;
   bool _didAutoScrollToLastDone = false;
+  bool _sharingReport = false;
   final ScrollController _programListController = ScrollController();
 
   @override
@@ -54,6 +59,269 @@ class _ClientProgramScreenState extends State<ClientProgramScreen> {
     final db = AppDbScope.of(context);
     await db.shiftClientProgramDays(clientId: widget.clientId, delta: delta);
     await _reload();
+  }
+
+  Future<void> _shareReport(_ProgramData data, DateTime chosenDay) async {
+    if (_sharingReport) return;
+
+    setState(() => _sharingReport = true);
+
+    try {
+      final db = AppDbScope.of(context);
+      final client = await db.getClientById(widget.clientId);
+      final rows = <_ReportRow>[];
+
+      for (final slot in data.overview.slots) {
+        final details = await db.getWorkoutDetailsForClientProgramSlot(
+          clientId: widget.clientId,
+          absoluteIndex: slot.absoluteIndex,
+          templateIdx: slot.templateIdx,
+        );
+
+        final exercises = details.$3;
+        if (exercises.isEmpty) continue;
+
+        final dayLabel =
+            'День ${slot.slotIndex} • ${_templateTitleForIdx(slot.templateIdx, data.gender)}';
+
+        for (final ex in exercises) {
+          rows.add(
+            _ReportRow(
+              dayLabel: dayLabel,
+              exerciseName: ex.name,
+              weightKg: ex.lastWeightKg,
+              reps: ex.lastReps,
+            ),
+          );
+        }
+      }
+
+      if (rows.isEmpty) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Для отчёта пока нет данных.')),
+        );
+        return;
+      }
+
+      final reportHtml = _buildReportHtml(
+        rows: rows,
+        clientName: client?.name ?? 'Клиент',
+        generatedAt: DateTime.now(),
+        chosenDay: chosenDay,
+      );
+
+      final tempDir = await getTemporaryDirectory();
+      final stamp = DateFormat('yyyyMMdd_HHmmss').format(DateTime.now());
+      final fileName = 'progress_report_${widget.clientId}_$stamp.html';
+      final file = File('${tempDir.path}/$fileName');
+      await file.writeAsString(reportHtml);
+
+      await Share.shareXFiles(
+        [XFile(file.path, mimeType: 'text/html')],
+        subject: 'Отчёт по прогрессу: ${client?.name ?? 'Клиент'}',
+        text: 'Отчёт по прогрессу клиента во вложении (HTML-таблица).',
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Не удалось сформировать отчёт: $e')),
+      );
+    } finally {
+      if (mounted) {
+        setState(() => _sharingReport = false);
+      }
+    }
+  }
+
+  String _buildReportHtml({
+    required List<_ReportRow> rows,
+    required String clientName,
+    required DateTime generatedAt,
+    required DateTime chosenDay,
+  }) {
+    final generated = DateFormat('dd.MM.yyyy HH:mm', 'ru').format(generatedAt);
+    final activeDay = DateFormat('dd.MM.yyyy', 'ru').format(chosenDay);
+    final uniqueDays = rows.map((r) => r.dayLabel).toSet().length;
+    final filledWeights = rows.where((r) => r.weightKg != null).length;
+    final filledReps = rows.where((r) => r.reps != null).length;
+
+    final bodyRows = rows
+        .map(
+          (row) =>
+              '''
+            <tr>
+              <td><span class="pill">${_escapeHtml(row.dayLabel)}</span></td>
+              <td class="exercise">${_escapeHtml(row.exerciseName)}</td>
+              <td class="num">${row.weightKg == null ? '—' : _fmtWeight(row.weightKg!)}</td>
+              <td class="num">${row.reps?.toString() ?? '—'}</td>
+            </tr>
+          ''',
+        )
+        .join();
+
+    return '''
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Отчёт по прогрессу</title>
+  <style>
+    :root {
+      --bg: #f5f7fb;
+      --text: #172033;
+      --muted: #60708f;
+      --line: #dbe3f1;
+      --head: #eef3ff;
+      --card: #ffffff;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--text);
+      font-family: Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Arial, sans-serif;
+      line-height: 1.4;
+      padding: 20px;
+    }
+    .wrap { max-width: 1080px; margin: 0 auto; }
+    .header {
+      background: linear-gradient(135deg, #eef2ff, #ffffff);
+      border: 1px solid var(--line);
+      border-radius: 18px;
+      padding: 20px;
+      margin-bottom: 14px;
+      box-shadow: 0 6px 22px rgba(23, 32, 51, 0.06);
+    }
+    h1 { margin: 0 0 8px; font-size: 26px; line-height: 1.2; }
+    .meta { color: var(--muted); font-size: 14px; }
+    .stats {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 10px;
+      margin-bottom: 14px;
+    }
+    .stat {
+      background: var(--card);
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      padding: 12px;
+    }
+    .stat-label { color: var(--muted); font-size: 12px; margin-bottom: 4px; }
+    .stat-value { font-size: 22px; font-weight: 700; }
+    .table-wrap {
+      background: var(--card);
+      border: 1px solid var(--line);
+      border-radius: 18px;
+      overflow: hidden;
+      box-shadow: 0 6px 22px rgba(23, 32, 51, 0.04);
+    }
+    table { width: 100%; border-collapse: collapse; font-size: 14px; }
+    thead th {
+      background: var(--head);
+      padding: 12px 10px;
+      text-align: left;
+      border-bottom: 1px solid var(--line);
+    }
+    tbody td {
+      padding: 11px 10px;
+      border-bottom: 1px solid #edf2fa;
+      vertical-align: top;
+    }
+    tbody tr:nth-child(even) { background: #fbfcff; }
+    .pill {
+      display: inline-block;
+      border-radius: 999px;
+      padding: 4px 9px;
+      background: #eef2ff;
+      color: #3e3aa8;
+      font-weight: 600;
+      font-size: 12px;
+    }
+    .exercise { font-weight: 600; }
+    .num { white-space: nowrap; font-variant-numeric: tabular-nums; }
+    .footer {
+      margin-top: 12px;
+      color: var(--muted);
+      font-size: 12px;
+      text-align: right;
+    }
+    @media (max-width: 760px) {
+      body { padding: 12px; }
+      .header { padding: 16px; }
+      .stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      table { font-size: 13px; }
+      thead th, tbody td { padding: 9px 8px; }
+    }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <section class="header">
+      <h1>Отчёт по прогрессу</h1>
+      <div class="meta">
+        Клиент: <strong>${_escapeHtml(clientName)}</strong><br>
+        Сформирован: $generated<br>
+        Активная дата в программе: $activeDay
+      </div>
+    </section>
+
+    <section class="stats">
+      <div class="stat">
+        <div class="stat-label">Всего записей</div>
+        <div class="stat-value">${rows.length}</div>
+      </div>
+      <div class="stat">
+        <div class="stat-label">Дней в отчёте</div>
+        <div class="stat-value">$uniqueDays</div>
+      </div>
+      <div class="stat">
+        <div class="stat-label">Заполнено весов</div>
+        <div class="stat-value">$filledWeights</div>
+      </div>
+      <div class="stat">
+        <div class="stat-label">Заполнено повторов</div>
+        <div class="stat-value">$filledReps</div>
+      </div>
+    </section>
+
+    <section class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>День</th>
+            <th>Упражнение</th>
+            <th>Вес, кг</th>
+            <th>Повторы</th>
+          </tr>
+        </thead>
+        <tbody>
+          $bodyRows
+        </tbody>
+      </table>
+    </section>
+
+    <div class="footer">Сформировано в Trener</div>
+  </div>
+
+</body>
+</html>
+''';
+  }
+
+  String _fmtWeight(double value) {
+    if (value == value.roundToDouble()) return value.toStringAsFixed(0);
+    return value.toStringAsFixed(1);
+  }
+
+  String _escapeHtml(String input) {
+    return input
+        .replaceAll('&', '&amp;')
+        .replaceAll('<', '&lt;')
+        .replaceAll('>', '&gt;')
+        .replaceAll('"', '&quot;')
+        .replaceAll("'", '&#39;');
   }
 
   @override
@@ -402,6 +670,22 @@ class _ClientProgramScreenState extends State<ClientProgramScreen> {
                           icon: const Icon(Icons.keyboard_double_arrow_right),
                           label: const Text('День +1'),
                         ),
+                        const SizedBox(width: 8),
+                        FilledButton.tonalIcon(
+                          onPressed: _sharingReport
+                              ? null
+                              : () => _shareReport(data, chosenDay),
+                          icon: _sharingReport
+                              ? const SizedBox(
+                                  width: 16,
+                                  height: 16,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                  ),
+                                )
+                              : const Icon(Icons.ios_share),
+                          label: const Text('Отчёт'),
+                        ),
                       ],
                     ),
                   ],
@@ -516,6 +800,20 @@ class _ClientProgramScreenState extends State<ClientProgramScreen> {
       ),
     );
   }
+}
+
+class _ReportRow {
+  final String dayLabel;
+  final String exerciseName;
+  final double? weightKg;
+  final int? reps;
+
+  const _ReportRow({
+    required this.dayLabel,
+    required this.exerciseName,
+    required this.weightKg,
+    required this.reps,
+  });
 }
 
 class WorkoutPreviewSheet extends StatefulWidget {
