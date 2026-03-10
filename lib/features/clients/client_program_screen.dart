@@ -856,6 +856,17 @@ class _WorkoutPreviewSheetState extends State<WorkoutPreviewSheet> {
     });
   }
 
+  Future<void> _patchExercises(
+    List<WorkoutExerciseVm> Function(List<WorkoutExerciseVm> current) patch,
+  ) async {
+    final current = await _future;
+    if (!mounted) return;
+    final snapshot = List<WorkoutExerciseVm>.from(current);
+    setState(() {
+      _future = Future.value(patch(snapshot));
+    });
+  }
+
   Future<void> _renameExercise(WorkoutExerciseVm e) async {
     final ctrl = TextEditingController(text: e.name);
     final next = await showDialog<String>(
@@ -891,8 +902,22 @@ class _WorkoutPreviewSheetState extends State<WorkoutPreviewSheet> {
       templateExerciseId: e.templateExerciseId,
       newName: next,
     );
-    if (!mounted) return;
-    await _refresh();
+    await _patchExercises((current) {
+      return current
+          .map((item) {
+            if (item.templateExerciseId != e.templateExerciseId) return item;
+            return WorkoutExerciseVm(
+              templateExerciseId: item.templateExerciseId,
+              templateId: item.templateId,
+              orderIndex: item.orderIndex,
+              name: next,
+              lastWeightKg: item.lastWeightKg,
+              lastReps: item.lastReps,
+              supersetGroup: item.supersetGroup,
+            );
+          })
+          .toList(growable: false);
+    });
   }
 
   Future<void> _toggleSuperset(WorkoutExerciseVm e) async {
@@ -900,7 +925,7 @@ class _WorkoutPreviewSheetState extends State<WorkoutPreviewSheet> {
     await db.toggleClientSupersetWithNext(
       clientId: widget.clientId,
       templateId: e.templateId,
-      orderIndex: e.orderIndex,
+      templateExerciseId: e.templateExerciseId,
     );
     if (!mounted) return;
     await _refresh();

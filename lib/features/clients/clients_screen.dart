@@ -14,7 +14,7 @@ class ClientsScreen extends StatefulWidget {
 }
 
 class _ClientsScreenState extends State<ClientsScreen> {
-  late final AppDb db;
+  late AppDb db;
 
   @override
   void didChangeDependencies() {

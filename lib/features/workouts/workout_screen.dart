@@ -53,11 +53,16 @@ class _WorkoutScreenState extends State<WorkoutScreen> {
   Timer? _draftAutosaveDebounce;
   bool _draftAutosaveInFlight = false;
   List<WorkoutExerciseVm> _latestExercises = const [];
+  bool _screenLoaded = false;
+  late Future<_WorkoutScreenData> _screenFuture;
 
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
     db = AppDbScope.of(context);
+    if (_screenLoaded) return;
+    _screenLoaded = true;
+    _screenFuture = _loadScreenData();
   }
 
   @override
@@ -263,10 +268,10 @@ class _WorkoutScreenState extends State<WorkoutScreen> {
     await db.toggleClientSupersetWithNext(
       clientId: widget.clientId,
       templateId: e.templateId,
-      orderIndex: e.orderIndex,
+      templateExerciseId: e.templateExerciseId,
     );
     if (!mounted) return;
-    setState(() {});
+    await _reloadScreenData();
     _scheduleDraftAutosave();
   }
 
@@ -419,7 +424,7 @@ class _WorkoutScreenState extends State<WorkoutScreen> {
       name: name,
     );
     if (!mounted) return;
-    setState(() {});
+    await _reloadScreenData();
     _scheduleDraftAutosave();
   }
 
@@ -451,7 +456,7 @@ class _WorkoutScreenState extends State<WorkoutScreen> {
       templateExerciseId: e.templateExerciseId,
     );
     if (!mounted) return;
-    setState(() {});
+    await _reloadScreenData();
     _scheduleDraftAutosave();
   }
 
@@ -503,14 +508,19 @@ class _WorkoutScreenState extends State<WorkoutScreen> {
     );
   }
 
+  Future<void> _reloadScreenData() async {
+    if (!mounted) return;
+    setState(() {
+      _screenFuture = _loadScreenData();
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
-    final screenFuture = _loadScreenData();
-
     return Scaffold(
       appBar: AppBar(
         title: FutureBuilder<_WorkoutScreenData>(
-          future: screenFuture,
+          future: _screenFuture,
           builder: (context, snap) => Text(
             snap.data?.clientName ?? 'Тренировка',
             maxLines: 1,
@@ -519,7 +529,7 @@ class _WorkoutScreenState extends State<WorkoutScreen> {
         ),
       ),
       body: FutureBuilder<_WorkoutScreenData>(
-        future: screenFuture,
+        future: _screenFuture,
 
         builder: (context, snap) {
           if (snap.connectionState == ConnectionState.waiting) {

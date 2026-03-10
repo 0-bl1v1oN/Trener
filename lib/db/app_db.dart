@@ -3367,31 +3367,37 @@ class AppDb extends _$AppDb {
   Future<void> toggleClientSupersetWithNext({
     required String clientId,
     required int templateId,
-    required int orderIndex,
+    required int templateExerciseId,
   }) async {
     await transaction(() async {
-      Future<WorkoutTemplateExercise?> _exAt(int idx) {
-        return (select(workoutTemplateExercises)..where(
-              (e) => e.templateId.equals(templateId) & e.orderIndex.equals(idx),
-            ))
-            .getSingleOrNull();
-      }
+      final exercises = await _getEffectiveExercisesForClientTemplate(
+        clientId: clientId,
+        templateId: templateId,
+      );
+      if (exercises.isEmpty) return;
 
-      Future<ClientTemplateExerciseOverride?> _ovFor(int templateExerciseId) {
+      final currentIndex = exercises.indexWhere(
+        (exercise) => exercise.id == templateExerciseId,
+      );
+      if (currentIndex < 0) return;
+
+      final current = exercises[currentIndex];
+
+      Future<ClientTemplateExerciseOverride?> _ovFor(int effectiveExerciseId) {
         return (select(clientTemplateExerciseOverrides)..where(
               (o) =>
                   o.clientId.equals(clientId) &
-                  o.templateExerciseId.equals(templateExerciseId),
+                  o.templateExerciseId.equals(effectiveExerciseId),
             ))
             .getSingleOrNull();
       }
 
-      Future<void> _setGroup(int templateExerciseId, int? group) async {
+      Future<void> _setGroup(int effectiveExerciseId, int? group) async {
         final existing =
             await (select(clientTemplateExerciseOverrides)..where(
                   (o) =>
                       o.clientId.equals(clientId) &
-                      o.templateExerciseId.equals(templateExerciseId),
+                      o.templateExerciseId.equals(effectiveExerciseId),
                 ))
                 .getSingleOrNull();
 
@@ -3399,50 +3405,44 @@ class AppDb extends _$AppDb {
           ClientTemplateExerciseOverridesCompanion(
             id: existing == null ? const Value.absent() : Value(existing.id),
             clientId: Value(clientId),
-            templateExerciseId: Value(templateExerciseId),
+            templateExerciseId: Value(effectiveExerciseId),
             supersetGroup: Value(group),
           ),
         );
       }
 
-      final a = await _exAt(orderIndex);
-      if (a == null) return;
-
-      final oa = await _ovFor(a.id);
+      final oa = await _ovFor(current.id);
       final ga = oa?.supersetGroup;
 
       // ✅ Если упражнение уже в суперсете — снимаем пару (слева или справа), где совпадает group
       if (ga != null) {
-        // пробуем справа
-        final b = await _exAt(orderIndex + 1);
-        if (b != null) {
-          final ob = await _ovFor(b.id);
-          if (ob?.supersetGroup == ga) {
-            await _setGroup(a.id, null);
-            await _setGroup(b.id, null);
+        if (currentIndex + 1 < exercises.length) {
+          final right = exercises[currentIndex + 1];
+          final rightOv = await _ovFor(right.id);
+          if (rightOv?.supersetGroup == ga) {
+            await _setGroup(current.id, null);
+            await _setGroup(right.id, null);
             return;
           }
         }
 
-        // пробуем слева
-        final p = await _exAt(orderIndex - 1);
-        if (p != null) {
-          final op = await _ovFor(p.id);
-          if (op?.supersetGroup == ga) {
-            await _setGroup(p.id, null);
-            await _setGroup(a.id, null);
+        if (currentIndex - 1 >= 0) {
+          final left = exercises[currentIndex - 1];
+          final leftOv = await _ovFor(left.id);
+          if (leftOv?.supersetGroup == ga) {
+            await _setGroup(left.id, null);
+            await _setGroup(current.id, null);
             return;
           }
         }
 
-        // если состояние сломано — чистим хотя бы текущий
-        await _setGroup(a.id, null);
+        await _setGroup(current.id, null);
         return;
       }
 
-      // ✅ Если суперсета нет — создаём с правым соседом
-      final b = await _exAt(orderIndex + 1);
-      if (b == null) return;
+      // Если суперсета нет — создаём пару с правым соседом в текущем списке.
+      if (currentIndex + 1 >= exercises.length) return;
+      final right = exercises[currentIndex + 1];
 
       final maxRow = await customSelect(
         'SELECT MAX(superset_group) AS m FROM client_template_exercise_overrides WHERE client_id = ?',
@@ -3452,8 +3452,8 @@ class AppDb extends _$AppDb {
 
       final nextGroup = ((maxRow.data['m'] as int?) ?? 0) + 1;
 
-      await _setGroup(a.id, nextGroup);
-      await _setGroup(b.id, nextGroup);
+      await _setGroup(current.id, nextGroup);
+      await _setGroup(right.id, nextGroup);
     });
   }
 
