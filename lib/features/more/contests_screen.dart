@@ -554,14 +554,27 @@ class _ContestsScreenState extends State<ContestsScreen>
     return '$d.$m.$y';
   }
 
+  bool _isSuperPrizeBlocked(_PrizeItem prize) {
+    if (_selectedContest != _ContestType.mar8) return false;
+    return prize.title.trim().toLowerCase().contains('суперприз');
+  }
+
+  double _effectivePrizeWeight(_PrizeItem prize) {
+    if (_isSuperPrizeBlocked(prize)) return 0;
+    return prize.weight;
+  }
+
   int _pickWeightedIndex() {
-    final total = _prizes.fold<double>(0, (s, p) => s + p.weight);
+    final total = _prizes.fold<double>(
+      0,
+      (s, p) => s + _effectivePrizeWeight(p),
+    );
     if (_prizes.isEmpty || total <= 0) return 0;
 
     final r = _rng.nextDouble() * total;
     var acc = 0.0;
     for (var i = 0; i < _prizes.length; i++) {
-      acc += _prizes[i].weight;
+      acc += _effectivePrizeWeight(_prizes[i]);
       if (r <= acc) return i;
     }
     return _prizes.length - 1;
@@ -570,13 +583,16 @@ class _ContestsScreenState extends State<ContestsScreen>
   List<({double start, double sweep})> _weightedSectors() {
     if (_prizes.isEmpty) return const [];
 
-    final rawTotal = _prizes.fold<double>(0, (s, p) => s + p.weight);
+    final rawTotal = _prizes.fold<double>(
+      0,
+      (s, p) => s + _effectivePrizeWeight(p),
+    );
     final safeTotal = rawTotal > 0 ? rawTotal : _prizes.length.toDouble();
 
     var current = -pi / 2;
     final out = <({double start, double sweep})>[];
     for (final p in _prizes) {
-      final safeWeight = rawTotal > 0 ? p.weight : 1.0;
+      final safeWeight = rawTotal > 0 ? _effectivePrizeWeight(p) : 1.0;
       final sweep = (safeWeight / safeTotal) * 2 * pi;
       out.add((start: current, sweep: sweep));
       current += sweep;
