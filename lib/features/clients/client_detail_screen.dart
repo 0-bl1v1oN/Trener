@@ -15,7 +15,7 @@ class ClientDetailScreen extends StatefulWidget {
 }
 
 class _ClientDetailScreenState extends State<ClientDetailScreen> {
-  late final AppDb db;
+  late AppDb db;
 
   final _nameController = TextEditingController();
 

@@ -3473,13 +3473,9 @@ class AppDb extends _$AppDb {
       }
 
       Future<void> _setGroup(int exId, int? group) async {
-        await (update(
-          workoutTemplateExercises,
-        )..where((e) => e.id.equals(exId))).write(
-          WorkoutTemplateExercisesCompanion(
-            groupId: group == null ? const Value.absent() : Value(group),
-          ),
-        );
+        await (update(workoutTemplateExercises)
+              ..where((e) => e.id.equals(exId)))
+            .write(WorkoutTemplateExercisesCompanion(groupId: Value(group)));
       }
 
       final a = await _exAt(orderIndex);
