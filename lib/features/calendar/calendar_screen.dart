@@ -1840,6 +1840,7 @@ class _CalendarScreenState extends State<CalendarScreen>
         planEnd: planEnd == null ? const Value.absent() : Value(planEnd),
       ),
     );
+    await db.initializeSupersetsForNewClient(clientId);
 
     if (useSchedule) {
       await _createSchedule(

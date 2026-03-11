@@ -1089,6 +1089,48 @@ class AppDb extends _$AppDb {
   Future<int> deleteClientById(String id) =>
       (delete(clients)..where((t) => t.id.equals(id))).go();
 
+  Future<void> initializeSupersetsForNewClient(String clientId) async {
+    await transaction(() async {
+      final existingOverrides =
+          await (select(clientTemplateExerciseOverrides)
+                ..where((o) => o.clientId.equals(clientId))
+                ..limit(1))
+              .getSingleOrNull();
+      if (existingOverrides != null) return;
+
+      final client = await getClientById(clientId);
+      if (client == null) return;
+
+      final track = _programTrackByClient(client);
+      if (track != 'М' && track != 'Ж') return;
+
+      final rows = await customSelect(
+        'SELECT e.id AS exercise_id, e.group_id AS group_id '
+        'FROM ${workoutTemplateExercises.actualTableName} e '
+        'INNER JOIN ${workoutTemplates.actualTableName} t '
+        'ON t.${workoutTemplates.id.name} = e.${workoutTemplateExercises.templateId.name} '
+        'WHERE t.${workoutTemplates.gender.name} = ? '
+        'AND e.${workoutTemplateExercises.groupId.name} IS NOT NULL',
+        variables: [Variable.withString(track)],
+        readsFrom: {workoutTemplateExercises, workoutTemplates},
+      ).get();
+
+      for (final row in rows) {
+        final exerciseId = (row.data['exercise_id'] as int?) ?? 0;
+        final groupId = row.data['group_id'] as int?;
+        if (exerciseId <= 0 || groupId == null) continue;
+
+        await into(clientTemplateExerciseOverrides).insertOnConflictUpdate(
+          ClientTemplateExerciseOverridesCompanion.insert(
+            clientId: clientId,
+            templateExerciseId: exerciseId,
+            supersetGroup: Value(groupId),
+          ),
+        );
+      }
+    });
+  }
+
   // --- Appointments ---
   Stream<List<AppointmentWithClient>> watchAppointmentsForDay(DateTime day) {
     final dayStart = DateTime(day.year, day.month, day.day);
@@ -3515,6 +3557,33 @@ class AppDb extends _$AppDb {
       await _setGroup(a.id, nextGroup);
       await _setGroup(b.id, nextGroup);
     });
+  }
+
+  Future<int> replaceTemplateExerciseNameByGender({
+    required String gender,
+    required String oldName,
+    required String newName,
+  }) async {
+    final from = oldName.trim();
+    final to = newName.trim();
+    if (from.isEmpty || to.isEmpty || from == to) return 0;
+
+    return customUpdate(
+      'UPDATE ${workoutTemplateExercises.actualTableName} '
+      'SET ${workoutTemplateExercises.name.name} = ? '
+      'WHERE ${workoutTemplateExercises.name.name} = ? '
+      'AND ${workoutTemplateExercises.templateId.name} IN ('
+      'SELECT ${workoutTemplates.id.name} '
+      'FROM ${workoutTemplates.actualTableName} '
+      'WHERE ${workoutTemplates.gender.name} = ?'
+      ')',
+      variables: [
+        Variable.withString(to),
+        Variable.withString(from),
+        Variable.withString(gender),
+      ],
+      updates: {workoutTemplateExercises, workoutTemplates},
+    );
   }
 
   Future<void> renameWorkoutTemplateExercise({

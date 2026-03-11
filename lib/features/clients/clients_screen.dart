@@ -208,6 +208,8 @@ class _ClientsScreenState extends State<ClientsScreen> {
       ),
     );
 
+    await db.initializeSupersetsForNewClient(id);
+
     if (!mounted) return;
     setState(() {});
   }

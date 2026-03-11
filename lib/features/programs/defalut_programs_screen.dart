@@ -164,6 +164,7 @@ class _EditableTemplateTileState extends State<_EditableTemplateTile> {
   final Map<int, Timer> _nameSaveDebounces = {};
   final Map<int, String> _persistedExerciseNames = {};
   final Set<int> _nameSaveInFlight = <int>{};
+  List<WorkoutTemplateExercise> _lastExercises = const [];
 
   @override
   void initState() {
@@ -306,6 +307,69 @@ class _EditableTemplateTileState extends State<_EditableTemplateTile> {
     }
   }
 
+  Future<void> _replaceExerciseNameByGender(WorkoutTemplateExercise e) async {
+    final fromController = TextEditingController(text: e.name);
+    final toController = TextEditingController();
+
+    final next = await showDialog<String>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Заменить упражнение'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TextField(
+              controller: fromController,
+              readOnly: true,
+              decoration: const InputDecoration(
+                labelText: 'Заменяем',
+                border: OutlineInputBorder(),
+              ),
+            ),
+            const SizedBox(height: 10),
+            TextField(
+              controller: toController,
+              autofocus: true,
+              decoration: const InputDecoration(
+                labelText: 'На что заменить',
+                border: OutlineInputBorder(),
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Отмена'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, toController.text.trim()),
+            child: const Text('Заменить'),
+          ),
+        ],
+      ),
+    );
+
+    final replacement = next?.trim() ?? '';
+    if (replacement.isEmpty || replacement == e.name.trim()) return;
+
+    final db = AppDbScope.of(context);
+    final changed = await db.replaceTemplateExerciseNameByGender(
+      gender: widget.template.gender,
+      oldName: e.name,
+      newName: replacement,
+    );
+
+    if (!mounted) return;
+    await _refreshExercises();
+    if (!mounted) return;
+
+    final scope = widget.template.gender == 'М' ? 'мужской' : 'женской';
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('Заменено: $changed (программа: $scope)')),
+    );
+  }
+
   Future<void> _toggleSuperset(WorkoutTemplateExercise e) async {
     final db = AppDbScope.of(context);
     await db.toggleTemplateSupersetWithNext(
@@ -437,16 +501,19 @@ class _EditableTemplateTileState extends State<_EditableTemplateTile> {
             FutureBuilder<List<WorkoutTemplateExercise>>(
               future: _exFuture,
               builder: (context, exSnap) {
-                if (exSnap.connectionState == ConnectionState.waiting) {
-                  return const Padding(
-                    padding: EdgeInsets.all(16),
-                    child: Center(child: CircularProgressIndicator()),
-                  );
+                final loaded = exSnap.data;
+                if (loaded != null) {
+                  _lastExercises = loaded;
                 }
-                final ex = exSnap.data ?? const <WorkoutTemplateExercise>[];
+                final ex = loaded ?? _lastExercises;
 
                 return Column(
                   children: [
+                    if (exSnap.connectionState == ConnectionState.waiting)
+                      const Padding(
+                        padding: EdgeInsets.only(bottom: 10),
+                        child: LinearProgressIndicator(minHeight: 2),
+                      ),
                     if (ex.isEmpty)
                       Container(
                         width: double.infinity,
@@ -521,6 +588,12 @@ class _EditableTemplateTileState extends State<_EditableTemplateTile> {
                                         ? 'Суперсет +'
                                         : 'Убрать суперсет',
                                   ),
+                                ),
+                                FilledButton.tonalIcon(
+                                  onPressed: () =>
+                                      _replaceExerciseNameByGender(e),
+                                  icon: const Icon(Icons.find_replace),
+                                  label: const Text('Заменить'),
                                 ),
                                 FilledButton.tonalIcon(
                                   onPressed: () => _deleteExercise(e),
