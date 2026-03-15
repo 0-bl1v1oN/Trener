@@ -15,11 +15,28 @@ class ClientsScreen extends StatefulWidget {
 
 class _ClientsScreenState extends State<ClientsScreen> {
   late AppDb db;
+  late Future<List<Client>> _clientsFuture;
+  bool _isDbBound = false;
+  final ScrollController _scrollController = ScrollController();
+  final TextEditingController _searchController = TextEditingController();
+  String _searchQuery = '';
 
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    db = AppDbScope.of(context);
+    final nextDb = AppDbScope.of(context);
+    if (!_isDbBound || !identical(db, nextDb)) {
+      db = nextDb;
+      _clientsFuture = db.getAllClients();
+      _isDbBound = true;
+    }
+  }
+
+  @override
+  void dispose() {
+    _scrollController.dispose();
+    _searchController.dispose();
+    super.dispose();
   }
 
   String _fmtDate(DateTime d) => DateFormat('dd.MM.yyyy', 'ru_RU').format(d);
@@ -211,7 +228,7 @@ class _ClientsScreenState extends State<ClientsScreen> {
     await db.initializeSupersetsForNewClient(id);
 
     if (!mounted) return;
-    setState(() {});
+    setState(() => _clientsFuture = db.getAllClients());
   }
 
   Future<void> _deleteClient(String id) async {
@@ -237,7 +254,7 @@ class _ClientsScreenState extends State<ClientsScreen> {
 
     await db.deleteClientById(id);
     if (!mounted) return;
-    setState(() {});
+    setState(() => _clientsFuture = db.getAllClients());
   }
 
   @override
@@ -257,7 +274,7 @@ class _ClientsScreenState extends State<ClientsScreen> {
           ],
         ),
         body: FutureBuilder<List<Client>>(
-          future: db.getAllClients(),
+          future: _clientsFuture,
           builder: (context, snap) {
             if (snap.connectionState != ConnectionState.done) {
               return const Center(child: CircularProgressIndicator());
@@ -294,7 +311,21 @@ class _ClientsScreenState extends State<ClientsScreen> {
             final maleCount = clients.where((c) => c.gender == 'М').length;
             final femaleCount = clients.where((c) => c.gender == 'Ж').length;
 
+            final normalizedQuery = _searchQuery.trim().toLowerCase();
+            final filteredClients = normalizedQuery.isEmpty
+                ? clients
+                : clients.where((c) {
+                    final name = c.name.toLowerCase();
+                    final gender = (c.gender ?? '').toLowerCase();
+                    final plan = (c.plan ?? '').toLowerCase();
+                    return name.contains(normalizedQuery) ||
+                        gender.contains(normalizedQuery) ||
+                        plan.contains(normalizedQuery);
+                  }).toList();
+
             return ListView(
+              key: const PageStorageKey<String>('clients-list'),
+              controller: _scrollController,
               padding: const EdgeInsets.fromLTRB(12, 12, 12, 20),
               children: [
                 _ClientsSummaryCard(
@@ -303,7 +334,18 @@ class _ClientsScreenState extends State<ClientsScreen> {
                   female: femaleCount,
                 ),
                 const SizedBox(height: 12),
-                ...clients.map((c) {
+                _ClientsSearchField(
+                  controller: _searchController,
+                  onChanged: (value) => setState(() => _searchQuery = value),
+                  onClear: () {
+                    _searchController.clear();
+                    setState(() => _searchQuery = '');
+                  },
+                ),
+                const SizedBox(height: 12),
+                if (filteredClients.isEmpty)
+                  _ClientsEmptySearchState(query: _searchQuery),
+                ...filteredClients.map((c) {
                   final dateText = (c.planStart != null && c.planEnd != null)
                       ? '${_fmtDate(c.planStart!)} – ${_fmtDate(c.planEnd!)}'
                       : null;
@@ -315,7 +357,7 @@ class _ClientsScreenState extends State<ClientsScreen> {
                       onTap: () async {
                         await context.push('/clients/${c.id}');
                         if (!mounted) return;
-                        setState(() {});
+                        setState(() => _clientsFuture = db.getAllClients());
                       },
                       onDelete: () => _deleteClient(c.id),
                     ),
@@ -325,6 +367,87 @@ class _ClientsScreenState extends State<ClientsScreen> {
             );
           },
         ),
+      ),
+    );
+  }
+}
+
+class _ClientsSearchField extends StatelessWidget {
+  const _ClientsSearchField({
+    required this.controller,
+    required this.onChanged,
+    required this.onClear,
+  });
+
+  final TextEditingController controller;
+  final ValueChanged<String> onChanged;
+  final VoidCallback onClear;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+
+    return TextField(
+      controller: controller,
+      onChanged: onChanged,
+      decoration: InputDecoration(
+        hintText: 'Поиск по клиентам',
+        prefixIcon: const Icon(Icons.search),
+        suffixIcon: controller.text.isEmpty
+            ? null
+            : IconButton(
+                onPressed: onClear,
+                icon: const Icon(Icons.close),
+                tooltip: 'Очистить',
+              ),
+        filled: true,
+        fillColor: colors.surface.withOpacity(0.8),
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(16),
+          borderSide: BorderSide(color: colors.outlineVariant.withOpacity(0.5)),
+        ),
+        enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(16),
+          borderSide: BorderSide(color: colors.outlineVariant.withOpacity(0.5)),
+        ),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(16),
+          borderSide: BorderSide(color: colors.primary.withOpacity(0.7)),
+        ),
+      ),
+    );
+  }
+}
+
+class _ClientsEmptySearchState extends StatelessWidget {
+  const _ClientsEmptySearchState({required this.query});
+
+  final String query;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 20),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(20),
+        color: colors.surface,
+        border: Border.all(color: colors.outlineVariant.withOpacity(0.5)),
+      ),
+      child: Row(
+        children: [
+          Icon(Icons.search_off_rounded, color: colors.onSurfaceVariant),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              'По запросу «${query.trim()}» ничего не найдено',
+              style: Theme.of(
+                context,
+              ).textTheme.bodyMedium?.copyWith(color: colors.onSurfaceVariant),
+            ),
+          ),
+        ],
       ),
     );
   }
