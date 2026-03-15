@@ -2,17 +2,13 @@ import { redirect } from 'next/navigation';
 
 import { readAuthPayload } from '@/lib/auth';
 import { db } from '@/lib/db';
-
-type DayJsonItem = {
-  dayNumber?: number;
-  title?: string;
-  exercises?: ExerciseJsonItem[];
-};
-
-type ExerciseJsonItem = {
-  name?: string;
-  weightKg?: number | null;
-};
+import {
+  buildExerciseAnalytics,
+  parseDaysJson,
+  summarizeTrends,
+  type DayJsonItem,
+  type SnapshotLike,
+} from '@/lib/progress';
 
 type SnapshotItem = {
   id: string;
@@ -32,7 +28,7 @@ export default async function ClientPage() {
     where: { userId: auth.userId },
     include: {
       snapshots: {
-        orderBy: { period: 'desc' },
+        orderBy: { createdAt: 'desc' },
       },
     },
   });
@@ -46,16 +42,48 @@ export default async function ClientPage() {
     );
   }
 
+  const snapshots = client.snapshots as SnapshotItem[];
+  const latest = snapshots[0] as SnapshotLike | undefined;
+  const prev = snapshots[1] as SnapshotLike | undefined;
+  const analytics = latest ? buildExerciseAnalytics(latest, prev) : [];
+  const summary = summarizeTrends(analytics);
+
   return (
     <main className="container">
       <h1>Мой прогресс</h1>
       <p>{client.fullName}</p>
 
-      {client.snapshots.length === 0 ? (
+      {latest && prev && (
+        <section className="card" style={{ marginBottom: 12 }}>
+          <h3>Аналитика: {latest.period} vs {prev.period}</h3>
+          <div className="row">
+            <div className="card" style={{ flex: 1 }}>
+              <strong>Прогрессия</strong>
+              <div>{summary.progression}</div>
+            </div>
+            <div className="card" style={{ flex: 1 }}>
+              <strong>Стагнация</strong>
+              <div>{summary.stagnation}</div>
+            </div>
+            <div className="card" style={{ flex: 1 }}>
+              <strong>Регрессия</strong>
+              <div>{summary.regression}</div>
+            </div>
+          </div>
+          {analytics.slice(0, 8).map((a) => (
+            <div key={a.exercise} style={{ marginTop: 6 }}>
+              • {a.exercise}: {a.previous.toFixed(1)} → {a.latest.toFixed(1)} кг ({a.delta > 0 ? '+' : ''}
+              {a.delta.toFixed(1)})
+            </div>
+          ))}
+        </section>
+      )}
+
+      {snapshots.length === 0 ? (
         <p>Нет данных за периоды.</p>
       ) : (
-        (client.snapshots as SnapshotItem[]).map((s: SnapshotItem) => {
-          const days: DayJsonItem[] = Array.isArray(s.daysJson) ? (s.daysJson as DayJsonItem[]) : [];
+        snapshots.map((s: SnapshotItem) => {
+          const days: DayJsonItem[] = parseDaysJson(s.daysJson);
           return (
             <section className="card" key={s.id} style={{ marginBottom: 12 }}>
               <h3>Период: {s.period}</h3>
@@ -63,17 +91,15 @@ export default async function ClientPage() {
               {days.map((d: DayJsonItem, idx: number) => {
                 const item = d as Record<string, unknown>;
                 const title = (item.title as string) ?? 'Тренировка';
-                const ex: ExerciseJsonItem[] = Array.isArray(item.exercises)
-                  ? (item.exercises as ExerciseJsonItem[])
-                  : [];
+                const ex = Array.isArray(item.exercises) ? item.exercises : [];
                 return (
                   <div key={idx} style={{ marginTop: 8 }}>
                     <strong>День {(item.dayNumber as number) ?? idx + 1} ({title})</strong>
-                    {ex.map((e: ExerciseJsonItem, exIdx: number) => {
-                      const row = e as Record<string, unknown>;
+                    {ex.map((row, exIdx: number) => {
+                      const e = row as Record<string, unknown>;
                       return (
                         <div key={exIdx}>
-                          • {(row.name as string) ?? 'Упражнение'} —{' '}
+                          • {(e.name as string) ?? 'Упражнение'} — {e.weightKg == null ? '—' : `${e.weightKg} кг`}
                           {row.weightKg == null ? '—' : `${row.weightKg} кг`}
                         </div>
                       );

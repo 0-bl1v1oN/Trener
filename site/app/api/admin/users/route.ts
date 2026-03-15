@@ -12,6 +12,18 @@ const schema = z.object({
   password: z.string().min(4),
 });
 
+export async function GET() {
+  const auth = await requireAdmin();
+  if (auth instanceof NextResponse) return auth;
+
+  const clients = await db.clientProfile.findMany({
+    orderBy: { fullName: 'asc' },
+    select: { id: true, fullName: true, clientKey: true },
+  });
+
+  return NextResponse.json({ clients });
+}
+
 export async function POST(req: Request) {
   const auth = await requireAdmin();
   if (auth instanceof NextResponse) return auth;

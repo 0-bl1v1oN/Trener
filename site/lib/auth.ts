@@ -35,14 +35,14 @@ export function verifyToken(token: string): AuthPayload | null {
   }
 }
 
-export async function setAuthCookie(token: string) {
+export async function setAuthCookie(token: string, rememberDevice = true) {
   const store = await cookies();
   store.set(COOKIE_NAME, token, {
     httpOnly: true,
     sameSite: 'lax',
     secure: process.env.NODE_ENV === 'production',
     path: '/',
-    maxAge: 60 * 60 * 24 * 30,
+    ...(rememberDevice ? { maxAge: 60 * 60 * 24 * 30 } : {}),
   });
 }
 
