@@ -19,7 +19,7 @@ class _ClientsScreenState extends State<ClientsScreen> {
   bool _isDbBound = false;
   final ScrollController _scrollController = ScrollController();
   final TextEditingController _searchController = TextEditingController();
-  String _searchQuery = '';
+  final ValueNotifier<String> _searchQueryNotifier = ValueNotifier('');
 
   @override
   void didChangeDependencies() {
@@ -36,10 +36,14 @@ class _ClientsScreenState extends State<ClientsScreen> {
   void dispose() {
     _scrollController.dispose();
     _searchController.dispose();
+    _searchQueryNotifier.dispose();
     super.dispose();
   }
 
   String _fmtDate(DateTime d) => DateFormat('dd.MM.yyyy', 'ru_RU').format(d);
+  String _normalizeSearchText(String value) {
+    return value.trim().toLowerCase().replaceAll('ё', 'е');
+  }
 
   Future<void> _addClient() async {
     final nameController = TextEditingController();
@@ -311,59 +315,61 @@ class _ClientsScreenState extends State<ClientsScreen> {
             final maleCount = clients.where((c) => c.gender == 'М').length;
             final femaleCount = clients.where((c) => c.gender == 'Ж').length;
 
-            final normalizedQuery = _searchQuery.trim().toLowerCase();
-            final filteredClients = normalizedQuery.isEmpty
-                ? clients
-                : clients.where((c) {
-                    final name = c.name.toLowerCase();
-                    final gender = (c.gender ?? '').toLowerCase();
-                    final plan = (c.plan ?? '').toLowerCase();
-                    return name.contains(normalizedQuery) ||
-                        gender.contains(normalizedQuery) ||
-                        plan.contains(normalizedQuery);
-                  }).toList();
+            return ValueListenableBuilder<String>(
+              valueListenable: _searchQueryNotifier,
+              builder: (context, query, _) {
+                final normalizedQuery = _normalizeSearchText(query);
+                final filteredClients = normalizedQuery.isEmpty
+                    ? clients
+                    : clients.where((c) {
+                        final normalizedName = _normalizeSearchText(c.name);
+                        return normalizedName.startsWith(normalizedQuery);
+                      }).toList();
 
-            return ListView(
-              key: const PageStorageKey<String>('clients-list'),
-              controller: _scrollController,
-              padding: const EdgeInsets.fromLTRB(12, 12, 12, 20),
-              children: [
-                _ClientsSummaryCard(
-                  total: clients.length,
-                  male: maleCount,
-                  female: femaleCount,
-                ),
-                const SizedBox(height: 12),
-                _ClientsSearchField(
-                  controller: _searchController,
-                  onChanged: (value) => setState(() => _searchQuery = value),
-                  onClear: () {
-                    _searchController.clear();
-                    setState(() => _searchQuery = '');
-                  },
-                ),
-                const SizedBox(height: 12),
-                if (filteredClients.isEmpty)
-                  _ClientsEmptySearchState(query: _searchQuery),
-                ...filteredClients.map((c) {
-                  final dateText = (c.planStart != null && c.planEnd != null)
-                      ? '${_fmtDate(c.planStart!)} – ${_fmtDate(c.planEnd!)}'
-                      : null;
-                  return Padding(
-                    padding: const EdgeInsets.only(bottom: 10),
-                    child: _ClientCard(
-                      client: c,
-                      dateText: dateText,
-                      onTap: () async {
-                        await context.push('/clients/${c.id}');
-                        if (!mounted) return;
-                        setState(() => _clientsFuture = db.getAllClients());
-                      },
-                      onDelete: () => _deleteClient(c.id),
+                return ListView(
+                  key: const PageStorageKey<String>('clients-list'),
+                  controller: _scrollController,
+                  padding: const EdgeInsets.fromLTRB(12, 12, 12, 20),
+                  children: [
+                    _ClientsSummaryCard(
+                      total: clients.length,
+                      male: maleCount,
+                      female: femaleCount,
                     ),
-                  );
-                }),
-              ],
+                    const SizedBox(height: 12),
+                    _ClientsSearchField(
+                      controller: _searchController,
+                      onChanged: (value) => _searchQueryNotifier.value = value,
+                      onClear: () {
+                        _searchController.clear();
+                        _searchQueryNotifier.value = '';
+                      },
+                    ),
+                    const SizedBox(height: 12),
+                    if (filteredClients.isEmpty)
+                      _ClientsEmptySearchState(query: query),
+                    ...filteredClients.map((c) {
+                      final dateText =
+                          (c.planStart != null && c.planEnd != null)
+                          ? '${_fmtDate(c.planStart!)} – ${_fmtDate(c.planEnd!)}'
+                          : null;
+                      return Padding(
+                        padding: const EdgeInsets.only(bottom: 10),
+                        child: _ClientCard(
+                          client: c,
+                          dateText: dateText,
+                          onTap: () async {
+                            await context.push('/clients/${c.id}');
+                            if (!mounted) return;
+                            setState(() => _clientsFuture = db.getAllClients());
+                          },
+                          onDelete: () => _deleteClient(c.id),
+                        ),
+                      );
+                    }),
+                  ],
+                );
+              },
             );
           },
         ),
