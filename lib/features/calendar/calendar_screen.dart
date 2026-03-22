@@ -72,6 +72,7 @@ class _CalendarScreenState extends State<CalendarScreen>
   late final AppDb db;
   bool _dbInited = false;
   bool _showCalendarBackground = true;
+  Set<String> _pultClientIds = <String>{};
 
   DateTime _focusedDay = DateTime.now();
   DateTime _selectedDay = DateTime.now();
@@ -339,6 +340,7 @@ class _CalendarScreenState extends State<CalendarScreen>
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    PultStore.revision.addListener(_handlePultRevision);
     _fabPulseController = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 1800),
@@ -347,6 +349,7 @@ class _CalendarScreenState extends State<CalendarScreen>
       vsync: this,
       duration: const Duration(milliseconds: 360),
     );
+    unawaited(_loadPultClientIds());
   }
 
   @override
@@ -355,11 +358,23 @@ class _CalendarScreenState extends State<CalendarScreen>
     _trialCountsSub?.cancel();
     _planEndCountsSub?.cancel();
     _paymentReminderCountsSub?.cancel();
+    PultStore.revision.removeListener(_handlePultRevision);
     WidgetsBinding.instance.removeObserver(this);
     _fabTapController.dispose();
     _fabPulseController.dispose();
     _appointmentsController.dispose();
     super.dispose();
+  }
+
+  void _handlePultRevision() {
+    unawaited(_loadPultClientIds());
+  }
+
+  Future<void> _loadPultClientIds() async {
+    final tabs = await PultStore.loadTabs();
+    final ids = tabs.map((tab) => tab.clientId).toSet();
+    if (!mounted) return;
+    setState(() => _pultClientIds = ids);
   }
 
   @override
@@ -3565,6 +3580,9 @@ class _CalendarScreenState extends State<CalendarScreen>
                                     final hasPlan = (it.client.plan ?? '')
                                         .trim()
                                         .isNotEmpty;
+                                    final isInPult = _pultClientIds.contains(
+                                      it.client.id,
+                                    );
                                     final pendingBadgeColor = Color.lerp(
                                       colors.errorContainer,
                                       colors.surfaceContainerHighest,
@@ -3928,12 +3946,15 @@ class _CalendarScreenState extends State<CalendarScreen>
                                                     },
                                                     child: _DoneTogglePngIcon(
                                                       done: done,
+                                                      size: 24,
                                                     ),
-                                                    size: 26,
+                                                    size: 30,
                                                   ),
                                                   const SizedBox(height: 4),
                                                   _CalendarOverlayActionButton(
-                                                    tooltip: 'Добавить в Пульт',
+                                                    tooltip: isInPult
+                                                        ? 'Обновить в Пульте'
+                                                        : 'Добавить в Пульт',
                                                     backgroundColor: colors
                                                         .tertiaryContainer
                                                         .withValues(
@@ -3947,39 +3968,18 @@ class _CalendarScreenState extends State<CalendarScreen>
                                                         _addAppointmentToPult(
                                                           it,
                                                         ),
-                                                    child: Icon(
-                                                      Icons
-                                                          .dashboard_customize_rounded,
-                                                      size: 16,
-                                                      color: colors
-                                                          .onTertiaryContainer,
+                                                    child: _CalendarPngIcon(
+                                                      assetPath: isInPult
+                                                          ? 'assets/calendar/pult_added.png'
+                                                          : 'assets/calendar/pult_add.png',
+                                                      fallback: isInPult
+                                                          ? Icons
+                                                                .task_alt_rounded
+                                                          : Icons
+                                                                .dashboard_customize_rounded,
+                                                      size: 22,
                                                     ),
-                                                    size: 26,
-                                                  ),
-                                                  const SizedBox(height: 4),
-                                                  _CalendarOverlayActionButton(
-                                                    tooltip: 'Ещё действия',
-                                                    backgroundColor: colors
-                                                        .surfaceContainerHigh
-                                                        .withValues(
-                                                          alpha: 0.82,
-                                                        ),
-                                                    borderColor: colors
-                                                        .outlineVariant
-                                                        .withValues(
-                                                          alpha: 0.22,
-                                                        ),
-                                                    onTap: () =>
-                                                        _openAppointmentActions(
-                                                          it,
-                                                        ),
-                                                    size: 22,
-                                                    child: Icon(
-                                                      Icons.more_horiz_rounded,
-                                                      size: 16,
-                                                      color: colors
-                                                          .onSurfaceVariant,
-                                                    ),
+                                                    size: 30,
                                                   ),
                                                 ],
                                               ),
@@ -4094,9 +4094,10 @@ class _CalendarBackgroundLayer extends StatelessWidget {
 }
 
 class _DoneTogglePngIcon extends StatelessWidget {
-  const _DoneTogglePngIcon({required this.done});
+  const _DoneTogglePngIcon({required this.done, this.size = 22});
 
   final bool done;
+  final double size;
 
   @override
   Widget build(BuildContext context) {

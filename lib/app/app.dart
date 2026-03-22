@@ -375,7 +375,10 @@ class AppShell extends StatelessWidget {
             label: 'Клиенты',
           ),
           NavigationDestination(
-            icon: const Icon(Icons.dashboard_customize_rounded),
+            icon: _NavPngIcon(
+              assetPath: 'assets/nav/pult.png',
+              fallback: Icons.dashboard_customize_rounded,
+            ),
             label: 'Пульт',
           ),
           NavigationDestination(
@@ -474,10 +477,11 @@ class _AnimatedBranchContainerState extends State<_AnimatedBranchContainer>
 
 class _NavPngIcon extends StatelessWidget {
   static const Map<String, double> _opticalScaleByAsset = {
-    'assets/nav/menu.png': 0.9,
-    'assets/nav/calendar.png': 0.92,
-    'assets/nav/clients.png': 0.96,
-    'assets/nav/program.png': 0.9,
+    'assets/nav/menu.png': 1,
+    'assets/nav/calendar.png': 1,
+    'assets/nav/clients.png': 1,
+    'assets/nav/pult.png': 1,
+    'assets/nav/program.png': 1,
   };
   const _NavPngIcon({
     required this.assetPath,

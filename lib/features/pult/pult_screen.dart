@@ -14,6 +14,7 @@ class PultScreen extends StatefulWidget {
 
 class _PultScreenState extends State<PultScreen> {
   late final AppDb db;
+  late final PageController _pageController;
   bool _dbInited = false;
   List<PultTabEntry> _tabs = const <PultTabEntry>[];
   String? _activeClientId;
@@ -21,6 +22,7 @@ class _PultScreenState extends State<PultScreen> {
   @override
   void initState() {
     super.initState();
+    _pageController = PageController();
     PultStore.revision.addListener(_reloadTabs);
   }
 
@@ -36,7 +38,14 @@ class _PultScreenState extends State<PultScreen> {
   @override
   void dispose() {
     PultStore.revision.removeListener(_reloadTabs);
+    _pageController.dispose();
     super.dispose();
+  }
+
+  int _activeTabIndexFor(List<PultTabEntry> tabs) {
+    if (tabs.isEmpty) return 0;
+    final index = tabs.indexWhere((item) => item.clientId == _activeClientId);
+    return index >= 0 ? index : tabs.length - 1;
   }
 
   Future<void> _reloadTabs() async {
@@ -52,6 +61,12 @@ class _PultScreenState extends State<PultScreen> {
           _activeClientId != null &&
           _tabs.any((item) => item.clientId == _activeClientId);
       _activeClientId = hasActive ? _activeClientId : _tabs.last.clientId;
+    });
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || !_pageController.hasClients || _tabs.isEmpty) return;
+      final targetPage = _activeTabIndexFor(_tabs);
+      if (_pageController.page?.round() == targetPage) return;
+      _pageController.jumpToPage(targetPage);
     });
   }
 
@@ -100,16 +115,8 @@ class _PultScreenState extends State<PultScreen> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final colors = theme.colorScheme;
-    PultTabEntry? activeTab;
-    if (_tabs.isNotEmpty) {
-      for (final tab in _tabs) {
-        if (tab.clientId == _activeClientId) {
-          activeTab = tab;
-          break;
-        }
-      }
-      activeTab ??= _tabs.last;
-    }
+    final activeTabIndex = _activeTabIndexFor(_tabs);
+    final activeTab = _tabs.isEmpty ? null : _tabs[activeTabIndex];
 
     return Scaffold(
       appBar: AppBar(title: const Text('Пульт')),
@@ -167,13 +174,21 @@ class _PultScreenState extends State<PultScreen> {
                       separatorBuilder: (_, __) => const SizedBox(width: 8),
                       itemBuilder: (context, index) {
                         final tab = _tabs[index];
-                        final selected = tab.clientId == activeTab?.clientId;
+                        final selected = index == activeTabIndex;
                         return _PultClientTab(
                           title: tab.clientName,
                           selected: selected,
-                          onTap: () => setState(() {
-                            _activeClientId = tab.clientId;
-                          }),
+                          onTap: () {
+                            if (index == activeTabIndex) return;
+                            setState(() {
+                              _activeClientId = tab.clientId;
+                            });
+                            _pageController.animateToPage(
+                              index,
+                              duration: const Duration(milliseconds: 220),
+                              curve: Curves.easeOutCubic,
+                            );
+                          },
                           onClose: () => PultStore.removeTab(tab.clientId),
                         );
                       },
@@ -182,155 +197,98 @@ class _PultScreenState extends State<PultScreen> {
                   Expanded(
                     child: activeTab == null
                         ? const SizedBox.shrink()
-                        : FutureBuilder<_PultTabData>(
-                            future: _loadTabData(activeTab),
-                            builder: (context, snap) {
-                              if (snap.connectionState ==
-                                  ConnectionState.waiting) {
-                                return const Center(
-                                  child: CircularProgressIndicator(),
-                                );
-                              }
+                        : PageView.builder(
+                            controller: _pageController,
+                            itemCount: _tabs.length,
+                            onPageChanged: (index) {
+                              final nextClientId = _tabs[index].clientId;
+                              if (nextClientId == _activeClientId) return;
+                              setState(() {
+                                _activeClientId = nextClientId;
+                              });
+                            },
+                            itemBuilder: (context, index) {
+                              final tab = _tabs[index];
+                              return FutureBuilder<_PultTabData>(
+                                future: _loadTabData(tab),
+                                builder: (context, snap) {
+                                  if (snap.connectionState ==
+                                      ConnectionState.waiting) {
+                                    return const Center(
+                                      child: CircularProgressIndicator(),
+                                    );
+                                  }
 
-                              if (snap.hasError) {
-                                return Center(
-                                  child: Padding(
-                                    padding: const EdgeInsets.all(24),
-                                    child: Text(
-                                      'Не удалось загрузить данные Пульта:\n${snap.error}',
-                                      textAlign: TextAlign.center,
-                                    ),
-                                  ),
-                                );
-                              }
-
-                              final data = snap.data;
-                              if (data == null) {
-                                return const Center(child: Text('Нет данных'));
-                              }
-
-                              return ListView(
-                                padding: const EdgeInsets.fromLTRB(
-                                  12,
-                                  8,
-                                  12,
-                                  16,
-                                ),
-                                children: [
-                                  Text(
-                                    data.clientName,
-                                    style: theme.textTheme.headlineSmall
-                                        ?.copyWith(fontWeight: FontWeight.w800),
-                                  ),
-                                  const SizedBox(height: 14),
-                                  Container(
-                                    decoration: BoxDecoration(
-                                      borderRadius: BorderRadius.circular(24),
-                                      gradient: LinearGradient(
-                                        colors: [
-                                          colors.surface.withValues(
-                                            alpha: 0.985,
-                                          ),
-                                          colors.surfaceContainerHighest
-                                              .withValues(alpha: 0.92),
-                                          colors.primary.withValues(
-                                            alpha: 0.06,
-                                          ),
-                                        ],
-                                        begin: Alignment.topLeft,
-                                        end: Alignment.bottomRight,
-                                      ),
-                                      border: Border.all(
-                                        color: colors.outlineVariant.withValues(
-                                          alpha: 0.36,
+                                  if (snap.hasError) {
+                                    return Center(
+                                      child: Padding(
+                                        padding: const EdgeInsets.all(24),
+                                        child: Text(
+                                          'Не удалось загрузить данные Пульта:\n${snap.error}',
+                                          textAlign: TextAlign.center,
                                         ),
                                       ),
-                                      boxShadow: [
-                                        BoxShadow(
-                                          color: colors.shadow.withValues(
-                                            alpha: 0.08,
-                                          ),
-                                          blurRadius: 14,
-                                          offset: const Offset(0, 6),
-                                        ),
-                                      ],
+                                    );
+                                  }
+
+                                  final data = snap.data;
+                                  if (data == null) {
+                                    return const Center(
+                                      child: Text('Нет данных'),
+                                    );
+                                  }
+
+                                  return ListView(
+                                    padding: const EdgeInsets.fromLTRB(
+                                      12,
+                                      8,
+                                      12,
+                                      16,
                                     ),
-                                    child: Column(
-                                      children: [
-                                        Container(
-                                          padding: const EdgeInsets.symmetric(
-                                            horizontal: 16,
-                                            vertical: 14,
+                                    children: [
+                                      Text(
+                                        data.clientName,
+                                        style: theme.textTheme.headlineSmall
+                                            ?.copyWith(
+                                              fontWeight: FontWeight.w800,
+                                            ),
+                                      ),
+                                      const SizedBox(height: 14),
+                                      Container(
+                                        decoration: BoxDecoration(
+                                          borderRadius: BorderRadius.circular(
+                                            24,
                                           ),
-                                          decoration: BoxDecoration(
-                                            color: colors.primaryContainer
-                                                .withValues(alpha: 0.34),
-                                            borderRadius:
-                                                const BorderRadius.vertical(
-                                                  top: Radius.circular(24),
-                                                ),
-                                          ),
-                                          child: Row(
-                                            children: [
-                                              Expanded(
-                                                flex: 6,
-                                                child: Text(
-                                                  'Упражнение',
-                                                  style: theme
-                                                      .textTheme
-                                                      .titleSmall
-                                                      ?.copyWith(
-                                                        fontWeight:
-                                                            FontWeight.w700,
-                                                      ),
-                                                ),
+                                          gradient: LinearGradient(
+                                            colors: [
+                                              colors.surface.withValues(
+                                                alpha: 0.985,
                                               ),
-                                              Expanded(
-                                                flex: 2,
-                                                child: Text(
-                                                  'Вес',
-                                                  textAlign: TextAlign.center,
-                                                  style: theme
-                                                      .textTheme
-                                                      .titleSmall
-                                                      ?.copyWith(
-                                                        fontWeight:
-                                                            FontWeight.w700,
-                                                      ),
-                                                ),
-                                              ),
-                                              Expanded(
-                                                flex: 2,
-                                                child: Text(
-                                                  'Повт.',
-                                                  textAlign: TextAlign.center,
-                                                  style: theme
-                                                      .textTheme
-                                                      .titleSmall
-                                                      ?.copyWith(
-                                                        fontWeight:
-                                                            FontWeight.w700,
-                                                      ),
-                                                ),
+                                              colors.surfaceContainerHighest
+                                                  .withValues(alpha: 0.92),
+                                              colors.primary.withValues(
+                                                alpha: 0.06,
                                               ),
                                             ],
+                                            begin: Alignment.topLeft,
+                                            end: Alignment.bottomRight,
                                           ),
-                                        ),
-                                        if (data.exercises.isEmpty)
-                                          Padding(
-                                            padding: const EdgeInsets.all(20),
-                                            child: Text(
-                                              'На ${DateFormat('dd.MM.yyyy', 'ru_RU').format(data.day)} для этого клиента пока нет упражнений.',
-                                              textAlign: TextAlign.center,
-                                              style: theme.textTheme.bodyMedium,
+                                          border: Border.all(
+                                            color: colors.outlineVariant
+                                                .withValues(alpha: 0.36),
+                                          ),
+                                          boxShadow: [
+                                            BoxShadow(
+                                              color: colors.shadow.withValues(
+                                                alpha: 0.08,
+                                              ),
+                                              blurRadius: 14,
+                                              offset: const Offset(0, 6),
                                             ),
-                                          )
-                                        else
-                                          for (
-                                            var i = 0;
-                                            i < data.exercises.length;
-                                            i++
-                                          )
+                                          ],
+                                        ),
+                                        child: Column(
+                                          children: [
                                             Container(
                                               padding:
                                                   const EdgeInsets.symmetric(
@@ -338,79 +296,165 @@ class _PultScreenState extends State<PultScreen> {
                                                     vertical: 14,
                                                   ),
                                               decoration: BoxDecoration(
-                                                border: Border(
-                                                  top: i == 0
-                                                      ? BorderSide.none
-                                                      : BorderSide(
-                                                          color: colors
-                                                              .outlineVariant
-                                                              .withValues(
-                                                                alpha: 0.18,
-                                                              ),
-                                                        ),
-                                                ),
+                                                color: colors.primaryContainer
+                                                    .withValues(alpha: 0.34),
+                                                borderRadius:
+                                                    const BorderRadius.vertical(
+                                                      top: Radius.circular(24),
+                                                    ),
                                               ),
                                               child: Row(
                                                 children: [
                                                   Expanded(
                                                     flex: 6,
                                                     child: Text(
-                                                      data.exercises[i].name,
+                                                      'Упражнение',
                                                       style: theme
                                                           .textTheme
-                                                          .bodyLarge
+                                                          .titleSmall
                                                           ?.copyWith(
                                                             fontWeight:
-                                                                FontWeight.w600,
+                                                                FontWeight.w700,
                                                           ),
                                                     ),
                                                   ),
                                                   Expanded(
                                                     flex: 2,
                                                     child: Text(
-                                                      data
-                                                                  .exercises[i]
-                                                                  .lastWeightKg ==
-                                                              null
-                                                          ? '—'
-                                                          : _fmtWeight(
-                                                              data
-                                                                  .exercises[i]
-                                                                  .lastWeightKg!,
-                                                            ),
+                                                      'Вес',
                                                       textAlign:
                                                           TextAlign.center,
                                                       style: theme
                                                           .textTheme
-                                                          .bodyLarge,
+                                                          .titleSmall
+                                                          ?.copyWith(
+                                                            fontWeight:
+                                                                FontWeight.w700,
+                                                          ),
                                                     ),
                                                   ),
                                                   Expanded(
                                                     flex: 2,
                                                     child: Text(
-                                                      data
-                                                                  .exercises[i]
-                                                                  .lastReps ==
-                                                              null
-                                                          ? '—'
-                                                          : data
-                                                                .exercises[i]
-                                                                .lastReps
-                                                                .toString(),
+                                                      'Повт.',
                                                       textAlign:
                                                           TextAlign.center,
                                                       style: theme
                                                           .textTheme
-                                                          .bodyLarge,
+                                                          .titleSmall
+                                                          ?.copyWith(
+                                                            fontWeight:
+                                                                FontWeight.w700,
+                                                          ),
                                                     ),
                                                   ),
                                                 ],
                                               ),
                                             ),
-                                      ],
-                                    ),
-                                  ),
-                                ],
+                                            if (data.exercises.isEmpty)
+                                              Padding(
+                                                padding: const EdgeInsets.all(
+                                                  20,
+                                                ),
+                                                child: Text(
+                                                  'На ${DateFormat('dd.MM.yyyy', 'ru_RU').format(data.day)} для этого клиента пока нет упражнений.',
+                                                  textAlign: TextAlign.center,
+                                                  style: theme
+                                                      .textTheme
+                                                      .bodyMedium,
+                                                ),
+                                              )
+                                            else
+                                              for (
+                                                var i = 0;
+                                                i < data.exercises.length;
+                                                i++
+                                              )
+                                                Container(
+                                                  padding:
+                                                      const EdgeInsets.symmetric(
+                                                        horizontal: 16,
+                                                        vertical: 14,
+                                                      ),
+                                                  decoration: BoxDecoration(
+                                                    border: Border(
+                                                      top: i == 0
+                                                          ? BorderSide.none
+                                                          : BorderSide(
+                                                              color: colors
+                                                                  .outlineVariant
+                                                                  .withValues(
+                                                                    alpha: 0.18,
+                                                                  ),
+                                                            ),
+                                                    ),
+                                                  ),
+                                                  child: Row(
+                                                    children: [
+                                                      Expanded(
+                                                        flex: 6,
+                                                        child: Text(
+                                                          data
+                                                              .exercises[i]
+                                                              .name,
+                                                          style: theme
+                                                              .textTheme
+                                                              .bodyLarge
+                                                              ?.copyWith(
+                                                                fontWeight:
+                                                                    FontWeight
+                                                                        .w600,
+                                                              ),
+                                                        ),
+                                                      ),
+                                                      Expanded(
+                                                        flex: 2,
+                                                        child: Text(
+                                                          data
+                                                                      .exercises[i]
+                                                                      .lastWeightKg ==
+                                                                  null
+                                                              ? '—'
+                                                              : _fmtWeight(
+                                                                  data
+                                                                      .exercises[i]
+                                                                      .lastWeightKg!,
+                                                                ),
+                                                          textAlign:
+                                                              TextAlign.center,
+                                                          style: theme
+                                                              .textTheme
+                                                              .bodyLarge,
+                                                        ),
+                                                      ),
+                                                      Expanded(
+                                                        flex: 2,
+                                                        child: Text(
+                                                          data
+                                                                      .exercises[i]
+                                                                      .lastReps ==
+                                                                  null
+                                                              ? '—'
+                                                              : data
+                                                                    .exercises[i]
+                                                                    .lastReps
+                                                                    .toString(),
+                                                          textAlign:
+                                                              TextAlign.center,
+                                                          style: theme
+                                                              .textTheme
+                                                              .bodyLarge,
+                                                        ),
+                                                      ),
+                                                    ],
+                                                  ),
+                                                ),
+                                          ],
+                                        ),
+                                      ),
+                                    ],
+                                  );
+                                },
                               );
                             },
                           ),
