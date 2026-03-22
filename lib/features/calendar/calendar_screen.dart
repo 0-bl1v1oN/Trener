@@ -907,7 +907,7 @@ class _CalendarScreenState extends State<CalendarScreen>
     int weeks = 4;
     String clientQuery = '';
 
-    final result = await showDialog<_QuickWorkoutCheckResult>(
+    final ok = await showDialog<bool>(
       context: context,
       barrierDismissible: true,
       builder: (context) {
@@ -1415,7 +1415,7 @@ class _CalendarScreenState extends State<CalendarScreen>
     int weeks = 4;
     bool useSchedule = false;
 
-    final result = await showDialog<_QuickWorkoutCheckResult>(
+    final ok = await showDialog<bool>(
       context: context,
       builder: (context) {
         return StatefulBuilder(
@@ -1908,7 +1908,7 @@ class _CalendarScreenState extends State<CalendarScreen>
       }
     }
 
-    final result = await showDialog<_QuickWorkoutCheckResult>(
+    final ok = await showDialog<bool>(
       context: context,
       builder: (context) => StatefulBuilder(
         builder: (context, setLocal) {
@@ -2510,6 +2510,21 @@ class _CalendarScreenState extends State<CalendarScreen>
 
     final kgControllers = <int, TextEditingController>{};
     final repsControllers = <int, TextEditingController>{};
+    final kgFocusNodes = <int, FocusNode>{};
+    final repsFocusNodes = <int, FocusNode>{};
+
+    void selectAllText(TextEditingController controller) {
+      controller.selection = TextSelection(
+        baseOffset: 0,
+        extentOffset: controller.text.length,
+      );
+    }
+
+    void scheduleSelectAll(TextEditingController controller) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        selectAllText(controller);
+      });
+    }
 
     for (final e in exercises) {
       kgControllers[e.templateExerciseId] = TextEditingController(
@@ -2518,6 +2533,31 @@ class _CalendarScreenState extends State<CalendarScreen>
       repsControllers[e.templateExerciseId] = TextEditingController(
         text: e.lastReps?.toString() ?? '',
       );
+      kgFocusNodes[e.templateExerciseId] = FocusNode()
+        ..addListener(() {
+          final node = kgFocusNodes[e.templateExerciseId];
+          final controller = kgControllers[e.templateExerciseId];
+          if (node?.hasFocus == true && controller != null) {
+            scheduleSelectAll(controller);
+          }
+        });
+      repsFocusNodes[e.templateExerciseId] = FocusNode()
+        ..addListener(() {
+          final node = repsFocusNodes[e.templateExerciseId];
+          final controller = repsControllers[e.templateExerciseId];
+          if (node?.hasFocus == true && controller != null) {
+            scheduleSelectAll(controller);
+          }
+        });
+    }
+
+    void disposeInputs() {
+      for (final c in [...kgControllers.values, ...repsControllers.values]) {
+        c.dispose();
+      }
+      for (final n in [...kgFocusNodes.values, ...repsFocusNodes.values]) {
+        n.dispose();
+      }
     }
 
     final result = await showDialog<_QuickWorkoutCheckResult>(
@@ -2544,9 +2584,13 @@ class _CalendarScreenState extends State<CalendarScreen>
                             Expanded(
                               child: TextField(
                                 controller: kgControllers[e.templateExerciseId],
+                                focusNode: kgFocusNodes[e.templateExerciseId],
                                 decoration: const InputDecoration(
                                   labelText: 'Вес (кг)',
                                   isDense: true,
+                                ),
+                                onTap: () => scheduleSelectAll(
+                                  kgControllers[e.templateExerciseId]!,
                                 ),
                                 keyboardType:
                                     const TextInputType.numberWithOptions(
@@ -2559,9 +2603,13 @@ class _CalendarScreenState extends State<CalendarScreen>
                               child: TextField(
                                 controller:
                                     repsControllers[e.templateExerciseId],
+                                focusNode: repsFocusNodes[e.templateExerciseId],
                                 decoration: const InputDecoration(
                                   labelText: 'Повторы',
                                   isDense: true,
+                                ),
+                                onTap: () => scheduleSelectAll(
+                                  repsControllers[e.templateExerciseId]!,
                                 ),
                                 keyboardType: TextInputType.number,
                               ),
@@ -2574,30 +2622,40 @@ class _CalendarScreenState extends State<CalendarScreen>
                 ),
         ),
         actions: [
-          TextButton(
-            onPressed: () =>
-                Navigator.of(context).pop(_QuickWorkoutCheckResult.skipped),
-            child: const Text('Отмена'),
-          ),
-          if (_isBulkMarkingAppointments)
-            TextButton(
-              onPressed: () =>
-                  Navigator.of(context).pop(_QuickWorkoutCheckResult.exitBulk),
-              child: const Text('Выйти'),
+          SizedBox(
+            width: double.infinity,
+            child: Row(
+              children: [
+                if (_isBulkMarkingAppointments)
+                  TextButton(
+                    onPressed: () => Navigator.of(
+                      context,
+                    ).pop(_QuickWorkoutCheckResult.exitBulk),
+                    child: const Text('Выйти'),
+                  ),
+                const Spacer(),
+                TextButton(
+                  onPressed: () => Navigator.of(
+                    context,
+                  ).pop(_QuickWorkoutCheckResult.skipped),
+                  child: const Text('Отмена'),
+                ),
+                const SizedBox(width: 8),
+                FilledButton(
+                  onPressed: () => Navigator.of(
+                    context,
+                  ).pop(_QuickWorkoutCheckResult.completed),
+                  child: const Text('Ок'),
+                ),
+              ],
             ),
-          FilledButton(
-            onPressed: () =>
-                Navigator.of(context).pop(_QuickWorkoutCheckResult.completed),
-            child: const Text('Ок'),
           ),
         ],
       ),
     );
 
     if (result != _QuickWorkoutCheckResult.completed) {
-      for (final c in [...kgControllers.values, ...repsControllers.values]) {
-        c.dispose();
-      }
+      disposeInputs();
       return result ?? _QuickWorkoutCheckResult.skipped;
     }
 
@@ -2610,9 +2668,7 @@ class _CalendarScreenState extends State<CalendarScreen>
       results[e.templateExerciseId] = (kg, reps);
     }
 
-    for (final c in [...kgControllers.values, ...repsControllers.values]) {
-      c.dispose();
-    }
+    disposeInputs();
 
     await db.saveWorkoutResultsAndMarkDone(
       clientId: item.client.id,
@@ -3192,23 +3248,125 @@ class _CalendarScreenState extends State<CalendarScreen>
                                       ),
                                       if (items.isNotEmpty) ...[
                                         const SizedBox(width: 12),
-                                        FilledButton.tonalIcon(
-                                          onPressed: _isBulkMarkingAppointments
-                                              ? null
-                                              : () => _markAllAppointmentsDone(
-                                                  items,
-                                                ),
-                                          icon: _isBulkMarkingAppointments
-                                              ? const SizedBox(
-                                                  width: 16,
-                                                  height: 16,
-                                                  child:
-                                                      CircularProgressIndicator(
-                                                        strokeWidth: 2,
+                                        DecoratedBox(
+                                          decoration: BoxDecoration(
+                                            gradient: LinearGradient(
+                                              colors: _isBulkMarkingAppointments
+                                                  ? [
+                                                      Theme.of(context)
+                                                          .colorScheme
+                                                          .surfaceContainerHighest,
+                                                      Theme.of(context)
+                                                          .colorScheme
+                                                          .surfaceContainer,
+                                                    ]
+                                                  : [
+                                                      Theme.of(
+                                                        context,
+                                                      ).colorScheme.primary,
+                                                      Theme.of(
+                                                        context,
+                                                      ).colorScheme.tertiary,
+                                                    ],
+                                            ),
+                                            borderRadius: BorderRadius.circular(
+                                              16,
+                                            ),
+                                            boxShadow: [
+                                              BoxShadow(
+                                                color: Theme.of(context)
+                                                    .colorScheme
+                                                    .primary
+                                                    .withValues(alpha: 0.18),
+                                                blurRadius: 14,
+                                                offset: const Offset(0, 6),
+                                              ),
+                                            ],
+                                          ),
+                                          child: Material(
+                                            color: Colors.transparent,
+                                            child: InkWell(
+                                              borderRadius:
+                                                  BorderRadius.circular(16),
+                                              onTap: _isBulkMarkingAppointments
+                                                  ? null
+                                                  : () =>
+                                                        _markAllAppointmentsDone(
+                                                          items,
+                                                        ),
+                                              child: Padding(
+                                                padding:
+                                                    const EdgeInsets.symmetric(
+                                                      horizontal: 12,
+                                                      vertical: 8,
+                                                    ),
+                                                child: Row(
+                                                  mainAxisSize:
+                                                      MainAxisSize.min,
+                                                  children: [
+                                                    Container(
+                                                      width: 28,
+                                                      height: 28,
+                                                      decoration: BoxDecoration(
+                                                        color: Colors.white
+                                                            .withValues(
+                                                              alpha: 0.16,
+                                                            ),
+                                                        shape: BoxShape.circle,
                                                       ),
-                                                )
-                                              : const Icon(Icons.done_all),
-                                          label: const Text('Отметить всех'),
+                                                      alignment:
+                                                          Alignment.center,
+                                                      child:
+                                                          _isBulkMarkingAppointments
+                                                          ? SizedBox(
+                                                              width: 14,
+                                                              height: 14,
+                                                              child: CircularProgressIndicator(
+                                                                strokeWidth: 2,
+                                                                valueColor:
+                                                                    AlwaysStoppedAnimation<
+                                                                      Color
+                                                                    >(
+                                                                      Theme.of(
+                                                                        context,
+                                                                      ).colorScheme.onPrimary,
+                                                                    ),
+                                                              ),
+                                                            )
+                                                          : Icon(
+                                                              Icons
+                                                                  .auto_awesome_rounded,
+                                                              color:
+                                                                  Theme.of(
+                                                                        context,
+                                                                      )
+                                                                      .colorScheme
+                                                                      .onPrimary,
+                                                              size: 16,
+                                                            ),
+                                                    ),
+                                                    const SizedBox(width: 8),
+                                                    Text(
+                                                      'Отметить всех',
+                                                      style: Theme.of(context)
+                                                          .textTheme
+                                                          .labelLarge
+                                                          ?.copyWith(
+                                                            color:
+                                                                Theme.of(
+                                                                      context,
+                                                                    )
+                                                                    .colorScheme
+                                                                    .onPrimary,
+                                                            fontWeight:
+                                                                FontWeight.w700,
+                                                          ),
+                                                    ),
+                                                  ],
+                                                ),
+                                              ),
+                                            ),
+                                          ),
                                         ),
                                       ],
                                     ],
@@ -3373,6 +3531,16 @@ class _CalendarScreenState extends State<CalendarScreen>
                                     final hasPlan = (it.client.plan ?? '')
                                         .trim()
                                         .isNotEmpty;
+                                    final pendingBadgeColor = Color.lerp(
+                                      colors.errorContainer,
+                                      colors.surfaceContainerHighest,
+                                      0.48,
+                                    )!;
+                                    final pendingBadgeTextColor = Color.lerp(
+                                      colors.onErrorContainer,
+                                      colors.onSurface,
+                                      0.35,
+                                    )!;
                                     return Padding(
                                       padding: EdgeInsets.fromLTRB(
                                         12,
@@ -3396,37 +3564,57 @@ class _CalendarScreenState extends State<CalendarScreen>
                                             _openAppointmentActions(it),
                                         child: Container(
                                           padding: const EdgeInsets.fromLTRB(
-                                            12,
-                                            12,
-                                            8,
-                                            12,
+                                            14,
+                                            14,
+                                            10,
+                                            14,
                                           ),
                                           decoration: BoxDecoration(
                                             borderRadius: BorderRadius.circular(
-                                              18,
+                                              24,
                                             ),
                                             gradient: LinearGradient(
                                               colors: [
-                                                colors.surface,
-                                                colors.surfaceContainerLow,
+                                                colors.surface.withValues(
+                                                  alpha: 0.985,
+                                                ),
+                                                colors.surfaceContainerHighest
+                                                    .withValues(alpha: 0.88),
+                                                colors.primary.withValues(
+                                                  alpha: done ? 0.11 : 0.06,
+                                                ),
+                                                colors.tertiary.withValues(
+                                                  alpha: done ? 0.08 : 0.04,
+                                                ),
                                               ],
                                               begin: Alignment.topLeft,
                                               end: Alignment.bottomRight,
                                             ),
                                             border: Border.all(
                                               color: done
-                                                  ? colors.primary.withOpacity(
-                                                      0.28,
+                                                  ? colors.primary.withValues(
+                                                      alpha: 0.34,
                                                     )
                                                   : colors.outlineVariant
-                                                        .withOpacity(0.6),
+                                                        .withValues(
+                                                          alpha: 0.42,
+                                                        ),
                                             ),
                                             boxShadow: [
                                               BoxShadow(
-                                                color: colors.shadow
-                                                    .withOpacity(0.03),
-                                                blurRadius: 8,
-                                                offset: const Offset(0, 2),
+                                                color: colors.primary
+                                                    .withValues(
+                                                      alpha: done ? 0.16 : 0.08,
+                                                    ),
+                                                blurRadius: 22,
+                                                offset: const Offset(0, 10),
+                                              ),
+                                              BoxShadow(
+                                                color: colors.shadow.withValues(
+                                                  alpha: 0.08,
+                                                ),
+                                                blurRadius: 10,
+                                                offset: const Offset(0, 4),
                                               ),
                                             ],
                                           ),
@@ -3444,19 +3632,46 @@ class _CalendarScreenState extends State<CalendarScreen>
                                                         Container(
                                                           padding:
                                                               const EdgeInsets.symmetric(
-                                                                horizontal: 10,
-                                                                vertical: 6,
+                                                                horizontal: 12,
+                                                                vertical: 7,
                                                               ),
                                                           decoration: BoxDecoration(
-                                                            color: colors
-                                                                .primaryContainer
-                                                                .withOpacity(
-                                                                  0.6,
-                                                                ),
+                                                            gradient: LinearGradient(
+                                                              colors: [
+                                                                colors
+                                                                    .primaryContainer
+                                                                    .withValues(
+                                                                      alpha:
+                                                                          0.96,
+                                                                    ),
+                                                                colors
+                                                                    .tertiaryContainer
+                                                                    .withValues(
+                                                                      alpha:
+                                                                          0.88,
+                                                                    ),
+                                                              ],
+                                                            ),
                                                             borderRadius:
                                                                 BorderRadius.circular(
                                                                   999,
                                                                 ),
+                                                            boxShadow: [
+                                                              BoxShadow(
+                                                                color: colors
+                                                                    .primary
+                                                                    .withValues(
+                                                                      alpha:
+                                                                          0.12,
+                                                                    ),
+                                                                blurRadius: 12,
+                                                                offset:
+                                                                    const Offset(
+                                                                      0,
+                                                                      4,
+                                                                    ),
+                                                              ),
+                                                            ],
                                                           ),
                                                           child: Text(
                                                             _fmtTime(
@@ -3510,8 +3725,8 @@ class _CalendarScreenState extends State<CalendarScreen>
                                                             decoration: BoxDecoration(
                                                               color: colors
                                                                   .secondaryContainer
-                                                                  .withOpacity(
-                                                                    0.65,
+                                                                  .withValues(
+                                                                    alpha: 0.65,
                                                                   ),
                                                               borderRadius:
                                                                   BorderRadius.circular(
@@ -3553,14 +3768,11 @@ class _CalendarScreenState extends State<CalendarScreen>
                                                           decoration: BoxDecoration(
                                                             color: done
                                                                 ? Colors.green
-                                                                      .withOpacity(
-                                                                        0.14,
+                                                                      .withValues(
+                                                                        alpha:
+                                                                            0.14,
                                                                       )
-                                                                : colors
-                                                                      .errorContainer
-                                                                      .withOpacity(
-                                                                        0.45,
-                                                                      ),
+                                                                : pendingBadgeColor,
                                                             borderRadius:
                                                                 BorderRadius.circular(
                                                                   999,
@@ -3582,8 +3794,7 @@ class _CalendarScreenState extends State<CalendarScreen>
                                                                     ? Colors
                                                                           .green
                                                                           .shade800
-                                                                    : colors
-                                                                          .onErrorContainer,
+                                                                    : pendingBadgeTextColor,
                                                               ),
                                                               const SizedBox(
                                                                 width: 4,
@@ -3602,7 +3813,7 @@ class _CalendarScreenState extends State<CalendarScreen>
                                                                       color:
                                                                           done
                                                                           ? Colors.green.shade800
-                                                                          : colors.onErrorContainer,
+                                                                          : pendingBadgeTextColor,
                                                                     ),
                                                               ),
                                                             ],
@@ -3613,105 +3824,173 @@ class _CalendarScreenState extends State<CalendarScreen>
                                                   ],
                                                 ),
                                               ),
-                                              const SizedBox(width: 6),
-                                              Row(
-                                                mainAxisSize: MainAxisSize.min,
-                                                children: [
-                                                  IconButton.filledTonal(
-                                                    visualDensity:
-                                                        VisualDensity.compact,
-                                                    tooltip: done
-                                                        ? 'Снять отметку выполнения'
-                                                        : 'Проверить и отметить выполненной',
-                                                    icon: _DoneTogglePngIcon(
-                                                      done: done,
-                                                    ),
-                                                    onPressed: () async {
-                                                      if (done) {
-                                                        final details = await db
-                                                            .getWorkoutDetailsForClientOnDay(
-                                                              clientId:
-                                                                  it.client.id,
-                                                              day: it
-                                                                  .appointment
-                                                                  .startAt,
-                                                            );
-
-                                                        final results = {
-                                                          for (final e
-                                                              in details.$3)
-                                                            e.templateExerciseId:
-                                                                (
-                                                                  e.lastWeightKg,
-                                                                  e.lastReps,
-                                                                ),
-                                                        };
-
-                                                        await db.saveWorkoutDraftResults(
-                                                          clientId:
-                                                              it.client.id,
-                                                          day: it
-                                                              .appointment
-                                                              .startAt,
-                                                          resultsByTemplateExerciseId:
-                                                              results,
-                                                        );
-                                                        await db
-                                                            .toggleWorkoutForClientOnDay(
-                                                              clientId:
-                                                                  it.client.id,
-                                                              day: _selectedDay,
-                                                            );
-                                                        await db.updateAppointmentNote(
-                                                          id: it.appointment.id,
-                                                          note:
-                                                              _withAttendanceMarker(
-                                                                it
-                                                                    .appointment
-                                                                    .note,
-                                                                false,
-                                                              ),
-                                                        );
-                                                        if (!mounted) return;
-                                                        setState(() {});
-                                                        return;
-                                                      }
-
-                                                      await _openQuickWorkoutCheck(
-                                                        it,
-                                                      );
-                                                    },
+                                              const SizedBox(width: 8),
+                                              Container(
+                                                padding: const EdgeInsets.all(
+                                                  3,
+                                                ),
+                                                decoration: BoxDecoration(
+                                                  color: colors
+                                                      .surfaceContainerHighest
+                                                      .withValues(alpha: 0.48),
+                                                  borderRadius:
+                                                      BorderRadius.circular(16),
+                                                  border: Border.all(
+                                                    color: colors.outlineVariant
+                                                        .withValues(
+                                                          alpha: 0.28,
+                                                        ),
                                                   ),
-                                                  PopupMenuButton<String>(
-                                                    tooltip: 'Действия',
-                                                    itemBuilder: (context) => [
-                                                      PopupMenuItem(
-                                                        value: 'delete',
-                                                        child: Center(
-                                                          child: _CalendarPngIcon(
-                                                            assetPath:
-                                                                'assets/calendar/delete_record.png',
-                                                            fallback: Icons
-                                                                .delete_outline,
-                                                            size: 20,
-                                                            color: colors.error,
+                                                  boxShadow: [
+                                                    BoxShadow(
+                                                      color: colors.shadow
+                                                          .withValues(
+                                                            alpha: 0.04,
+                                                          ),
+                                                      blurRadius: 6,
+                                                      offset: const Offset(
+                                                        0,
+                                                        2,
+                                                      ),
+                                                    ),
+                                                  ],
+                                                ),
+                                                child: Row(
+                                                  mainAxisSize:
+                                                      MainAxisSize.min,
+                                                  children: [
+                                                    IconButton.filledTonal(
+                                                      style: IconButton.styleFrom(
+                                                        backgroundColor: colors
+                                                            .primaryContainer
+                                                            .withValues(
+                                                              alpha: 0.66,
+                                                            ),
+                                                        minimumSize: const Size(
+                                                          34,
+                                                          34,
+                                                        ),
+                                                        padding:
+                                                            const EdgeInsets.all(
+                                                              7,
+                                                            ),
+                                                      ),
+                                                      visualDensity:
+                                                          VisualDensity.compact,
+                                                      tooltip: done
+                                                          ? 'Снять отметку выполнения'
+                                                          : 'Проверить и отметить выполненной',
+                                                      icon: _DoneTogglePngIcon(
+                                                        done: done,
+                                                      ),
+                                                      onPressed: () async {
+                                                        if (done) {
+                                                          final details = await db
+                                                              .getWorkoutDetailsForClientOnDay(
+                                                                clientId: it
+                                                                    .client
+                                                                    .id,
+                                                                day: it
+                                                                    .appointment
+                                                                    .startAt,
+                                                              );
+
+                                                          final results = {
+                                                            for (final e
+                                                                in details.$3)
+                                                              e.templateExerciseId: (
+                                                                e.lastWeightKg,
+                                                                e.lastReps,
+                                                              ),
+                                                          };
+
+                                                          await db.saveWorkoutDraftResults(
+                                                            clientId:
+                                                                it.client.id,
+                                                            day: it
+                                                                .appointment
+                                                                .startAt,
+                                                            resultsByTemplateExerciseId:
+                                                                results,
+                                                          );
+                                                          await db
+                                                              .toggleWorkoutForClientOnDay(
+                                                                clientId: it
+                                                                    .client
+                                                                    .id,
+                                                                day:
+                                                                    _selectedDay,
+                                                              );
+                                                          await db.updateAppointmentNote(
+                                                            id: it
+                                                                .appointment
+                                                                .id,
+                                                            note: _withAttendanceMarker(
+                                                              it
+                                                                  .appointment
+                                                                  .note,
+                                                              false,
+                                                            ),
+                                                          );
+                                                          if (!mounted) return;
+                                                          setState(() {});
+                                                          return;
+                                                        }
+
+                                                        await _openQuickWorkoutCheck(
+                                                          it,
+                                                        );
+                                                      },
+                                                    ),
+                                                    PopupMenuButton<String>(
+                                                      tooltip: 'Действия',
+                                                      itemBuilder: (context) => [
+                                                        PopupMenuItem(
+                                                          value: 'delete',
+                                                          child: Center(
+                                                            child: _CalendarPngIcon(
+                                                              assetPath:
+                                                                  'assets/calendar/delete_record.png',
+                                                              fallback: Icons
+                                                                  .delete_outline,
+                                                              size: 20,
+                                                              color:
+                                                                  colors.error,
+                                                            ),
                                                           ),
                                                         ),
+                                                      ],
+                                                      onSelected: (value) async {
+                                                        if (value == 'delete') {
+                                                          await db
+                                                              .deleteAppointmentById(
+                                                                it
+                                                                    .appointment
+                                                                    .id,
+                                                              );
+                                                        }
+                                                      },
+                                                      icon: Container(
+                                                        width: 34,
+                                                        height: 34,
+                                                        decoration: BoxDecoration(
+                                                          color: colors.surface
+                                                              .withValues(
+                                                                alpha: 0.42,
+                                                              ),
+                                                          borderRadius:
+                                                              BorderRadius.circular(
+                                                                11,
+                                                              ),
+                                                        ),
+                                                        child: const Icon(
+                                                          Icons
+                                                              .more_horiz_rounded,
+                                                        ),
                                                       ),
-                                                    ],
-                                                    onSelected: (value) async {
-                                                      if (value == 'delete') {
-                                                        await db
-                                                            .deleteAppointmentById(
-                                                              it.appointment.id,
-                                                            );
-                                                      }
-                                                    },
-                                                    icon: const Icon(
-                                                      Icons.more_horiz_rounded,
                                                     ),
-                                                  ),
-                                                ],
+                                                  ],
+                                                ),
                                               ),
                                             ],
                                           ),
