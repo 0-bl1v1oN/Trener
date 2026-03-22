@@ -3597,12 +3597,7 @@ class _CalendarScreenState extends State<CalendarScreen>
                                         onLongPress: () =>
                                             _openAppointmentActions(it),
                                         child: Container(
-                                          padding: const EdgeInsets.fromLTRB(
-                                            14,
-                                            14,
-                                            10,
-                                            14,
-                                          ),
+                                          padding: const EdgeInsets.all(14),
                                           decoration: BoxDecoration(
                                             borderRadius: BorderRadius.circular(
                                               24,
@@ -3652,11 +3647,12 @@ class _CalendarScreenState extends State<CalendarScreen>
                                               ),
                                             ],
                                           ),
-                                          child: Row(
-                                            crossAxisAlignment:
-                                                CrossAxisAlignment.start,
+                                          child: Stack(
                                             children: [
-                                              Expanded(
+                                              Padding(
+                                                padding: const EdgeInsets.only(
+                                                  right: 42,
+                                                ),
                                                 child: Column(
                                                   crossAxisAlignment:
                                                       CrossAxisAlignment.start,
@@ -3858,67 +3854,30 @@ class _CalendarScreenState extends State<CalendarScreen>
                                                   ],
                                                 ),
                                               ),
-                                              const SizedBox(width: 8),
-                                              Container(
-                                                width: 52,
-                                                padding:
-                                                    const EdgeInsets.symmetric(
-                                                      horizontal: 4,
-                                                      vertical: 6,
-                                                    ),
-                                                decoration: BoxDecoration(
-                                                  color: colors
-                                                      .surfaceContainerHighest
-                                                      .withValues(alpha: 0.5),
-                                                  borderRadius:
-                                                      BorderRadius.circular(18),
-                                                  border: Border.all(
-                                                    color: colors.outlineVariant
-                                                        .withValues(
-                                                          alpha: 0.28,
-                                                        ),
-                                                  ),
-                                                  boxShadow: [
-                                                    BoxShadow(
-                                                      color: colors.shadow
-                                                          .withValues(
-                                                            alpha: 0.05,
-                                                          ),
-                                                      blurRadius: 8,
-                                                      offset: const Offset(
-                                                        0,
-                                                        3,
-                                                      ),
-                                                    ),
-                                                  ],
-                                                ),
+                                              Positioned(
+                                                top: 0,
+                                                right: 0,
+                                                bottom: 0,
                                                 child: Column(
+                                                  mainAxisAlignment:
+                                                      MainAxisAlignment
+                                                          .spaceBetween,
                                                   children: [
-                                                    IconButton.filledTonal(
-                                                      style: IconButton.styleFrom(
-                                                        backgroundColor: colors
-                                                            .primaryContainer
-                                                            .withValues(
-                                                              alpha: 0.72,
-                                                            ),
-                                                        minimumSize: const Size(
-                                                          38,
-                                                          38,
-                                                        ),
-                                                        padding:
-                                                            const EdgeInsets.all(
-                                                              8,
-                                                            ),
-                                                      ),
-                                                      visualDensity:
-                                                          VisualDensity.compact,
+                                                    _CalendarOverlayActionButton(
                                                       tooltip: done
                                                           ? 'Снять отметку выполнения'
                                                           : 'Проверить и отметить выполненной',
-                                                      icon: _DoneTogglePngIcon(
-                                                        done: done,
-                                                      ),
-                                                      onPressed: () async {
+                                                      backgroundColor: colors
+                                                          .primaryContainer
+                                                          .withValues(
+                                                            alpha: 0.72,
+                                                          ),
+                                                      borderColor: colors
+                                                          .primary
+                                                          .withValues(
+                                                            alpha: 0.2,
+                                                          ),
+                                                      onTap: () async {
                                                         if (done) {
                                                           final details = await db
                                                               .getWorkoutDetailsForClientOnDay(
@@ -3977,76 +3936,61 @@ class _CalendarScreenState extends State<CalendarScreen>
                                                         );
                                                       },
                                                     ),
-                                                    const SizedBox(height: 8),
-                                                    IconButton.filledTonal(
-                                                      style: IconButton.styleFrom(
-                                                        backgroundColor: colors
-                                                            .tertiaryContainer
-                                                            .withValues(
-                                                              alpha: 0.62,
-                                                            ),
-                                                        foregroundColor: colors
-                                                            .onTertiaryContainer,
-                                                        minimumSize: const Size(
-                                                          38,
-                                                          38,
-                                                        ),
-                                                        padding:
-                                                            const EdgeInsets.all(
-                                                              8,
-                                                            ),
+                                                    child: _DoneTogglePngIcon(
+                                                        done: done,
                                                       ),
-                                                      visualDensity:
-                                                          VisualDensity.compact,
+                                                      ),
+                                                    _CalendarOverlayActionButton(
                                                       tooltip:
                                                           'Добавить в Пульт',
-                                                      icon: const Icon(
-                                                        Icons
-                                                            .dashboard_customize_rounded,
-                                                        size: 20,
-                                                      ),
-                                                      onPressed: () =>
+                                                      backgroundColor: colors
+                                                          .tertiaryContainer
+                                                          .withValues(
+                                                            alpha: 0.78,
+                                                          ),
+                                                      borderColor: colors
+                                                          .tertiary
+                                                          .withValues(
+                                                            alpha: 0.18,
+                                                          ),
+                                                      onTap: () =>
                                                           _addAppointmentToPult(
                                                             it,
                                                           ),
-                                                    ),
-                                                    const SizedBox(height: 8),
-                                                    IconButton.filledTonal(
-                                                      style: IconButton.styleFrom(
-                                                        backgroundColor: colors
-                                                            .errorContainer
-                                                            .withValues(
-                                                              alpha: 0.7,
-                                                            ),
-                                                        foregroundColor: colors
-                                                            .onErrorContainer,
-                                                        minimumSize: const Size(
-                                                          38,
-                                                          38,
-                                                        ),
-                                                        padding:
-                                                            const EdgeInsets.all(
-                                                              8,
-                                                            ),
-                                                      ),
-                                                      visualDensity:
-                                                          VisualDensity.compact,
-                                                      tooltip: 'Удалить запись',
-                                                      icon: _CalendarPngIcon(
-                                                        assetPath:
-                                                            'assets/calendar/delete_record.png',
-                                                        fallback: Icons
-                                                            .delete_outline,
-                                                        size: 20,
+                                                    child: Icon(
+                                                        Icons
+                                                            .dashboard_customize_rounded,
+                                                        size: 18,
                                                         color: colors
-                                                            .onErrorContainer,
+                                                            .onTertiaryContainer,
                                                       ),
-                                                      onPressed: () async {
+                                                      ),
+                                                    _CalendarOverlayActionButton(
+                                                      tooltip: 'Удалить запись',
+                                                      backgroundColor: colors
+                                                          .errorContainer
+                                                          .withValues(
+                                                            alpha: 0.76,
+                                                          ),
+                                                      borderColor: colors.error
+                                                          .withValues(
+                                                            alpha: 0.2,
+                                                          ),
+                                                      onTap: () async {
                                                         await db
                                                             .deleteAppointmentById(
                                                               it.appointment.id,
                                                             );
                                                       },
+                                                      child: _CalendarPngIcon(
+                                                        assetPath:
+                                                            'assets/calendar/delete_record.png',
+                                                        fallback: Icons
+                                                            .delete_outline,
+                                                        size: 18,
+                                                        color: colors
+                                                            .onErrorContainer,
+                                                      ),
                                                     ),
                                                   ],
                                                 ),
@@ -4068,6 +4012,54 @@ class _CalendarScreenState extends State<CalendarScreen>
               },
             ),
           ],
+        ),
+      ),
+    );
+  }
+}
+
+class _CalendarOverlayActionButton extends StatelessWidget {
+  const _CalendarOverlayActionButton({
+    required this.tooltip,
+    required this.backgroundColor,
+    required this.borderColor,
+    required this.onTap,
+    required this.child,
+  });
+
+  final String tooltip;
+  final Color backgroundColor;
+  final Color borderColor;
+  final VoidCallback onTap;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    return Tooltip(
+      message: tooltip,
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(999),
+          child: Ink(
+            width: 34,
+            height: 34,
+            decoration: BoxDecoration(
+              color: backgroundColor,
+              shape: BoxShape.circle,
+              border: Border.all(color: borderColor),
+              boxShadow: [
+                BoxShadow(
+                  color: colors.shadow.withValues(alpha: 0.08),
+                  blurRadius: 8,
+                  offset: const Offset(0, 3),
+                ),
+              ],
+            ),
+            child: Center(child: child),
+          ),
         ),
       ),
     );
