@@ -3651,7 +3651,7 @@ class _CalendarScreenState extends State<CalendarScreen>
                                             children: [
                                               Padding(
                                                 padding: const EdgeInsets.only(
-                                                  right: 42,
+                                                  right: 32,
                                                 ),
                                                 child: Column(
                                                   crossAxisAlignment:
@@ -3857,11 +3857,8 @@ class _CalendarScreenState extends State<CalendarScreen>
                                               Positioned(
                                                 top: 0,
                                                 right: 0,
-                                                bottom: 0,
+
                                                 child: Column(
-                                                  mainAxisAlignment:
-                                                      MainAxisAlignment
-                                                          .spaceBetween,
                                                   children: [
                                                     _CalendarOverlayActionButton(
                                                       tooltip: done
@@ -3935,11 +3932,12 @@ class _CalendarScreenState extends State<CalendarScreen>
                                                           it,
                                                         );
                                                       },
-                                                    ),
-                                                    child: _DoneTogglePngIcon(
+                                                      child: _DoneTogglePngIcon(
                                                         done: done,
                                                       ),
-                                                      ),
+                                                      size: 26,
+                                                    ),
+                                                    const SizedBox(height: 4),
                                                     _CalendarOverlayActionButton(
                                                       tooltip:
                                                           'Добавить в Пульт',
@@ -3957,39 +3955,39 @@ class _CalendarScreenState extends State<CalendarScreen>
                                                           _addAppointmentToPult(
                                                             it,
                                                           ),
-                                                    child: Icon(
+                                                      child: Icon(
                                                         Icons
                                                             .dashboard_customize_rounded,
-                                                        size: 18,
+                                                        size: 16,
                                                         color: colors
                                                             .onTertiaryContainer,
                                                       ),
-                                                      ),
+                                                      size: 26,
+                                                    ),
+                                                    const SizedBox(height: 4),
                                                     _CalendarOverlayActionButton(
-                                                      tooltip: 'Удалить запись',
+                                                      tooltip: 'Ещё действия',
                                                       backgroundColor: colors
-                                                          .errorContainer
+                                                          .surfaceContainerHigh
                                                           .withValues(
-                                                            alpha: 0.76,
+                                                            alpha: 0.82,
                                                           ),
-                                                      borderColor: colors.error
+                                                      borderColor: colors
+                                                          .outlineVariant
                                                           .withValues(
-                                                            alpha: 0.2,
+                                                            alpha: 0.22,
                                                           ),
-                                                      onTap: () async {
-                                                        await db
-                                                            .deleteAppointmentById(
-                                                              it.appointment.id,
-                                                            );
-                                                      },
-                                                      child: _CalendarPngIcon(
-                                                        assetPath:
-                                                            'assets/calendar/delete_record.png',
-                                                        fallback: Icons
-                                                            .delete_outline,
-                                                        size: 18,
+                                                      onTap: () =>
+                                                          _openAppointmentActions(
+                                                            it,
+                                                          ),
+                                                      size: 22,
+                                                      child: Icon(
+                                                        Icons
+                                                            .more_horiz_rounded,
+                                                        size: 16,
                                                         color: colors
-                                                            .onErrorContainer,
+                                                            .onSurfaceVariant,
                                                       ),
                                                     ),
                                                   ],
@@ -4025,6 +4023,7 @@ class _CalendarOverlayActionButton extends StatelessWidget {
     required this.borderColor,
     required this.onTap,
     required this.child,
+    this.size = 26,
   });
 
   final String tooltip;
@@ -4032,6 +4031,7 @@ class _CalendarOverlayActionButton extends StatelessWidget {
   final Color borderColor;
   final VoidCallback onTap;
   final Widget child;
+  final double size;
 
   @override
   Widget build(BuildContext context) {
@@ -4044,8 +4044,8 @@ class _CalendarOverlayActionButton extends StatelessWidget {
           onTap: onTap,
           borderRadius: BorderRadius.circular(999),
           child: Ink(
-            width: 34,
-            height: 34,
+            width: size,
+            height: size,
             decoration: BoxDecoration(
               color: backgroundColor,
               shape: BoxShape.circle,
