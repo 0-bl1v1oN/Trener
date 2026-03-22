@@ -3598,6 +3598,9 @@ class _CalendarScreenState extends State<CalendarScreen>
                                             _openAppointmentActions(it),
                                         child: Container(
                                           padding: const EdgeInsets.all(14),
+                                          constraints: const BoxConstraints(
+                                            minHeight: 92,
+                                          ),
                                           decoration: BoxDecoration(
                                             borderRadius: BorderRadius.circular(
                                               24,
@@ -3647,12 +3650,11 @@ class _CalendarScreenState extends State<CalendarScreen>
                                               ),
                                             ],
                                           ),
-                                          child: Stack(
+                                          child: Row(
+                                            crossAxisAlignment:
+                                                CrossAxisAlignment.start,
                                             children: [
-                                              Padding(
-                                                padding: const EdgeInsets.only(
-                                                  right: 32,
-                                                ),
+                                              Expanded(
                                                 child: Column(
                                                   crossAxisAlignment:
                                                       CrossAxisAlignment.start,
@@ -3854,144 +3856,132 @@ class _CalendarScreenState extends State<CalendarScreen>
                                                   ],
                                                 ),
                                               ),
-                                              Positioned(
-                                                top: 0,
-                                                right: 0,
-
-                                                child: Column(
-                                                  children: [
-                                                    _CalendarOverlayActionButton(
-                                                      tooltip: done
-                                                          ? 'Снять отметку выполнения'
-                                                          : 'Проверить и отметить выполненной',
-                                                      backgroundColor: colors
-                                                          .primaryContainer
-                                                          .withValues(
-                                                            alpha: 0.72,
-                                                          ),
-                                                      borderColor: colors
-                                                          .primary
-                                                          .withValues(
-                                                            alpha: 0.2,
-                                                          ),
-                                                      onTap: () async {
-                                                        if (done) {
-                                                          final details = await db
-                                                              .getWorkoutDetailsForClientOnDay(
-                                                                clientId: it
-                                                                    .client
-                                                                    .id,
-                                                                day: it
-                                                                    .appointment
-                                                                    .startAt,
-                                                              );
-
-                                                          final results = {
-                                                            for (final e
-                                                                in details.$3)
-                                                              e.templateExerciseId: (
-                                                                e.lastWeightKg,
-                                                                e.lastReps,
-                                                              ),
-                                                          };
-
-                                                          await db.saveWorkoutDraftResults(
-                                                            clientId:
-                                                                it.client.id,
-                                                            day: it
-                                                                .appointment
-                                                                .startAt,
-                                                            resultsByTemplateExerciseId:
-                                                                results,
-                                                          );
-                                                          await db
-                                                              .toggleWorkoutForClientOnDay(
-                                                                clientId: it
-                                                                    .client
-                                                                    .id,
-                                                                day:
-                                                                    _selectedDay,
-                                                              );
-                                                          await db.updateAppointmentNote(
-                                                            id: it
-                                                                .appointment
-                                                                .id,
-                                                            note: _withAttendanceMarker(
-                                                              it
+                                              const SizedBox(width: 12),
+                                              Column(
+                                                mainAxisSize: MainAxisSize.min,
+                                                children: [
+                                                  _CalendarOverlayActionButton(
+                                                    tooltip: done
+                                                        ? 'Снять отметку выполнения'
+                                                        : 'Проверить и отметить выполненной',
+                                                    backgroundColor: colors
+                                                        .primaryContainer
+                                                        .withValues(
+                                                          alpha: 0.72,
+                                                        ),
+                                                    borderColor: colors.primary
+                                                        .withValues(alpha: 0.2),
+                                                    onTap: () async {
+                                                      if (done) {
+                                                        final details = await db
+                                                            .getWorkoutDetailsForClientOnDay(
+                                                              clientId:
+                                                                  it.client.id,
+                                                              day: it
                                                                   .appointment
-                                                                  .note,
-                                                              false,
-                                                            ),
-                                                          );
-                                                          if (!mounted) return;
-                                                          setState(() {});
-                                                          return;
-                                                        }
+                                                                  .startAt,
+                                                            );
 
-                                                        await _openQuickWorkoutCheck(
-                                                          it,
+                                                        final results = {
+                                                          for (final e
+                                                              in details.$3)
+                                                            e.templateExerciseId:
+                                                                (
+                                                                  e.lastWeightKg,
+                                                                  e.lastReps,
+                                                                ),
+                                                        };
+
+                                                        await db.saveWorkoutDraftResults(
+                                                          clientId:
+                                                              it.client.id,
+                                                          day: it
+                                                              .appointment
+                                                              .startAt,
+                                                          resultsByTemplateExerciseId:
+                                                              results,
                                                         );
-                                                      },
-                                                      child: _DoneTogglePngIcon(
-                                                        done: done,
-                                                      ),
-                                                      size: 26,
+                                                        await db
+                                                            .toggleWorkoutForClientOnDay(
+                                                              clientId:
+                                                                  it.client.id,
+                                                              day: _selectedDay,
+                                                            );
+                                                        await db.updateAppointmentNote(
+                                                          id: it.appointment.id,
+                                                          note:
+                                                              _withAttendanceMarker(
+                                                                it
+                                                                    .appointment
+                                                                    .note,
+                                                                false,
+                                                              ),
+                                                        );
+                                                        if (!mounted) return;
+                                                        setState(() {});
+                                                        return;
+                                                      }
+
+                                                      await _openQuickWorkoutCheck(
+                                                        it,
+                                                      );
+                                                    },
+                                                    child: _DoneTogglePngIcon(
+                                                      done: done,
                                                     ),
-                                                    const SizedBox(height: 4),
-                                                    _CalendarOverlayActionButton(
-                                                      tooltip:
-                                                          'Добавить в Пульт',
-                                                      backgroundColor: colors
-                                                          .tertiaryContainer
-                                                          .withValues(
-                                                            alpha: 0.78,
-                                                          ),
-                                                      borderColor: colors
-                                                          .tertiary
-                                                          .withValues(
-                                                            alpha: 0.18,
-                                                          ),
-                                                      onTap: () =>
-                                                          _addAppointmentToPult(
-                                                            it,
-                                                          ),
-                                                      child: Icon(
-                                                        Icons
-                                                            .dashboard_customize_rounded,
-                                                        size: 16,
-                                                        color: colors
-                                                            .onTertiaryContainer,
-                                                      ),
-                                                      size: 26,
+                                                    size: 26,
+                                                  ),
+                                                  const SizedBox(height: 4),
+                                                  _CalendarOverlayActionButton(
+                                                    tooltip: 'Добавить в Пульт',
+                                                    backgroundColor: colors
+                                                        .tertiaryContainer
+                                                        .withValues(
+                                                          alpha: 0.78,
+                                                        ),
+                                                    borderColor: colors.tertiary
+                                                        .withValues(
+                                                          alpha: 0.18,
+                                                        ),
+                                                    onTap: () =>
+                                                        _addAppointmentToPult(
+                                                          it,
+                                                        ),
+                                                    child: Icon(
+                                                      Icons
+                                                          .dashboard_customize_rounded,
+                                                      size: 16,
+                                                      color: colors
+                                                          .onTertiaryContainer,
                                                     ),
-                                                    const SizedBox(height: 4),
-                                                    _CalendarOverlayActionButton(
-                                                      tooltip: 'Ещё действия',
-                                                      backgroundColor: colors
-                                                          .surfaceContainerHigh
-                                                          .withValues(
-                                                            alpha: 0.82,
-                                                          ),
-                                                      borderColor: colors
-                                                          .outlineVariant
-                                                          .withValues(
-                                                            alpha: 0.22,
-                                                          ),
-                                                      onTap: () =>
-                                                          _openAppointmentActions(
-                                                            it,
-                                                          ),
-                                                      size: 22,
-                                                      child: Icon(
-                                                        Icons
-                                                            .more_horiz_rounded,
-                                                        size: 16,
-                                                        color: colors
-                                                            .onSurfaceVariant,
-                                                      ),
+                                                    size: 26,
+                                                  ),
+                                                  const SizedBox(height: 4),
+                                                  _CalendarOverlayActionButton(
+                                                    tooltip: 'Ещё действия',
+                                                    backgroundColor: colors
+                                                        .surfaceContainerHigh
+                                                        .withValues(
+                                                          alpha: 0.82,
+                                                        ),
+                                                    borderColor: colors
+                                                        .outlineVariant
+                                                        .withValues(
+                                                          alpha: 0.22,
+                                                        ),
+                                                    onTap: () =>
+                                                        _openAppointmentActions(
+                                                          it,
+                                                        ),
+                                                    size: 22,
+                                                    child: Icon(
+                                                      Icons.more_horiz_rounded,
+                                                      size: 16,
+                                                      color: colors
+                                                          .onSurfaceVariant,
                                                     ),
-                                                  ],
-                                                ),
+                                                  ),
+                                                ],
                                               ),
                                             ],
                                           ),
