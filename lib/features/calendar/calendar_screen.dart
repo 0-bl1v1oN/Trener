@@ -12,6 +12,8 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:myfitness/theme_controller.dart';
 import 'dart:async';
 
+enum _QuickWorkoutCheckResult { completed, skipped, exitBulk }
+
 class CalendarScreen extends StatefulWidget {
   const CalendarScreen({super.key});
 
@@ -122,6 +124,7 @@ class _CalendarScreenState extends State<CalendarScreen>
   // защита от дерганья
   bool _collapseLock = false;
   bool _openingCategoriesFromRoute = false;
+  bool _isBulkMarkingAppointments = false;
 
   late final AnimationController _fabPulseController;
   late final AnimationController _fabTapController;
@@ -135,6 +138,13 @@ class _CalendarScreenState extends State<CalendarScreen>
     final current = (note ?? '').replaceAll(_attendanceMarker, '').trim();
     if (!done) return current.isEmpty ? null : current;
     return current.isEmpty ? _attendanceMarker : '$current $_attendanceMarker';
+  }
+
+  void _showCalendarMessage(String message) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text(message)));
   }
 
   bool _isCombiningMark(int rune) {
@@ -897,7 +907,7 @@ class _CalendarScreenState extends State<CalendarScreen>
     int weeks = 4;
     String clientQuery = '';
 
-    final ok = await showDialog<bool>(
+    final result = await showDialog<_QuickWorkoutCheckResult>(
       context: context,
       barrierDismissible: true,
       builder: (context) {
@@ -1405,7 +1415,7 @@ class _CalendarScreenState extends State<CalendarScreen>
     int weeks = 4;
     bool useSchedule = false;
 
-    final ok = await showDialog<bool>(
+    final result = await showDialog<_QuickWorkoutCheckResult>(
       context: context,
       builder: (context) {
         return StatefulBuilder(
@@ -1898,7 +1908,7 @@ class _CalendarScreenState extends State<CalendarScreen>
       }
     }
 
-    final ok = await showDialog<bool>(
+    final result = await showDialog<_QuickWorkoutCheckResult>(
       context: context,
       builder: (context) => StatefulBuilder(
         builder: (context, setLocal) {
@@ -2455,16 +2465,18 @@ class _CalendarScreenState extends State<CalendarScreen>
     return int.tryParse(s);
   }
 
-  Future<void> _openQuickWorkoutCheck(AppointmentWithClient item) async {
+  Future<_QuickWorkoutCheckResult> _openQuickWorkoutCheck(
+    AppointmentWithClient item,
+  ) async {
     final overview = await db.getProgramOverview(item.client.id);
     final nextAbsoluteIndex = overview.st.completedInPlan;
 
     if (nextAbsoluteIndex < 0 || nextAbsoluteIndex >= overview.slots.length) {
-      if (!mounted) return;
+      if (!mounted) return _QuickWorkoutCheckResult.skipped;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('У клиента нет активной программы.')),
       );
-      return;
+      return _QuickWorkoutCheckResult.skipped;
     }
     final nextSlot = overview.slots[nextAbsoluteIndex];
     final nextTemplateIdx = nextSlot.templateIdx;
@@ -2508,7 +2520,7 @@ class _CalendarScreenState extends State<CalendarScreen>
       );
     }
 
-    final ok = await showDialog<bool>(
+    final result = await showDialog<_QuickWorkoutCheckResult>(
       context: context,
       builder: (context) => AlertDialog(
         title: Text('Проверка весов • ${item.client.name}'),
@@ -2563,22 +2575,30 @@ class _CalendarScreenState extends State<CalendarScreen>
         ),
         actions: [
           TextButton(
-            onPressed: () => Navigator.of(context).pop(false),
+            onPressed: () =>
+                Navigator.of(context).pop(_QuickWorkoutCheckResult.skipped),
             child: const Text('Отмена'),
           ),
+          if (_isBulkMarkingAppointments)
+            TextButton(
+              onPressed: () =>
+                  Navigator.of(context).pop(_QuickWorkoutCheckResult.exitBulk),
+              child: const Text('Выйти'),
+            ),
           FilledButton(
-            onPressed: () => Navigator.of(context).pop(true),
+            onPressed: () =>
+                Navigator.of(context).pop(_QuickWorkoutCheckResult.completed),
             child: const Text('Ок'),
           ),
         ],
       ),
     );
 
-    if (ok != true) {
+    if (result != _QuickWorkoutCheckResult.completed) {
       for (final c in [...kgControllers.values, ...repsControllers.values]) {
         c.dispose();
       }
-      return;
+      return result ?? _QuickWorkoutCheckResult.skipped;
     }
 
     final results = <int, (double? kg, int? reps)>{};
@@ -2607,8 +2627,45 @@ class _CalendarScreenState extends State<CalendarScreen>
       note: _withAttendanceMarker(item.appointment.note, true),
     );
 
-    if (!mounted) return;
+    if (!mounted) return _QuickWorkoutCheckResult.completed;
     setState(() {});
+    return _QuickWorkoutCheckResult.completed;
+  }
+
+  Future<void> _markAllAppointmentsDone(
+    List<AppointmentWithClient> items,
+  ) async {
+    if (_isBulkMarkingAppointments) return;
+
+    final pendingItems = items
+        .where((item) => !_isAppointmentDone(item.appointment))
+        .toList();
+
+    if (pendingItems.isEmpty) {
+      _showCalendarMessage('Все клиенты отмечены');
+      return;
+    }
+
+    if (mounted) {
+      setState(() => _isBulkMarkingAppointments = true);
+    } else {
+      _isBulkMarkingAppointments = true;
+    }
+
+    try {
+      for (final item in pendingItems) {
+        final result = await _openQuickWorkoutCheck(item);
+        if (result == _QuickWorkoutCheckResult.exitBulk) {
+          break;
+        }
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _isBulkMarkingAppointments = false);
+      } else {
+        _isBulkMarkingAppointments = false;
+      }
+    }
   }
 
   void _maybeOpenCategoriesFromRoute() {
@@ -3123,14 +3180,38 @@ class _CalendarScreenState extends State<CalendarScreen>
                                     16,
                                     10,
                                   ),
-                                  child: Align(
-                                    alignment: Alignment.centerLeft,
-                                    child: Text(
-                                      'Записи на $selectedLabel',
-                                      style: Theme.of(
-                                        context,
-                                      ).textTheme.titleMedium,
-                                    ),
+                                  child: Row(
+                                    children: [
+                                      Expanded(
+                                        child: Text(
+                                          'Записи на $selectedLabel',
+                                          style: Theme.of(
+                                            context,
+                                          ).textTheme.titleMedium,
+                                        ),
+                                      ),
+                                      if (items.isNotEmpty) ...[
+                                        const SizedBox(width: 12),
+                                        FilledButton.tonalIcon(
+                                          onPressed: _isBulkMarkingAppointments
+                                              ? null
+                                              : () => _markAllAppointmentsDone(
+                                                  items,
+                                                ),
+                                          icon: _isBulkMarkingAppointments
+                                              ? const SizedBox(
+                                                  width: 16,
+                                                  height: 16,
+                                                  child:
+                                                      CircularProgressIndicator(
+                                                        strokeWidth: 2,
+                                                      ),
+                                                )
+                                              : const Icon(Icons.done_all),
+                                          label: const Text('Отметить всех'),
+                                        ),
+                                      ],
+                                    ],
                                   ),
                                 ),
                               ),

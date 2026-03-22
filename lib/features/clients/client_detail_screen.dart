@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:drift/drift.dart' show Value;
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
@@ -19,6 +20,7 @@ class _ClientDetailScreenState extends State<ClientDetailScreen> {
 
   final _nameController = TextEditingController();
 
+  Timer? _autosaveTimer;
   String _gender = 'Не указано';
   String _plan = 'Пробный';
   DateTime _start = DateTime.now();
@@ -26,6 +28,10 @@ class _ClientDetailScreenState extends State<ClientDetailScreen> {
   int _completedInPlan = 0;
 
   bool _loaded = false;
+  bool _isHydrating = true;
+  bool _isSaving = false;
+  bool _saveQueued = false;
+  String? _lastSavedSnapshot;
 
   String _fmtDate(DateTime d) => DateFormat('dd.MM.yyyy', 'ru_RU').format(d);
 
@@ -41,6 +47,80 @@ class _ClientDetailScreenState extends State<ClientDetailScreen> {
     final completedInBundle = _completedInPlan % size;
     if (completedInBundle == 0 && _completedInPlan > 0) return 0;
     return size - completedInBundle;
+  }
+
+  String _buildClientSnapshot() {
+    return [
+      _nameController.text.trim(),
+      _gender,
+      _plan,
+      _start.millisecondsSinceEpoch,
+      _end.millisecondsSinceEpoch,
+    ].join('|');
+  }
+
+  void _scheduleAutosave({Duration delay = const Duration(milliseconds: 500)}) {
+    if (!_loaded || _isHydrating) return;
+
+    final snapshot = _buildClientSnapshot();
+    if (snapshot == _lastSavedSnapshot) return;
+
+    _autosaveTimer?.cancel();
+    _autosaveTimer = Timer(delay, () {
+      unawaited(_flushAutosave());
+    });
+  }
+
+  Future<void> _flushAutosave() async {
+    _autosaveTimer?.cancel();
+    if (!_loaded || _isHydrating) return;
+
+    final snapshot = _buildClientSnapshot();
+    if (snapshot == _lastSavedSnapshot) return;
+
+    if (_isSaving) {
+      _saveQueued = true;
+      return;
+    }
+
+    _setSaving(true);
+    final saved = await _saveClientData();
+    if (saved) {
+      _lastSavedSnapshot = snapshot;
+    }
+    _setSaving(false);
+
+    if (_saveQueued) {
+      _saveQueued = false;
+      _scheduleAutosave(delay: Duration.zero);
+    }
+  }
+
+  void _updateClient(VoidCallback applyChanges) {
+    setState(applyChanges);
+    _scheduleAutosave();
+  }
+
+  void _onNameChanged() {
+    _scheduleAutosave();
+  }
+
+  void _setSaving(bool value) {
+    if (_isSaving == value) return;
+    if (!mounted) {
+      _isSaving = value;
+      return;
+    }
+
+    setState(() {
+      _isSaving = value;
+    });
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    _nameController.addListener(_onNameChanged);
   }
 
   @override
@@ -64,6 +144,7 @@ class _ClientDetailScreenState extends State<ClientDetailScreen> {
       return;
     }
 
+    _isHydrating = true;
     setState(() {
       _nameController.text = c.name;
       _gender = c.gender ?? 'Не указано';
@@ -72,6 +153,8 @@ class _ClientDetailScreenState extends State<ClientDetailScreen> {
       _end = c.planEnd ?? _start.add(const Duration(days: 28));
       _completedInPlan = overview.st.completedInPlan;
     });
+    _lastSavedSnapshot = _buildClientSnapshot();
+    _isHydrating = false;
   }
 
   Future<void> _pickStartDate() async {
@@ -84,10 +167,30 @@ class _ClientDetailScreenState extends State<ClientDetailScreen> {
     );
 
     if (picked == null) return;
+    final normalizedPicked = DateTime(picked.year, picked.month, picked.day);
+    final previousDefaultEnd = _start.add(const Duration(days: 28));
 
-    setState(() {
-      _start = DateTime(picked.year, picked.month, picked.day);
-      _end = _start.add(const Duration(days: 28));
+    _updateClient(() {
+      _start = normalizedPicked;
+      if (_end == previousDefaultEnd) {
+        _end = _start.add(const Duration(days: 28));
+      }
+    });
+  }
+
+  Future<void> _pickEndDate() async {
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: _end.isBefore(_start) ? _start : _end,
+      firstDate: _start,
+      lastDate: DateTime(2035, 12, 31),
+      locale: const Locale('ru', 'RU'),
+    );
+
+    if (picked == null) return;
+
+    _updateClient(() {
+      _end = DateTime(picked.year, picked.month, picked.day);
     });
   }
 
@@ -107,13 +210,6 @@ class _ClientDetailScreenState extends State<ClientDetailScreen> {
 
     await db.syncProgramStateFromClient(widget.clientId);
     return true;
-  }
-
-  Future<void> _save() async {
-    final saved = await _saveClientData();
-    if (!saved) return;
-    if (!mounted) return;
-    Navigator.pop(context);
   }
 
   InputDecoration _fieldDecoration(
@@ -284,6 +380,11 @@ class _ClientDetailScreenState extends State<ClientDetailScreen> {
 
   @override
   void dispose() {
+    _nameController.removeListener(_onNameChanged);
+    _autosaveTimer?.cancel();
+    if (!_isHydrating && _buildClientSnapshot() != _lastSavedSnapshot) {
+      unawaited(_saveClientData());
+    }
     _nameController.dispose();
     super.dispose();
   }
@@ -294,20 +395,31 @@ class _ClientDetailScreenState extends State<ClientDetailScreen> {
 
     return SafeArea(
       child: Scaffold(
-        appBar: AppBar(title: const Text('Клиент')),
-        bottomNavigationBar: SafeArea(
-          top: false,
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
-            child: SizedBox(
-              height: 50,
-              child: ElevatedButton.icon(
-                onPressed: _save,
-                icon: const Icon(Icons.save_outlined),
-                label: const Text('Сохранить'),
+        appBar: AppBar(
+          title: const Text('Клиент'),
+          actions: [
+            Padding(
+              padding: const EdgeInsets.only(right: 16),
+              child: Center(
+                child: AnimatedSwitcher(
+                  duration: const Duration(milliseconds: 200),
+                  child: _isSaving
+                      ? const SizedBox(
+                          key: ValueKey('saving'),
+                          width: 18,
+                          height: 18,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : Icon(
+                          Icons.cloud_done_outlined,
+                          key: const ValueKey('saved'),
+                          size: 20,
+                          color: colors.primary,
+                        ),
+                ),
               ),
             ),
-          ),
+          ],
         ),
         body: SingleChildScrollView(
           padding: const EdgeInsets.all(16),
@@ -346,7 +458,7 @@ class _ClientDetailScreenState extends State<ClientDetailScreen> {
                           DropdownMenuItem(value: 'Ж', child: Text('Ж')),
                         ],
                         onChanged: (v) =>
-                            setState(() => _gender = v ?? 'Не указано'),
+                            _updateClient(() => _gender = v ?? 'Не указано'),
                         decoration: _fieldDecoration(
                           'Пол',
                           colors,
@@ -367,12 +479,21 @@ class _ClientDetailScreenState extends State<ClientDetailScreen> {
                           DropdownMenuItem(value: '12', child: Text('12')),
                         ],
                         onChanged: (v) =>
-                            setState(() => _plan = v ?? 'Пробный'),
+                            _updateClient(() => _plan = v ?? 'Пробный'),
                         decoration: _fieldDecoration(
                           'Абонемент',
                           colors,
                           iconAsset: 'assets/clients/client_plan.png',
                           fallbackIcon: Icons.confirmation_num_outlined,
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      Align(
+                        alignment: Alignment.centerLeft,
+                        child: Text(
+                          'Все изменения сохраняются автоматически.',
+                          style: Theme.of(context).textTheme.bodySmall
+                              ?.copyWith(color: colors.onSurfaceVariant),
                         ),
                       ),
                     ],
@@ -406,14 +527,22 @@ class _ClientDetailScreenState extends State<ClientDetailScreen> {
                         ),
                       ),
                       const SizedBox(height: 12),
-                      InputDecorator(
-                        decoration: _fieldDecoration(
-                          'Конец абонемента (+28 дней)',
-                          colors,
-                          iconAsset: 'assets/clients/client_plan_end.png',
-                          fallbackIcon: Icons.event_available,
+                      InkWell(
+                        onTap: _pickEndDate,
+                        borderRadius: BorderRadius.circular(12),
+                        child: InputDecorator(
+                          decoration:
+                              _fieldDecoration(
+                                'Конец абонемента',
+                                colors,
+                                iconAsset: 'assets/clients/client_plan_end.png',
+                                fallbackIcon: Icons.event_available,
+                              ).copyWith(
+                                helperText:
+                                    'По умолчанию: +28 дней от даты начала',
+                              ),
+                          child: Text(_fmtDate(_end)),
                         ),
-                        child: Text(_fmtDate(_end)),
                       ),
                       const SizedBox(height: 12),
                       Container(

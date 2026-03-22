@@ -2365,26 +2365,18 @@ class AppDb extends _$AppDb {
         (c.planEnd == null && st.planEnd != null);
 
     // Если ты поменял даты абонемента — считаем это "новый абонемент"
-    if (startChanged || endChanged) {
+    if (startChanged || endChanged || st.planSize != planSize) {
       await (update(
         clientProgramStates,
       )..where((t) => t.clientId.equals(clientId))).write(
         ClientProgramStatesCompanion(
           planSize: Value(planSize),
-          planInstance: Value(st.planInstance + 1),
-          completedInPlan: const Value(0),
-          // nextOffset НЕ сбрасываем — чтобы продолжать цикл
           planStart: c.planStart == null
               ? const Value.absent()
               : Value(c.planStart!),
           planEnd: c.planEnd == null ? const Value.absent() : Value(c.planEnd!),
         ),
       );
-    } else if (st.planSize != planSize) {
-      // 4 -> 8 (продление) просто меняет лимит
-      await (update(clientProgramStates)
-            ..where((t) => t.clientId.equals(clientId)))
-          .write(ClientProgramStatesCompanion(planSize: Value(planSize)));
     }
   }
 
