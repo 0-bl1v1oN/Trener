@@ -5,6 +5,7 @@ import 'package:table_calendar/table_calendar.dart';
 
 import '../../app/app_db_scope.dart';
 import '../../db/app_db.dart';
+import '../pult/pult_store.dart';
 import 'package:drift/drift.dart' show Value;
 
 import 'package:flutter/services.dart';
@@ -2688,6 +2689,39 @@ class _CalendarScreenState extends State<CalendarScreen>
     return _QuickWorkoutCheckResult.completed;
   }
 
+  Future<void> _addAppointmentToPult(AppointmentWithClient item) async {
+    final overview = await db.getProgramOverview(item.client.id);
+    final nextAbsoluteIndex = overview.st.completedInPlan;
+
+    if (nextAbsoluteIndex < 0 || nextAbsoluteIndex >= overview.slots.length) {
+      _showCalendarMessage('У клиента нет активной программы.');
+      return;
+    }
+
+    final nextSlot = overview.slots[nextAbsoluteIndex];
+    final result = await PultStore.addOrUpdateTab(
+      PultTabEntry(
+        clientId: item.client.id,
+        clientName: item.client.name,
+        day: DateTime(_selectedDay.year, _selectedDay.month, _selectedDay.day),
+        templateIdx: nextSlot.templateIdx,
+        absoluteIndex: nextAbsoluteIndex,
+      ),
+    );
+
+    switch (result) {
+      case PultAddResult.added:
+        _showCalendarMessage('${item.client.name} добавлен в Пульт');
+        break;
+      case PultAddResult.updated:
+        _showCalendarMessage('${item.client.name} обновлён в Пульте');
+        break;
+      case PultAddResult.exists:
+        _showCalendarMessage('${item.client.name} уже в Пульте');
+        break;
+    }
+  }
+
   Future<void> _markAllAppointmentsDone(
     List<AppointmentWithClient> items,
   ) async {
@@ -3826,15 +3860,18 @@ class _CalendarScreenState extends State<CalendarScreen>
                                               ),
                                               const SizedBox(width: 8),
                                               Container(
-                                                padding: const EdgeInsets.all(
-                                                  3,
-                                                ),
+                                                width: 52,
+                                                padding:
+                                                    const EdgeInsets.symmetric(
+                                                      horizontal: 4,
+                                                      vertical: 6,
+                                                    ),
                                                 decoration: BoxDecoration(
                                                   color: colors
                                                       .surfaceContainerHighest
-                                                      .withValues(alpha: 0.48),
+                                                      .withValues(alpha: 0.5),
                                                   borderRadius:
-                                                      BorderRadius.circular(16),
+                                                      BorderRadius.circular(18),
                                                   border: Border.all(
                                                     color: colors.outlineVariant
                                                         .withValues(
@@ -3845,34 +3882,32 @@ class _CalendarScreenState extends State<CalendarScreen>
                                                     BoxShadow(
                                                       color: colors.shadow
                                                           .withValues(
-                                                            alpha: 0.04,
+                                                            alpha: 0.05,
                                                           ),
-                                                      blurRadius: 6,
+                                                      blurRadius: 8,
                                                       offset: const Offset(
                                                         0,
-                                                        2,
+                                                        3,
                                                       ),
                                                     ),
                                                   ],
                                                 ),
-                                                child: Row(
-                                                  mainAxisSize:
-                                                      MainAxisSize.min,
+                                                child: Column(
                                                   children: [
                                                     IconButton.filledTonal(
                                                       style: IconButton.styleFrom(
                                                         backgroundColor: colors
                                                             .primaryContainer
                                                             .withValues(
-                                                              alpha: 0.66,
+                                                              alpha: 0.72,
                                                             ),
                                                         minimumSize: const Size(
-                                                          34,
-                                                          34,
+                                                          38,
+                                                          38,
                                                         ),
                                                         padding:
                                                             const EdgeInsets.all(
-                                                              7,
+                                                              8,
                                                             ),
                                                       ),
                                                       visualDensity:
@@ -3942,52 +3977,76 @@ class _CalendarScreenState extends State<CalendarScreen>
                                                         );
                                                       },
                                                     ),
-                                                    PopupMenuButton<String>(
-                                                      tooltip: 'Действия',
-                                                      itemBuilder: (context) => [
-                                                        PopupMenuItem(
-                                                          value: 'delete',
-                                                          child: Center(
-                                                            child: _CalendarPngIcon(
-                                                              assetPath:
-                                                                  'assets/calendar/delete_record.png',
-                                                              fallback: Icons
-                                                                  .delete_outline,
-                                                              size: 20,
-                                                              color:
-                                                                  colors.error,
+                                                    const SizedBox(height: 8),
+                                                    IconButton.filledTonal(
+                                                      style: IconButton.styleFrom(
+                                                        backgroundColor: colors
+                                                            .tertiaryContainer
+                                                            .withValues(
+                                                              alpha: 0.62,
                                                             ),
-                                                          ),
+                                                        foregroundColor: colors
+                                                            .onTertiaryContainer,
+                                                        minimumSize: const Size(
+                                                          38,
+                                                          38,
                                                         ),
-                                                      ],
-                                                      onSelected: (value) async {
-                                                        if (value == 'delete') {
-                                                          await db
-                                                              .deleteAppointmentById(
-                                                                it
-                                                                    .appointment
-                                                                    .id,
-                                                              );
-                                                        }
-                                                      },
-                                                      icon: Container(
-                                                        width: 34,
-                                                        height: 34,
-                                                        decoration: BoxDecoration(
-                                                          color: colors.surface
-                                                              .withValues(
-                                                                alpha: 0.42,
-                                                              ),
-                                                          borderRadius:
-                                                              BorderRadius.circular(
-                                                                11,
-                                                              ),
-                                                        ),
-                                                        child: const Icon(
-                                                          Icons
-                                                              .more_horiz_rounded,
-                                                        ),
+                                                        padding:
+                                                            const EdgeInsets.all(
+                                                              8,
+                                                            ),
                                                       ),
+                                                      visualDensity:
+                                                          VisualDensity.compact,
+                                                      tooltip:
+                                                          'Добавить в Пульт',
+                                                      icon: const Icon(
+                                                        Icons
+                                                            .dashboard_customize_rounded,
+                                                        size: 20,
+                                                      ),
+                                                      onPressed: () =>
+                                                          _addAppointmentToPult(
+                                                            it,
+                                                          ),
+                                                    ),
+                                                    const SizedBox(height: 8),
+                                                    IconButton.filledTonal(
+                                                      style: IconButton.styleFrom(
+                                                        backgroundColor: colors
+                                                            .errorContainer
+                                                            .withValues(
+                                                              alpha: 0.7,
+                                                            ),
+                                                        foregroundColor: colors
+                                                            .onErrorContainer,
+                                                        minimumSize: const Size(
+                                                          38,
+                                                          38,
+                                                        ),
+                                                        padding:
+                                                            const EdgeInsets.all(
+                                                              8,
+                                                            ),
+                                                      ),
+                                                      visualDensity:
+                                                          VisualDensity.compact,
+                                                      tooltip: 'Удалить запись',
+                                                      icon: _CalendarPngIcon(
+                                                        assetPath:
+                                                            'assets/calendar/delete_record.png',
+                                                        fallback: Icons
+                                                            .delete_outline,
+                                                        size: 20,
+                                                        color: colors
+                                                            .onErrorContainer,
+                                                      ),
+                                                      onPressed: () async {
+                                                        await db
+                                                            .deleteAppointmentById(
+                                                              it.appointment.id,
+                                                            );
+                                                      },
                                                     ),
                                                   ],
                                                 ),

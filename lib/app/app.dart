@@ -8,6 +8,7 @@ import '../features/clients/client_detail_screen.dart';
 import '../features/clients/client_program_screen.dart';
 import '../features/workouts/workout_screen.dart';
 import '../features/programs/defalut_programs_screen.dart';
+import '../features/pult/pult_screen.dart';
 import '../features/more/more_screen.dart';
 import '../features/more/income_screen.dart';
 import '../features/more/records_screen.dart';
@@ -277,6 +278,15 @@ final GoRouter _router = GoRouter(
         StatefulShellBranch(
           routes: [
             GoRoute(
+              path: '/pult',
+              pageBuilder: (context, state) =>
+                  const NoTransitionPage(child: PultScreen()),
+            ),
+          ],
+        ),
+        StatefulShellBranch(
+          routes: [
+            GoRoute(
               path: '/programs',
               pageBuilder: (context, state) =>
                   const NoTransitionPage(child: DefaultProgramsScreen()),
@@ -363,6 +373,10 @@ class AppShell extends StatelessWidget {
               fallback: Icons.people,
             ),
             label: 'Клиенты',
+          ),
+          NavigationDestination(
+            icon: const Icon(Icons.dashboard_customize_rounded),
+            label: 'Пульт',
           ),
           NavigationDestination(
             icon: _NavPngIcon(
