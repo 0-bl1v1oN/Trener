@@ -1171,6 +1171,24 @@ class AppDb extends _$AppDb {
     return q.watch();
   }
 
+  Future<List<Appointment>> getAppointmentsForClientOnDay({
+    required String clientId,
+    required DateTime day,
+  }) {
+    final dayStart = DateTime(day.year, day.month, day.day);
+    final dayEnd = dayStart.add(const Duration(days: 1));
+
+    return (select(appointments)
+          ..where(
+            (t) =>
+                t.clientId.equals(clientId) &
+                t.startAt.isBiggerOrEqualValue(dayStart) &
+                t.startAt.isSmallerThanValue(dayEnd),
+          )
+          ..orderBy([(t) => OrderingTerm.asc(t.startAt)]))
+        .get();
+  }
+
   Future<void> addAppointment({
     required String clientId,
     required DateTime startAt,
@@ -2364,7 +2382,9 @@ class AppDb extends _$AppDb {
         (c.planEnd != null && st.planEnd != c.planEnd) ||
         (c.planEnd == null && st.planEnd != null);
 
-    // Если ты поменял даты абонемента — считаем это "новый абонемент"
+    // Ручное редактирование дат только синхронизирует state с клиентом.
+    // Явный "перезапуск" абонемента делаем отдельной функцией
+    // restartClientPlanProgress().
     if (startChanged || endChanged || st.planSize != planSize) {
       await (update(
         clientProgramStates,
@@ -2378,6 +2398,44 @@ class AppDb extends _$AppDb {
         ),
       );
     }
+  }
+
+  /// Явно запускает новый экземпляр абонемента для клиента.
+  ///
+  /// Используем это только для осознанного продления абонемента
+  /// (например, кнопкой `+28` в алерте), а не для ручного редактирования дат
+  /// в карточке клиента.
+  Future<void> restartClientPlanProgress(String clientId) async {
+    final c = await getClientById(clientId);
+    if (c == null) return;
+
+    final planSize = _parsePlanSize(c.plan);
+    if (planSize <= 0) return;
+
+    await ensureProgramStateForClient(clientId);
+
+    final st = await (select(
+      clientProgramStates,
+    )..where((t) => t.clientId.equals(clientId))).getSingleOrNull();
+
+    if (st == null) return;
+
+    await (update(
+      clientProgramStates,
+    )..where((t) => t.clientId.equals(clientId))).write(
+      ClientProgramStatesCompanion(
+        planSize: Value(planSize),
+        planInstance: Value(st.planInstance + 1),
+        completedInPlan: const Value(0),
+        cycleStartIndex: const Value(0),
+        nextOffset: const Value(0),
+        windowStart: const Value(0),
+        planStart: c.planStart == null
+            ? const Value.absent()
+            : Value(c.planStart!),
+        planEnd: c.planEnd == null ? const Value.absent() : Value(c.planEnd!),
+      ),
+    );
   }
 
   Future<int?> getNextPlannedTemplateIdxForClient(String clientId) async {

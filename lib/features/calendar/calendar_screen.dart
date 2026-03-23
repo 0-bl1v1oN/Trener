@@ -2271,6 +2271,7 @@ class _CalendarScreenState extends State<CalendarScreen>
     );
 
     await db.syncProgramStateFromClient(client.id);
+    await db.restartClientPlanProgress(client.id);
     await db.clearClientPlanEndAlertOverride(client.id);
 
     if (!mounted) return;
@@ -2698,6 +2699,7 @@ class _CalendarScreenState extends State<CalendarScreen>
       id: item.appointment.id,
       note: _withAttendanceMarker(item.appointment.note, true),
     );
+    await PultStore.removeTab(item.client.id);
 
     if (!mounted) return _QuickWorkoutCheckResult.completed;
     setState(() {});
@@ -4105,8 +4107,8 @@ class _DoneTogglePngIcon extends StatelessWidget {
       done
           ? 'assets/calendar/check_done.png'
           : 'assets/calendar/check_default.png',
-      width: 22,
-      height: 22,
+      width: size,
+      height: size,
       fit: BoxFit.contain,
       errorBuilder: (_, __, ___) =>
           Icon(done ? Icons.check_circle : Icons.radio_button_unchecked),
