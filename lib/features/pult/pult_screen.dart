@@ -18,6 +18,7 @@ class _PultScreenState extends State<PultScreen> {
   bool _dbInited = false;
   List<PultTabEntry> _tabs = const <PultTabEntry>[];
   String? _activeClientId;
+  final Map<String, GlobalKey> _tabKeys = <String, GlobalKey>{};
 
   @override
   void initState() {
@@ -48,11 +49,30 @@ class _PultScreenState extends State<PultScreen> {
     return index >= 0 ? index : tabs.length - 1;
   }
 
+  GlobalKey _tabKeyFor(String clientId) =>
+      _tabKeys.putIfAbsent(clientId, GlobalKey.new);
+
+  void _scrollActiveTabIntoView({bool animated = true}) {
+    final activeClientId = _activeClientId;
+    if (activeClientId == null) return;
+    final context = _tabKeys[activeClientId]?.currentContext;
+    if (context == null) return;
+    Scrollable.ensureVisible(
+      context,
+      alignment: 0.5,
+      duration: animated ? const Duration(milliseconds: 220) : Duration.zero,
+      curve: Curves.easeOutCubic,
+    );
+  }
+
   Future<void> _reloadTabs() async {
     final tabs = await PultStore.loadTabs();
     if (!mounted) return;
     setState(() {
       _tabs = tabs;
+      _tabKeys.removeWhere((clientId, _) {
+        return !_tabs.any((tab) => tab.clientId == clientId);
+      });
       if (_tabs.isEmpty) {
         _activeClientId = null;
         return;
@@ -67,6 +87,10 @@ class _PultScreenState extends State<PultScreen> {
       final targetPage = _activeTabIndexFor(_tabs);
       if (_pageController.page?.round() == targetPage) return;
       _pageController.jumpToPage(targetPage);
+    });
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || _tabs.isEmpty) return;
+      _scrollActiveTabIntoView(animated: false);
     });
   }
 
@@ -175,21 +199,26 @@ class _PultScreenState extends State<PultScreen> {
                       itemBuilder: (context, index) {
                         final tab = _tabs[index];
                         final selected = index == activeTabIndex;
-                        return _PultClientTab(
-                          title: tab.clientName,
-                          selected: selected,
-                          onTap: () {
-                            if (index == activeTabIndex) return;
-                            setState(() {
-                              _activeClientId = tab.clientId;
-                            });
-                            _pageController.animateToPage(
-                              index,
-                              duration: const Duration(milliseconds: 220),
-                              curve: Curves.easeOutCubic,
-                            );
-                          },
-                          onClose: () => PultStore.removeTab(tab.clientId),
+                        return KeyedSubtree(
+                          key: _tabKeyFor(tab.clientId),
+                          child: _PultClientTab(
+                            title: tab.clientName,
+                            selected: selected,
+                            onTap: () {
+                              if (index == activeTabIndex) return;
+                              setState(() {
+                                _activeClientId = tab.clientId;
+                              });
+                              if (_pageController.hasClients) {
+                                _pageController.jumpToPage(index);
+                              }
+                              WidgetsBinding.instance.addPostFrameCallback((_) {
+                                if (!mounted) return;
+                                _scrollActiveTabIntoView();
+                              });
+                            },
+                            onClose: () => PultStore.removeTab(tab.clientId),
+                          ),
                         );
                       },
                     ),
@@ -205,6 +234,10 @@ class _PultScreenState extends State<PultScreen> {
                               if (nextClientId == _activeClientId) return;
                               setState(() {
                                 _activeClientId = nextClientId;
+                              });
+                              WidgetsBinding.instance.addPostFrameCallback((_) {
+                                if (!mounted) return;
+                                _scrollActiveTabIntoView();
                               });
                             },
                             itemBuilder: (context, index) {
@@ -483,48 +516,90 @@ class _PultClientTab extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final colors = theme.colorScheme;
+    const animationDuration = Duration(milliseconds: 260);
+    final titleStyle =
+        theme.textTheme.titleSmall?.copyWith(
+          fontWeight: FontWeight.w700,
+          color: selected ? colors.onPrimaryContainer : colors.onSurface,
+        ) ??
+        TextStyle(
+          fontSize: 14,
+          fontWeight: FontWeight.w700,
+          color: selected ? colors.onPrimaryContainer : colors.onSurface,
+        );
     return Material(
       color: Colors.transparent,
       child: InkWell(
         borderRadius: BorderRadius.circular(18),
         onTap: onTap,
-        child: Ink(
-          padding: const EdgeInsets.only(left: 14, right: 8),
-          decoration: BoxDecoration(
-            color: selected
-                ? colors.primaryContainer.withValues(alpha: 0.84)
-                : colors.surface.withValues(alpha: 0.42),
-            borderRadius: BorderRadius.circular(18),
-            border: Border.all(
+        child: AnimatedScale(
+          duration: animationDuration,
+          curve: Curves.easeInOutCubic,
+          scale: selected ? 1 : 0.97,
+          child: AnimatedContainer(
+            duration: animationDuration,
+            curve: Curves.easeInOutCubic,
+            padding: const EdgeInsets.only(left: 14, right: 8),
+            decoration: BoxDecoration(
               color: selected
-                  ? colors.primary.withValues(alpha: 0.38)
-                  : colors.outlineVariant.withValues(alpha: 0.24),
+                  ? colors.primaryContainer.withValues(alpha: 0.84)
+                  : colors.surface.withValues(alpha: 0.42),
+              borderRadius: BorderRadius.circular(18),
+              border: Border.all(
+                color: selected
+                    ? colors.primary.withValues(alpha: 0.38)
+                    : colors.outlineVariant.withValues(alpha: 0.24),
+              ),
+              boxShadow: [
+                BoxShadow(
+                  color: selected
+                      ? colors.primary.withValues(alpha: 0.14)
+                      : colors.shadow.withValues(alpha: 0.03),
+                  blurRadius: selected ? 14 : 6,
+                  offset: const Offset(0, 4),
+                ),
+              ],
             ),
-          ),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              ConstrainedBox(
-                constraints: const BoxConstraints(maxWidth: 130),
-                child: Text(
-                  title,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: theme.textTheme.titleSmall?.copyWith(
-                    fontWeight: FontWeight.w700,
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                ConstrainedBox(
+                  constraints: const BoxConstraints(maxWidth: 130),
+                  child: AnimatedDefaultTextStyle(
+                    duration: animationDuration,
+                    curve: Curves.easeInOutCubic,
+                    style: titleStyle,
+                    child: Text(
+                      title,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
                   ),
                 ),
-              ),
-              const SizedBox(width: 4),
-              IconButton(
-                visualDensity: VisualDensity.compact,
-                onPressed: onClose,
-                iconSize: 18,
-                splashRadius: 18,
-                tooltip: 'Закрыть вкладку',
-                icon: const Icon(Icons.close_rounded),
-              ),
-            ],
+                const SizedBox(width: 4),
+                TweenAnimationBuilder<Color?>(
+                  tween: ColorTween(
+                    end: selected
+                        ? colors.onPrimaryContainer
+                        : colors.onSurfaceVariant,
+                  ),
+                  duration: animationDuration,
+                  curve: Curves.easeInOutCubic,
+                  builder: (context, iconColor, child) {
+                    return IconButton(
+                      visualDensity: VisualDensity.compact,
+                      onPressed: onClose,
+                      iconSize: 18,
+                      splashRadius: 18,
+                      tooltip: 'Закрыть вкладку',
+                      color: iconColor,
+                      icon: child!,
+                    );
+                  },
+                  child: const Icon(Icons.close_rounded),
+                ),
+              ],
+            ),
           ),
         ),
       ),
