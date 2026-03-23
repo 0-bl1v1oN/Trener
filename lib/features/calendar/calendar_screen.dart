@@ -2529,6 +2529,8 @@ class _CalendarScreenState extends State<CalendarScreen>
     final repsControllers = <int, TextEditingController>{};
     final kgFocusNodes = <int, FocusNode>{};
     final repsFocusNodes = <int, FocusNode>{};
+    final exerciseKeys = <int, GlobalKey>{};
+    final dialogScrollController = ScrollController();
 
     void selectAllText(TextEditingController controller) {
       controller.selection = TextSelection(
@@ -2543,7 +2545,21 @@ class _CalendarScreenState extends State<CalendarScreen>
       });
     }
 
+    void scheduleBringIntoView(int exerciseId) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        final context = exerciseKeys[exerciseId]?.currentContext;
+        if (context == null) return;
+        Scrollable.ensureVisible(
+          context,
+          alignment: 0.08,
+          duration: const Duration(milliseconds: 220),
+          curve: Curves.easeOutCubic,
+        );
+      });
+    }
+
     for (final e in exercises) {
+      exerciseKeys[e.templateExerciseId] = GlobalKey();
       kgControllers[e.templateExerciseId] = TextEditingController(
         text: e.lastWeightKg == null ? '' : e.lastWeightKg!.toString(),
       );
@@ -2556,6 +2572,7 @@ class _CalendarScreenState extends State<CalendarScreen>
           final controller = kgControllers[e.templateExerciseId];
           if (node?.hasFocus == true && controller != null) {
             scheduleSelectAll(controller);
+            scheduleBringIntoView(e.templateExerciseId);
           }
         });
       repsFocusNodes[e.templateExerciseId] = FocusNode()
@@ -2564,6 +2581,7 @@ class _CalendarScreenState extends State<CalendarScreen>
           final controller = repsControllers[e.templateExerciseId];
           if (node?.hasFocus == true && controller != null) {
             scheduleSelectAll(controller);
+            scheduleBringIntoView(e.templateExerciseId);
           }
         });
     }
@@ -2575,100 +2593,288 @@ class _CalendarScreenState extends State<CalendarScreen>
       for (final n in [...kgFocusNodes.values, ...repsFocusNodes.values]) {
         n.dispose();
       }
+      dialogScrollController.dispose();
     }
 
     final result = await showDialog<_QuickWorkoutCheckResult>(
       context: context,
-      builder: (context) => AlertDialog(
-        title: Text('Проверка весов • ${item.client.name}'),
-        content: SizedBox(
-          width: 420,
-          child: exercises.isEmpty
-              ? const Text('В этой тренировке пока нет упражнений.')
-              : ListView.separated(
-                  shrinkWrap: true,
-                  itemCount: exercises.length,
-                  separatorBuilder: (_, __) => const SizedBox(height: 8),
-                  itemBuilder: (context, i) {
-                    final e = exercises[i];
-                    return Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(e.name),
-                        const SizedBox(height: 6),
-                        Row(
+      barrierColor: Colors.black.withValues(alpha: 0.72),
+      builder: (context) {
+        final theme = Theme.of(context);
+        final colors = theme.colorScheme;
+
+        InputDecoration inputDecoration(String label) {
+          return InputDecoration(
+            labelText: label,
+            isDense: true,
+            filled: true,
+            fillColor: colors.surface.withValues(alpha: 0.34),
+            contentPadding: const EdgeInsets.symmetric(
+              horizontal: 14,
+              vertical: 16,
+            ),
+            border: OutlineInputBorder(borderRadius: BorderRadius.circular(16)),
+            enabledBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(16),
+              borderSide: BorderSide(
+                color: colors.outlineVariant.withValues(alpha: 0.28),
+              ),
+            ),
+            focusedBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(16),
+              borderSide: BorderSide(
+                color: colors.primary.withValues(alpha: 0.76),
+                width: 1.4,
+              ),
+            ),
+          );
+        }
+
+        return Dialog(
+          insetPadding: const EdgeInsets.symmetric(
+            horizontal: 20,
+            vertical: 24,
+          ),
+          backgroundColor: colors.surface,
+          child: Container(
+            constraints: const BoxConstraints(maxWidth: 520),
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(30),
+              gradient: LinearGradient(
+                colors: [
+                  colors.surface,
+                  colors.surfaceContainerHigh,
+                  Color.alphaBlend(
+                    colors.primary.withValues(alpha: 0.05),
+                    colors.surfaceContainerHigh,
+                  ),
+                  Color.alphaBlend(
+                    colors.tertiary.withValues(alpha: 0.03),
+                    colors.surfaceContainerHigh,
+                  ),
+                ],
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+              ),
+              border: Border.all(
+                color: colors.outlineVariant.withValues(alpha: 0.26),
+              ),
+              boxShadow: [
+                BoxShadow(
+                  color: colors.shadow.withValues(alpha: 0.22),
+                  blurRadius: 26,
+                  offset: const Offset(0, 18),
+                ),
+              ],
+            ),
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(18, 18, 18, 16),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Container(
+                        width: 46,
+                        height: 46,
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          color: colors.primaryContainer.withValues(alpha: 0.9),
+                          border: Border.all(
+                            color: colors.primary.withValues(alpha: 0.16),
+                          ),
+                        ),
+                        child: Icon(
+                          Icons.auto_awesome_rounded,
+                          color: colors.primary,
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Expanded(
-                              child: TextField(
-                                controller: kgControllers[e.templateExerciseId],
-                                focusNode: kgFocusNodes[e.templateExerciseId],
-                                decoration: const InputDecoration(
-                                  labelText: 'Вес (кг)',
-                                  isDense: true,
-                                ),
-                                onTap: () => scheduleSelectAll(
-                                  kgControllers[e.templateExerciseId]!,
-                                ),
-                                keyboardType:
-                                    const TextInputType.numberWithOptions(
-                                      decimal: true,
-                                    ),
+                            Text(
+                              'Проверка весов',
+                              style: theme.textTheme.headlineSmall?.copyWith(
+                                fontWeight: FontWeight.w800,
+                                letterSpacing: 0.1,
                               ),
                             ),
-                            const SizedBox(width: 8),
-                            Expanded(
-                              child: TextField(
-                                controller:
-                                    repsControllers[e.templateExerciseId],
-                                focusNode: repsFocusNodes[e.templateExerciseId],
-                                decoration: const InputDecoration(
-                                  labelText: 'Повторы',
-                                  isDense: true,
-                                ),
-                                onTap: () => scheduleSelectAll(
-                                  repsControllers[e.templateExerciseId]!,
-                                ),
-                                keyboardType: TextInputType.number,
+                            const SizedBox(height: 4),
+                            Text(
+                              item.client.name,
+                              style: theme.textTheme.titleMedium?.copyWith(
+                                color: colors.onSurfaceVariant,
+                                fontWeight: FontWeight.w600,
                               ),
                             ),
                           ],
                         ),
-                      ],
-                    );
-                  },
-                ),
-        ),
-        actions: [
-          SizedBox(
-            width: double.infinity,
-            child: Row(
-              children: [
-                if (_isBulkMarkingAppointments)
-                  TextButton(
-                    onPressed: () => Navigator.of(
-                      context,
-                    ).pop(_QuickWorkoutCheckResult.exitBulk),
-                    child: const Text('Выйти'),
+                      ),
+                    ],
                   ),
-                const Spacer(),
-                TextButton(
-                  onPressed: () => Navigator.of(
-                    context,
-                  ).pop(_QuickWorkoutCheckResult.skipped),
-                  child: const Text('Отмена'),
-                ),
-                const SizedBox(width: 8),
-                FilledButton(
-                  onPressed: () => Navigator.of(
-                    context,
-                  ).pop(_QuickWorkoutCheckResult.completed),
-                  child: const Text('Ок'),
-                ),
-              ],
+                  const SizedBox(height: 18),
+                  Flexible(
+                    child: exercises.isEmpty
+                        ? Padding(
+                            padding: const EdgeInsets.all(8),
+                            child: Text(
+                              'В этой тренировке пока нет упражнений.',
+                              style: theme.textTheme.bodyMedium,
+                            ),
+                          )
+                        : ListView.separated(
+                            controller: dialogScrollController,
+                            shrinkWrap: true,
+                            itemCount: exercises.length,
+                            separatorBuilder: (_, __) =>
+                                const SizedBox(height: 10),
+                            itemBuilder: (context, i) {
+                              final e = exercises[i];
+                              return Container(
+                                key: exerciseKeys[e.templateExerciseId],
+                                padding: const EdgeInsets.all(14),
+                                decoration: BoxDecoration(
+                                  color: i.isEven
+                                      ? colors.surface.withValues(alpha: 0.12)
+                                      : colors.surfaceContainerHighest
+                                            .withValues(alpha: 0.14),
+                                  borderRadius: BorderRadius.circular(20),
+                                  border: Border.all(
+                                    color: colors.outlineVariant.withValues(
+                                      alpha: 0.18,
+                                    ),
+                                  ),
+                                ),
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Row(
+                                      children: [
+                                        Container(
+                                          width: 28,
+                                          height: 28,
+                                          decoration: BoxDecoration(
+                                            shape: BoxShape.circle,
+                                            color: colors.primaryContainer
+                                                .withValues(alpha: 0.58),
+                                          ),
+                                          child: Center(
+                                            child: Text(
+                                              '${i + 1}',
+                                              style: theme.textTheme.labelMedium
+                                                  ?.copyWith(
+                                                    fontWeight: FontWeight.w800,
+                                                  ),
+                                            ),
+                                          ),
+                                        ),
+                                        const SizedBox(width: 10),
+                                        Expanded(
+                                          child: Text(
+                                            e.name,
+                                            style: theme.textTheme.titleMedium
+                                                ?.copyWith(
+                                                  fontWeight: FontWeight.w700,
+                                                  height: 1.32,
+                                                ),
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                    const SizedBox(height: 12),
+                                    Row(
+                                      children: [
+                                        Expanded(
+                                          child: TextField(
+                                            controller:
+                                                kgControllers[e
+                                                    .templateExerciseId],
+                                            focusNode:
+                                                kgFocusNodes[e
+                                                    .templateExerciseId],
+                                            decoration: inputDecoration(
+                                              'Вес (кг)',
+                                            ),
+                                            onTap: () => scheduleSelectAll(
+                                              kgControllers[e
+                                                  .templateExerciseId]!,
+                                            ),
+                                            textAlign: TextAlign.center,
+                                            keyboardType:
+                                                const TextInputType.numberWithOptions(
+                                                  decimal: true,
+                                                ),
+                                          ),
+                                        ),
+                                        const SizedBox(width: 10),
+                                        Expanded(
+                                          child: TextField(
+                                            controller:
+                                                repsControllers[e
+                                                    .templateExerciseId],
+                                            focusNode:
+                                                repsFocusNodes[e
+                                                    .templateExerciseId],
+                                            decoration: inputDecoration(
+                                              'Повторы',
+                                            ),
+                                            onTap: () => scheduleSelectAll(
+                                              repsControllers[e
+                                                  .templateExerciseId]!,
+                                            ),
+                                            textAlign: TextAlign.center,
+                                            keyboardType: TextInputType.number,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ],
+                                ),
+                              );
+                            },
+                          ),
+                  ),
+                  const SizedBox(height: 14),
+                  Row(
+                    children: [
+                      if (_isBulkMarkingAppointments)
+                        TextButton(
+                          onPressed: () => Navigator.of(
+                            context,
+                          ).pop(_QuickWorkoutCheckResult.exitBulk),
+                          child: const Text('Выйти'),
+                        ),
+                      const Spacer(),
+                      TextButton(
+                        onPressed: () => Navigator.of(
+                          context,
+                        ).pop(_QuickWorkoutCheckResult.skipped),
+                        child: const Text('Отмена'),
+                      ),
+                      const SizedBox(width: 10),
+                      FilledButton(
+                        style: FilledButton.styleFrom(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 22,
+                            vertical: 14,
+                          ),
+                        ),
+                        onPressed: () => Navigator.of(
+                          context,
+                        ).pop(_QuickWorkoutCheckResult.completed),
+                        child: const Text('Сохранить и закрыть'),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
             ),
           ),
-        ],
-      ),
+        );
+      },
     );
 
     if (result != _QuickWorkoutCheckResult.completed) {
