@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
@@ -140,21 +141,28 @@ class _PultScreenState extends State<PultScreen> {
             : Column(
                 children: [
                   Container(
-                    height: 66,
-                    margin: const EdgeInsets.fromLTRB(12, 8, 12, 4),
-                    padding: const EdgeInsets.symmetric(vertical: 8),
+                    height: 72,
+                    margin: const EdgeInsets.fromLTRB(12, 10, 12, 6),
+                    padding: const EdgeInsets.symmetric(vertical: 10),
                     decoration: BoxDecoration(
                       color: colors.surfaceContainerHighest.withValues(
-                        alpha: 0.42,
+                        alpha: 0.68,
                       ),
-                      borderRadius: BorderRadius.circular(20),
+                      borderRadius: BorderRadius.circular(24),
                       border: Border.all(
-                        color: colors.outlineVariant.withValues(alpha: 0.28),
+                        color: colors.outlineVariant.withValues(alpha: 0.24),
                       ),
+                      boxShadow: [
+                        BoxShadow(
+                          color: colors.shadow.withValues(alpha: 0.05),
+                          blurRadius: 10,
+                          offset: const Offset(0, 4),
+                        ),
+                      ],
                     ),
                     child: ListView.separated(
                       scrollDirection: Axis.horizontal,
-                      padding: const EdgeInsets.symmetric(horizontal: 10),
+                      padding: const EdgeInsets.symmetric(horizontal: 12),
                       itemCount: _tabs.length,
                       separatorBuilder: (_, __) => const SizedBox(width: 8),
                       itemBuilder: (context, index) {
@@ -238,7 +246,8 @@ class _PultWorkoutPage extends StatefulWidget {
   State<_PultWorkoutPage> createState() => _PultWorkoutPageState();
 }
 
-class _PultWorkoutPageState extends State<_PultWorkoutPage> {
+class _PultWorkoutPageState extends State<_PultWorkoutPage>
+    with SingleTickerProviderStateMixin {
   static const String _attendanceMarker = '[attended]';
 
   final Map<int, TextEditingController> _kgControllers =
@@ -247,16 +256,23 @@ class _PultWorkoutPageState extends State<_PultWorkoutPage> {
       <int, TextEditingController>{};
   final Map<int, FocusNode> _kgFocusNodes = <int, FocusNode>{};
   final Map<int, FocusNode> _repsFocusNodes = <int, FocusNode>{};
+  final Map<int, GlobalKey> _exerciseKeys = <int, GlobalKey>{};
+  final ScrollController _pageScrollController = ScrollController();
 
   _PultTabData? _data;
   Object? _error;
   bool _loading = true;
   bool _completing = false;
   Timer? _draftDebounce;
+  late final AnimationController _headerGlowController;
 
   @override
   void initState() {
     super.initState();
+    _headerGlowController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 2600),
+    )..repeat(reverse: true);
     _load();
   }
 
@@ -273,6 +289,8 @@ class _PultWorkoutPageState extends State<_PultWorkoutPage> {
     for (final node in [..._kgFocusNodes.values, ..._repsFocusNodes.values]) {
       node.dispose();
     }
+    _headerGlowController.dispose();
+    _pageScrollController.dispose();
     super.dispose();
   }
 
@@ -306,6 +324,7 @@ class _PultWorkoutPageState extends State<_PultWorkoutPage> {
 
       _disposeInputs();
       for (final e in exercises) {
+        _exerciseKeys[e.templateExerciseId] = GlobalKey();
         _kgControllers[e.templateExerciseId] = TextEditingController(
           text: e.lastWeightKg == null ? '' : _fmtWeight(e.lastWeightKg!),
         )..addListener(_handleInputChanged);
@@ -319,6 +338,7 @@ class _PultWorkoutPageState extends State<_PultWorkoutPage> {
             final controller = _kgControllers[e.templateExerciseId];
             if (node?.hasFocus == true && controller != null) {
               _scheduleSelectAll(controller);
+              _scheduleBringIntoView(e.templateExerciseId);
             }
           });
         _repsFocusNodes[e.templateExerciseId] = FocusNode()
@@ -327,6 +347,7 @@ class _PultWorkoutPageState extends State<_PultWorkoutPage> {
             final controller = _repsControllers[e.templateExerciseId];
             if (node?.hasFocus == true && controller != null) {
               _scheduleSelectAll(controller);
+              _scheduleBringIntoView(e.templateExerciseId);
             }
           });
       }
@@ -364,6 +385,7 @@ class _PultWorkoutPageState extends State<_PultWorkoutPage> {
     _repsControllers.clear();
     _kgFocusNodes.clear();
     _repsFocusNodes.clear();
+    _exerciseKeys.clear();
   }
 
   void _handleInputChanged() {
@@ -372,6 +394,19 @@ class _PultWorkoutPageState extends State<_PultWorkoutPage> {
     _draftDebounce?.cancel();
     _draftDebounce = Timer(const Duration(milliseconds: 260), () {
       unawaited(_saveDrafts());
+    });
+  }
+
+  void _scheduleBringIntoView(int exerciseId) {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final context = _exerciseKeys[exerciseId]?.currentContext;
+      if (context == null) return;
+      Scrollable.ensureVisible(
+        context,
+        alignment: 0.08,
+        duration: const Duration(milliseconds: 220),
+        curve: Curves.easeOutCubic,
+      );
     });
   }
 
@@ -543,116 +578,171 @@ class _PultWorkoutPageState extends State<_PultWorkoutPage> {
     }
 
     return ListView(
+      controller: _pageScrollController,
       padding: const EdgeInsets.fromLTRB(12, 8, 12, 16),
       children: [
-        Container(
-          padding: const EdgeInsets.all(18),
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(28),
-            gradient: LinearGradient(
-              colors: [
-                colors.primaryContainer.withValues(alpha: 0.95),
-                colors.tertiaryContainer.withValues(alpha: 0.86),
-                colors.surfaceContainerHighest.withValues(alpha: 0.92),
-              ],
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
-            ),
-            border: Border.all(color: colors.primary.withValues(alpha: 0.18)),
-            boxShadow: [
-              BoxShadow(
-                color: colors.primary.withValues(alpha: 0.12),
-                blurRadius: 22,
-                offset: const Offset(0, 10),
-              ),
-            ],
-          ),
-          child: Stack(
-            children: [
-              Positioned(
-                top: -18,
-                right: -10,
-                child: Container(
-                  width: 92,
-                  height: 92,
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    color: colors.primary.withValues(alpha: 0.10),
-                  ),
+        AnimatedBuilder(
+          animation: _headerGlowController,
+          builder: (context, _) {
+            final t = _headerGlowController.value;
+            final wave = math.sin(t * math.pi * 2);
+            final wave2 = math.sin((t * math.pi * 2) + (math.pi / 2));
+            return Container(
+              padding: const EdgeInsets.all(18),
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(28),
+                gradient: LinearGradient(
+                  colors: [
+                    Color.lerp(
+                      colors.primary.withValues(alpha: 0.55),
+                      colors.tertiary.withValues(alpha: 0.62),
+                      t,
+                    )!,
+                    Color.lerp(
+                      colors.primaryContainer.withValues(alpha: 0.92),
+                      colors.tertiaryContainer.withValues(alpha: 0.94),
+                      t,
+                    )!,
+                    Color.lerp(
+                      colors.surfaceContainerHighest.withValues(alpha: 0.92),
+                      colors.primary.withValues(alpha: 0.50),
+                      t,
+                    )!,
+                  ],
+                  transform: GradientRotation((math.pi * 2) * t),
+                  stops: [0, 0.5 + (0.18 * wave), 1],
+                  begin: Alignment(-1.2 + (1.2 * t), -1.15 + (0.25 * wave)),
+                  end: Alignment(1.15 - (1.0 * t), 1.1 - (0.34 * wave2)),
                 ),
-              ),
-              Positioned(
-                bottom: -26,
-                left: 30,
-                child: Container(
-                  width: 120,
-                  height: 120,
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    color: colors.tertiary.withValues(alpha: 0.08),
-                  ),
+                border: Border.all(
+                  color: Color.lerp(
+                    colors.primary.withValues(alpha: 0.42),
+                    colors.tertiary.withValues(alpha: 0.45),
+                    t,
+                  )!,
                 ),
-              ),
-              Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Container(
-                    width: 52,
-                    height: 52,
-                    decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      color: colors.surface.withValues(alpha: 0.58),
-                      border: Border.all(
-                        color: colors.primary.withValues(alpha: 0.16),
-                      ),
-                    ),
-                    child: Icon(
-                      Icons.fitness_center_rounded,
-                      color: colors.primary,
-                    ),
-                  ),
-                  const SizedBox(width: 14),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Align(
-                          alignment: Alignment.centerRight,
-                          child: Container(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 10,
-                              vertical: 6,
-                            ),
-                            decoration: BoxDecoration(
-                              color: colors.surface.withValues(alpha: 0.42),
-                              borderRadius: BorderRadius.circular(999),
-                            ),
-                            child: Text(
-                              DateFormat(
-                                'dd.MM.yyyy',
-                                'ru_RU',
-                              ).format(data.day),
-                              style: theme.textTheme.labelMedium?.copyWith(
-                                fontWeight: FontWeight.w700,
-                              ),
-                            ),
-                          ),
-                        ),
-                        const SizedBox(height: 10),
-                        Text(
-                          data.clientName,
-                          style: theme.textTheme.headlineSmall?.copyWith(
-                            fontWeight: FontWeight.w800,
-                            letterSpacing: 0.1,
-                          ),
-                        ),
-                      ],
-                    ),
+                boxShadow: [
+                  BoxShadow(
+                    color: Color.lerp(
+                      colors.primary.withValues(alpha: 0.22),
+                      colors.tertiary.withValues(alpha: 0.34),
+                      t,
+                    )!,
+                    blurRadius: 24 + (t * 20),
+                    spreadRadius: 1 + (2 * wave.abs()),
+                    offset: Offset(0, 10 + (4 * wave.abs())),
                   ),
                 ],
               ),
-            ],
-          ),
+              child: Stack(
+                clipBehavior: Clip.none,
+                children: [
+                  Positioned(
+                    top: -24 + (10 * wave2),
+                    right: -18 + (10 * wave),
+                    child: Container(
+                      width: 118,
+                      height: 118,
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        color: Color.lerp(
+                          colors.primary.withValues(alpha: 0.18),
+                          colors.tertiary.withValues(alpha: 0.22),
+                          t,
+                        ),
+                      ),
+                    ),
+                  ),
+                  Positioned(
+                    bottom: -34 + (8 * wave),
+                    left: 18 + (18 * t),
+                    child: Container(
+                      width: 142,
+                      height: 142,
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        color: Color.lerp(
+                          colors.tertiary.withValues(alpha: 0.12),
+                          colors.primary.withValues(alpha: 0.17),
+                          t,
+                        ),
+                      ),
+                    ),
+                  ),
+                  Positioned(
+                    top: 14 + (8 * wave2),
+                    left: 86 + (24 * wave),
+                    child: Container(
+                      width: 92,
+                      height: 92,
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        color: colors.surface.withValues(alpha: 0.22),
+                      ),
+                    ),
+                  ),
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Container(
+                        width: 52,
+                        height: 52,
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          color: colors.surface.withValues(alpha: 0.68),
+                          border: Border.all(
+                            color: colors.primary.withValues(alpha: 0.28),
+                          ),
+                        ),
+                        child: Icon(
+                          Icons.fitness_center_rounded,
+                          color: colors.primary,
+                        ),
+                      ),
+                      const SizedBox(width: 14),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Align(
+                              alignment: Alignment.centerRight,
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 10,
+                                  vertical: 6,
+                                ),
+                                decoration: BoxDecoration(
+                                  color: colors.surface.withValues(alpha: 0.54),
+                                  borderRadius: BorderRadius.circular(999),
+                                ),
+                                child: Text(
+                                  DateFormat(
+                                    'dd.MM.yyyy',
+                                    'ru_RU',
+                                  ).format(data.day),
+                                  style: theme.textTheme.labelMedium?.copyWith(
+                                    fontWeight: FontWeight.w700,
+                                  ),
+                                ),
+                              ),
+                            ),
+                            const SizedBox(height: 10),
+                            Text(
+                              data.clientName,
+                              style: theme.textTheme.headlineSmall?.copyWith(
+                                fontWeight: FontWeight.w800,
+                                letterSpacing: 0.1,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            );
+          },
         ),
         const SizedBox(height: 14),
         Container(
@@ -748,6 +838,7 @@ class _PultWorkoutPageState extends State<_PultWorkoutPage> {
                       final hasReps = repsController.text.trim().isNotEmpty;
 
                       return Container(
+                        key: _exerciseKeys[exercise.templateExerciseId],
                         padding: const EdgeInsets.symmetric(
                           horizontal: 16,
                           vertical: 14,
@@ -949,76 +1040,71 @@ class _PultClientTab extends StatelessWidget {
     return Material(
       color: Colors.transparent,
       child: InkWell(
-        borderRadius: BorderRadius.circular(18),
+        borderRadius: BorderRadius.circular(20),
         onTap: onTap,
-        child: AnimatedScale(
+        child: AnimatedContainer(
           duration: animationDuration,
           curve: Curves.easeInOutCubic,
-          scale: selected ? 1 : 0.97,
-          child: AnimatedContainer(
-            duration: animationDuration,
-            curve: Curves.easeInOutCubic,
-            padding: const EdgeInsets.only(left: 14, right: 8),
-            decoration: BoxDecoration(
+          padding: const EdgeInsets.only(left: 14, right: 8),
+          decoration: BoxDecoration(
+            color: selected
+                ? colors.primaryContainer.withValues(alpha: 0.88)
+                : colors.surface.withValues(alpha: 0.58),
+            borderRadius: BorderRadius.circular(20),
+            border: Border.all(
               color: selected
-                  ? colors.primaryContainer.withValues(alpha: 0.84)
-                  : colors.surface.withValues(alpha: 0.42),
-              borderRadius: BorderRadius.circular(18),
-              border: Border.all(
-                color: selected
-                    ? colors.primary.withValues(alpha: 0.38)
-                    : colors.outlineVariant.withValues(alpha: 0.24),
-              ),
-              boxShadow: [
-                BoxShadow(
-                  color: selected
-                      ? colors.primary.withValues(alpha: 0.14)
-                      : colors.shadow.withValues(alpha: 0.03),
-                  blurRadius: selected ? 14 : 6,
-                  offset: const Offset(0, 4),
-                ),
-              ],
+                  ? colors.primary.withValues(alpha: 0.34)
+                  : colors.outlineVariant.withValues(alpha: 0.22),
             ),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                ConstrainedBox(
-                  constraints: const BoxConstraints(maxWidth: 130),
-                  child: AnimatedDefaultTextStyle(
-                    duration: animationDuration,
-                    curve: Curves.easeInOutCubic,
-                    style: titleStyle,
-                    child: Text(
-                      title,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                  ),
-                ),
-                const SizedBox(width: 4),
-                TweenAnimationBuilder<Color?>(
-                  tween: ColorTween(
-                    end: selected
-                        ? colors.onPrimaryContainer
-                        : colors.onSurfaceVariant,
-                  ),
+            boxShadow: [
+              BoxShadow(
+                color: selected
+                    ? colors.primary.withValues(alpha: 0.12)
+                    : colors.shadow.withValues(alpha: 0.02),
+                blurRadius: selected ? 12 : 4,
+                offset: const Offset(0, 3),
+              ),
+            ],
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 130),
+                child: AnimatedDefaultTextStyle(
                   duration: animationDuration,
                   curve: Curves.easeInOutCubic,
-                  builder: (context, iconColor, child) {
-                    return IconButton(
-                      visualDensity: VisualDensity.compact,
-                      onPressed: onClose,
-                      iconSize: 18,
-                      splashRadius: 18,
-                      tooltip: 'Закрыть вкладку',
-                      color: iconColor,
-                      icon: child!,
-                    );
-                  },
-                  child: const Icon(Icons.close_rounded),
+                  style: titleStyle,
+                  child: Text(
+                    title,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
                 ),
-              ],
-            ),
+              ),
+              const SizedBox(width: 4),
+              TweenAnimationBuilder<Color?>(
+                tween: ColorTween(
+                  end: selected
+                      ? colors.onPrimaryContainer
+                      : colors.onSurfaceVariant,
+                ),
+                duration: animationDuration,
+                curve: Curves.easeInOutCubic,
+                builder: (context, iconColor, child) {
+                  return IconButton(
+                    visualDensity: VisualDensity.compact,
+                    onPressed: onClose,
+                    iconSize: 18,
+                    splashRadius: 18,
+                    tooltip: 'Закрыть вкладку',
+                    color: iconColor,
+                    icon: child!,
+                  );
+                },
+                child: const Icon(Icons.close_rounded),
+              ),
+            ],
           ),
         ),
       ),
