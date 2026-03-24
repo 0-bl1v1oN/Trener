@@ -3,6 +3,7 @@ import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
+import 'package:video_player/video_player.dart';
 
 import '../../app/app_db_scope.dart';
 import '../../db/app_db.dart';
@@ -249,6 +250,7 @@ class _PultWorkoutPage extends StatefulWidget {
 class _PultWorkoutPageState extends State<_PultWorkoutPage>
     with SingleTickerProviderStateMixin {
   static const String _attendanceMarker = '[attended]';
+  static const String _headerVideoAsset = 'assets/branding/pult_header.mp4';
 
   final Map<int, TextEditingController> _kgControllers =
       <int, TextEditingController>{};
@@ -265,6 +267,8 @@ class _PultWorkoutPageState extends State<_PultWorkoutPage>
   bool _completing = false;
   Timer? _draftDebounce;
   late final AnimationController _headerGlowController;
+  VideoPlayerController? _headerVideoController;
+  bool _headerVideoFailed = false;
 
   @override
   void initState() {
@@ -273,7 +277,28 @@ class _PultWorkoutPageState extends State<_PultWorkoutPage>
       vsync: this,
       duration: const Duration(milliseconds: 2600),
     )..repeat(reverse: true);
+    unawaited(_initHeaderVideo());
     _load();
+  }
+
+  Future<void> _initHeaderVideo() async {
+    final controller = VideoPlayerController.asset(_headerVideoAsset);
+    _headerVideoController = controller;
+    try {
+      await controller.initialize();
+      await controller.setLooping(true);
+      await controller.setVolume(0);
+      await controller.play();
+      if (!mounted) return;
+      setState(() {});
+    } catch (_) {
+      await controller.dispose();
+      _headerVideoController = null;
+      if (!mounted) return;
+      setState(() {
+        _headerVideoFailed = true;
+      });
+    }
   }
 
   @override
@@ -289,6 +314,7 @@ class _PultWorkoutPageState extends State<_PultWorkoutPage>
     for (final node in [..._kgFocusNodes.values, ..._repsFocusNodes.values]) {
       node.dispose();
     }
+    _headerVideoController?.dispose();
     _headerGlowController.dispose();
     _pageScrollController.dispose();
     super.dispose();
@@ -587,33 +613,13 @@ class _PultWorkoutPageState extends State<_PultWorkoutPage>
             final t = _headerGlowController.value;
             final wave = math.sin(t * math.pi * 2);
             final wave2 = math.sin((t * math.pi * 2) + (math.pi / 2));
+
+            final video = _headerVideoController;
+            final hasVideo = video != null && video.value.isInitialized;
             return Container(
-              padding: const EdgeInsets.all(18),
               decoration: BoxDecoration(
                 borderRadius: BorderRadius.circular(28),
-                gradient: LinearGradient(
-                  colors: [
-                    Color.lerp(
-                      colors.primary.withValues(alpha: 0.55),
-                      colors.tertiary.withValues(alpha: 0.62),
-                      t,
-                    )!,
-                    Color.lerp(
-                      colors.primaryContainer.withValues(alpha: 0.92),
-                      colors.tertiaryContainer.withValues(alpha: 0.94),
-                      t,
-                    )!,
-                    Color.lerp(
-                      colors.surfaceContainerHighest.withValues(alpha: 0.92),
-                      colors.primary.withValues(alpha: 0.50),
-                      t,
-                    )!,
-                  ],
-                  transform: GradientRotation((math.pi * 2) * t),
-                  stops: [0, 0.5 + (0.18 * wave), 1],
-                  begin: Alignment(-1.2 + (1.2 * t), -1.15 + (0.25 * wave)),
-                  end: Alignment(1.15 - (1.0 * t), 1.1 - (0.34 * wave2)),
-                ),
+                color: colors.surfaceContainerHighest,
                 border: Border.all(
                   color: Color.lerp(
                     colors.primary.withValues(alpha: 0.42),
@@ -634,112 +640,221 @@ class _PultWorkoutPageState extends State<_PultWorkoutPage>
                   ),
                 ],
               ),
-              child: Stack(
-                clipBehavior: Clip.none,
-                children: [
-                  Positioned(
-                    top: -24 + (10 * wave2),
-                    right: -18 + (10 * wave),
-                    child: Container(
-                      width: 118,
-                      height: 118,
-                      decoration: BoxDecoration(
-                        shape: BoxShape.circle,
-                        color: Color.lerp(
-                          colors.primary.withValues(alpha: 0.18),
-                          colors.tertiary.withValues(alpha: 0.22),
-                          t,
-                        ),
-                      ),
-                    ),
-                  ),
-                  Positioned(
-                    bottom: -34 + (8 * wave),
-                    left: 18 + (18 * t),
-                    child: Container(
-                      width: 142,
-                      height: 142,
-                      decoration: BoxDecoration(
-                        shape: BoxShape.circle,
-                        color: Color.lerp(
-                          colors.tertiary.withValues(alpha: 0.12),
-                          colors.primary.withValues(alpha: 0.17),
-                          t,
-                        ),
-                      ),
-                    ),
-                  ),
-                  Positioned(
-                    top: 14 + (8 * wave2),
-                    left: 86 + (24 * wave),
-                    child: Container(
-                      width: 92,
-                      height: 92,
-                      decoration: BoxDecoration(
-                        shape: BoxShape.circle,
-                        color: colors.surface.withValues(alpha: 0.22),
-                      ),
-                    ),
-                  ),
-                  Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Container(
-                        width: 52,
-                        height: 52,
-                        decoration: BoxDecoration(
-                          shape: BoxShape.circle,
-                          color: colors.surface.withValues(alpha: 0.68),
-                          border: Border.all(
-                            color: colors.primary.withValues(alpha: 0.28),
-                          ),
-                        ),
-                        child: Icon(
-                          Icons.fitness_center_rounded,
-                          color: colors.primary,
-                        ),
-                      ),
-                      const SizedBox(width: 14),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Align(
-                              alignment: Alignment.centerRight,
-                              child: Container(
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 10,
-                                  vertical: 6,
-                                ),
-                                decoration: BoxDecoration(
-                                  color: colors.surface.withValues(alpha: 0.54),
-                                  borderRadius: BorderRadius.circular(999),
-                                ),
-                                child: Text(
-                                  DateFormat(
-                                    'dd.MM.yyyy',
-                                    'ru_RU',
-                                  ).format(data.day),
-                                  style: theme.textTheme.labelMedium?.copyWith(
-                                    fontWeight: FontWeight.w700,
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(28),
+                child: Stack(
+                  clipBehavior: Clip.none,
+                  children: [
+                    Positioned.fill(
+                      child: hasVideo
+                          ? FittedBox(
+                              fit: BoxFit.cover,
+                              child: SizedBox(
+                                width: video.value.size.width,
+                                height: video.value.size.height,
+                                child: VideoPlayer(video),
+                              ),
+                            )
+                          : DecoratedBox(
+                              decoration: BoxDecoration(
+                                gradient: LinearGradient(
+                                  colors: [
+                                    Color.lerp(
+                                      colors.primary.withValues(alpha: 0.55),
+                                      colors.tertiary.withValues(alpha: 0.62),
+                                      t,
+                                    )!,
+                                    Color.lerp(
+                                      colors.primaryContainer.withValues(
+                                        alpha: 0.92,
+                                      ),
+                                      colors.tertiaryContainer.withValues(
+                                        alpha: 0.94,
+                                      ),
+                                      t,
+                                    )!,
+                                    Color.lerp(
+                                      colors.surfaceContainerHighest.withValues(
+                                        alpha: 0.92,
+                                      ),
+                                      colors.primary.withValues(alpha: 0.50),
+                                      t,
+                                    )!,
+                                  ],
+                                  transform: GradientRotation(
+                                    (math.pi * 2) * t,
+                                  ),
+                                  stops: [0, 0.5 + (0.18 * wave), 1],
+                                  begin: Alignment(
+                                    -1.2 + (1.2 * t),
+                                    -1.15 + (0.25 * wave),
+                                  ),
+                                  end: Alignment(
+                                    1.15 - (1.0 * t),
+                                    1.1 - (0.34 * wave2),
                                   ),
                                 ),
                               ),
                             ),
-                            const SizedBox(height: 10),
-                            Text(
-                              data.clientName,
-                              style: theme.textTheme.headlineSmall?.copyWith(
-                                fontWeight: FontWeight.w800,
-                                letterSpacing: 0.1,
+                    ),
+                    Positioned.fill(
+                      child: DecoratedBox(
+                        decoration: BoxDecoration(
+                          gradient: LinearGradient(
+                            colors: [
+                              Colors.black.withValues(
+                                alpha: hasVideo ? 0.16 : 0.05,
                               ),
-                            ),
-                          ],
+                              Colors.black.withValues(
+                                alpha: hasVideo ? 0.08 : 0.0,
+                              ),
+                              Colors.black.withValues(
+                                alpha: hasVideo ? 0.28 : 0.08,
+                              ),
+                            ],
+                            begin: Alignment.topLeft,
+                            end: Alignment.bottomRight,
+                          ),
                         ),
                       ),
-                    ],
-                  ),
-                ],
+                    ),
+                    Positioned(
+                      top: -24 + (10 * wave2),
+                      right: -18 + (10 * wave),
+                      child: Container(
+                        width: 118,
+                        height: 118,
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          color: Color.lerp(
+                            colors.primary.withValues(
+                              alpha: hasVideo ? 0.28 : 0.18,
+                            ),
+                            colors.tertiary.withValues(
+                              alpha: hasVideo ? 0.32 : 0.22,
+                            ),
+                            t,
+                          ),
+                        ),
+                      ),
+                    ),
+                    Positioned(
+                      bottom: -34 + (8 * wave),
+                      left: 18 + (18 * t),
+                      child: Container(
+                        width: 142,
+                        height: 142,
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          color: Color.lerp(
+                            colors.tertiary.withValues(
+                              alpha: hasVideo ? 0.2 : 0.12,
+                            ),
+                            colors.primary.withValues(
+                              alpha: hasVideo ? 0.24 : 0.17,
+                            ),
+                            t,
+                          ),
+                        ),
+                      ),
+                    ),
+                    Positioned(
+                      top: 14 + (8 * wave2),
+                      left: 86 + (24 * wave),
+                      child: Container(
+                        width: 92,
+                        height: 92,
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          color: colors.surface.withValues(
+                            alpha: hasVideo ? 0.28 : 0.22,
+                          ),
+                        ),
+                      ),
+                    ),
+                    Padding(
+                      padding: const EdgeInsets.all(18),
+                      child: Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Container(
+                            width: 52,
+                            height: 52,
+                            decoration: BoxDecoration(
+                              shape: BoxShape.circle,
+                              color: colors.surface.withValues(
+                                alpha: hasVideo ? 0.78 : 0.68,
+                              ),
+                              border: Border.all(
+                                color: colors.primary.withValues(alpha: 0.28),
+                              ),
+                            ),
+                            child: Icon(
+                              Icons.fitness_center_rounded,
+                              color: colors.primary,
+                            ),
+                          ),
+                          const SizedBox(width: 14),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                if (_headerVideoFailed)
+                                  Padding(
+                                    padding: const EdgeInsets.only(bottom: 8),
+                                    child: Text(
+                                      'Видео-фон не найден, включён анимированный градиент',
+                                      style: theme.textTheme.labelSmall
+                                          ?.copyWith(
+                                            color: colors.onSurface.withValues(
+                                              alpha: 0.78,
+                                            ),
+                                            fontWeight: FontWeight.w600,
+                                          ),
+                                    ),
+                                  ),
+                                Align(
+                                  alignment: Alignment.centerRight,
+                                  child: Container(
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 10,
+                                      vertical: 6,
+                                    ),
+                                    decoration: BoxDecoration(
+                                      color: colors.surface.withValues(
+                                        alpha: 0.54,
+                                      ),
+                                      borderRadius: BorderRadius.circular(999),
+                                    ),
+                                    child: Text(
+                                      DateFormat(
+                                        'dd.MM.yyyy',
+                                        'ru_RU',
+                                      ).format(data.day),
+                                      style: theme.textTheme.labelMedium
+                                          ?.copyWith(
+                                            fontWeight: FontWeight.w700,
+                                          ),
+                                    ),
+                                  ),
+                                ),
+                                const SizedBox(height: 10),
+                                Text(
+                                  data.clientName,
+                                  style: theme.textTheme.headlineSmall
+                                      ?.copyWith(
+                                        fontWeight: FontWeight.w800,
+                                        letterSpacing: 0.1,
+                                      ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
               ),
             );
           },
