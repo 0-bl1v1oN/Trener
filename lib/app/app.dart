@@ -44,10 +44,13 @@ class _MyFitnessAppState extends State<MyFitnessApp> {
     const minSplashDuration = Duration(milliseconds: 0);
 
     try {
-      await precacheImage(
-        const AssetImage('assets/calendar/calendar_bg_boy.jpg'),
-        context,
-      );
+      await Future.wait([
+        precacheImage(
+          const AssetImage('assets/calendar/calendar_bg_boy.jpg'),
+          context,
+        ),
+        warmUpPultHeaderVideo(),
+      ]);
     } catch (_) {
       // Если ассет не прогрелся, продолжаем запуск без блокировки.
     }

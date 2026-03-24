@@ -9,6 +9,31 @@ import '../../app/app_db_scope.dart';
 import '../../db/app_db.dart';
 import 'pult_store.dart';
 
+class _PultHeaderVideoWarmup {
+  static Future<void>? _future;
+
+  static Future<void> ensureWarmedUp() {
+    return _future ??= _warmUp();
+  }
+
+  static Future<void> _warmUp() async {
+    final controller = VideoPlayerController.asset(
+      _PultWorkoutPageState.headerVideoAsset,
+    );
+    try {
+      await controller.initialize();
+    } catch (_) {
+      // Warm-up is best effort only.
+    } finally {
+      await controller.dispose();
+    }
+  }
+}
+
+Future<void> warmUpPultHeaderVideo() {
+  return _PultHeaderVideoWarmup.ensureWarmedUp();
+}
+
 class PultScreen extends StatefulWidget {
   const PultScreen({super.key});
 
@@ -220,6 +245,7 @@ class _PultScreenState extends State<PultScreen> {
                                 tab: tab,
                                 onCompleted: () =>
                                     PultStore.removeTab(tab.clientId),
+                                isActive: index == activeTabIndex,
                               );
                             },
                           ),
@@ -237,20 +263,22 @@ class _PultWorkoutPage extends StatefulWidget {
     required this.db,
     required this.tab,
     required this.onCompleted,
+    required this.isActive,
   });
 
   final AppDb db;
   final PultTabEntry tab;
   final Future<void> Function() onCompleted;
+  final bool isActive;
 
   @override
   State<_PultWorkoutPage> createState() => _PultWorkoutPageState();
 }
 
 class _PultWorkoutPageState extends State<_PultWorkoutPage>
-    with SingleTickerProviderStateMixin {
+    with SingleTickerProviderStateMixin, AutomaticKeepAliveClientMixin {
   static const String _attendanceMarker = '[attended]';
-  static const String _headerVideoAsset = 'assets/branding/pult_header.mp4';
+  static const String headerVideoAsset = 'assets/branding/pult_header.mp4';
 
   final Map<int, TextEditingController> _kgControllers =
       <int, TextEditingController>{};
@@ -269,6 +297,7 @@ class _PultWorkoutPageState extends State<_PultWorkoutPage>
   late final AnimationController _headerGlowController;
   VideoPlayerController? _headerVideoController;
   bool _headerVideoFailed = false;
+  bool _headerVisualReady = false;
 
   @override
   void initState() {
@@ -277,27 +306,58 @@ class _PultWorkoutPageState extends State<_PultWorkoutPage>
       vsync: this,
       duration: const Duration(milliseconds: 2600),
     )..repeat(reverse: true);
-    unawaited(_initHeaderVideo());
+    unawaited(_prepareHeaderVideo());
     _load();
   }
 
+  @override
+  void didUpdateWidget(covariant _PultWorkoutPage oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.isActive == widget.isActive) return;
+    unawaited(_syncHeaderVideoPlayback());
+  }
+
+  Future<void> _prepareHeaderVideo() async {
+    await _PultHeaderVideoWarmup.ensureWarmedUp();
+    if (!mounted) return;
+    await _initHeaderVideo();
+  }
+
   Future<void> _initHeaderVideo() async {
-    final controller = VideoPlayerController.asset(_headerVideoAsset);
+    final controller = VideoPlayerController.asset(headerVideoAsset);
     _headerVideoController = controller;
     try {
       await controller.initialize();
       await controller.setLooping(true);
       await controller.setVolume(0);
-      await controller.play();
+      await _syncHeaderVideoPlayback();
       if (!mounted) return;
-      setState(() {});
+      setState(() {
+        _headerVisualReady = true;
+      });
     } catch (_) {
       await controller.dispose();
       _headerVideoController = null;
       if (!mounted) return;
       setState(() {
+        _headerVisualReady = true;
         _headerVideoFailed = true;
       });
+    }
+  }
+
+  Future<void> _syncHeaderVideoPlayback() async {
+    final controller = _headerVideoController;
+    if (controller == null || !controller.value.isInitialized) return;
+    if (widget.isActive) {
+      if (!controller.value.isPlaying) {
+        await controller.play();
+      }
+    } else {
+      if (controller.value.isPlaying) {
+        await controller.pause();
+      }
+      await controller.seekTo(Duration.zero);
     }
   }
 
@@ -578,7 +638,11 @@ class _PultWorkoutPageState extends State<_PultWorkoutPage>
   }
 
   @override
+  bool get wantKeepAlive => true;
+
+  @override
   Widget build(BuildContext context) {
+    super.build(context);
     final theme = Theme.of(context);
     final colors = theme.colorScheme;
 
@@ -655,6 +719,8 @@ class _PultWorkoutPageState extends State<_PultWorkoutPage>
                                 child: VideoPlayer(video),
                               ),
                             )
+                          : !_headerVisualReady && widget.isActive
+                          ? ColoredBox(color: colors.surfaceContainerHighest)
                           : DecoratedBox(
                               decoration: BoxDecoration(
                                 gradient: LinearGradient(
@@ -718,60 +784,7 @@ class _PultWorkoutPageState extends State<_PultWorkoutPage>
                         ),
                       ),
                     ),
-                    Positioned(
-                      top: -24 + (10 * wave2),
-                      right: -18 + (10 * wave),
-                      child: Container(
-                        width: 118,
-                        height: 118,
-                        decoration: BoxDecoration(
-                          shape: BoxShape.circle,
-                          color: Color.lerp(
-                            colors.primary.withValues(
-                              alpha: hasVideo ? 0.28 : 0.18,
-                            ),
-                            colors.tertiary.withValues(
-                              alpha: hasVideo ? 0.32 : 0.22,
-                            ),
-                            t,
-                          ),
-                        ),
-                      ),
-                    ),
-                    Positioned(
-                      bottom: -34 + (8 * wave),
-                      left: 18 + (18 * t),
-                      child: Container(
-                        width: 142,
-                        height: 142,
-                        decoration: BoxDecoration(
-                          shape: BoxShape.circle,
-                          color: Color.lerp(
-                            colors.tertiary.withValues(
-                              alpha: hasVideo ? 0.2 : 0.12,
-                            ),
-                            colors.primary.withValues(
-                              alpha: hasVideo ? 0.24 : 0.17,
-                            ),
-                            t,
-                          ),
-                        ),
-                      ),
-                    ),
-                    Positioned(
-                      top: 14 + (8 * wave2),
-                      left: 86 + (24 * wave),
-                      child: Container(
-                        width: 92,
-                        height: 92,
-                        decoration: BoxDecoration(
-                          shape: BoxShape.circle,
-                          color: colors.surface.withValues(
-                            alpha: hasVideo ? 0.28 : 0.22,
-                          ),
-                        ),
-                      ),
-                    ),
+
                     Padding(
                       padding: const EdgeInsets.all(18),
                       child: Row(
