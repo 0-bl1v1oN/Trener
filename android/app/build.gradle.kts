@@ -48,6 +48,10 @@ android {
     buildTypes {
         release {
             signingConfig = signingConfigs.getByName("release")
+            // Workaround for intermittent Windows file-lock issues in R8
+            // (e.g. :app:minifyReleaseWithR8 cannot delete classes.dex).
+            isMinifyEnabled = false
+            isShrinkResources = false
         }
     }
 }
