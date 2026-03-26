@@ -854,12 +854,6 @@ class _PultWorkoutPageState extends State<_PultWorkoutPage>
     return null;
   }
 
-  bool get _backgroundUsesVideo {
-    final backgroundPath = _selectedBackground?.assetPath;
-    return _useVideoBackground ||
-        (backgroundPath != null && _isVideoAssetPath(backgroundPath));
-  }
-
   Future<void> _openHeaderCustomizationSheet() async {
     final theme = Theme.of(context);
     final colors = theme.colorScheme;
@@ -1118,9 +1112,6 @@ class _PultWorkoutPageState extends State<_PultWorkoutPage>
 
   Widget _buildFrameLayer(_PultHeaderFrameOption frame, double size) {
     if (frame.isVideo) {
-      if (_backgroundUsesVideo) {
-        return _buildAnimatedFrameFallback(size);
-      }
       final controller = _frameAssetVideoController;
       if (controller != null && controller.value.isInitialized) {
         return IgnorePointer(
@@ -1156,33 +1147,6 @@ class _PultWorkoutPageState extends State<_PultWorkoutPage>
           return const SizedBox.shrink();
         },
       ),
-    );
-  }
-
-  Widget _buildAnimatedFrameFallback(double size) {
-    return AnimatedBuilder(
-      animation: _headerGlowController,
-      builder: (context, child) {
-        final t = _headerGlowController.value;
-        return ClipOval(
-          child: DecoratedBox(
-            decoration: BoxDecoration(
-              gradient: SweepGradient(
-                startAngle: math.pi * 2 * t,
-                endAngle: (math.pi * 2 * t) + (math.pi * 2),
-                colors: const [
-                  Color(0xFF4F46E5),
-                  Color(0xFF7C3AED),
-                  Color(0xFFEC4899),
-                  Color(0xFFF59E0B),
-                  Color(0xFF4F46E5),
-                ],
-              ),
-            ),
-            child: SizedBox(width: size, height: size),
-          ),
-        );
-      },
     );
   }
 
@@ -1812,86 +1776,92 @@ class _PultClientTab extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final colors = theme.colorScheme;
-    const animationDuration = Duration(milliseconds: 260);
-    final titleStyle =
-        theme.textTheme.titleSmall?.copyWith(
-          fontWeight: FontWeight.w700,
-          color: selected ? colors.onPrimaryContainer : colors.onSurface,
-        ) ??
-        TextStyle(
-          fontSize: 14,
-          fontWeight: FontWeight.w700,
-          color: selected ? colors.onPrimaryContainer : colors.onSurface,
-        );
+    const animationDuration = Duration(milliseconds: 220);
+    const tabRadius = 12.0;
     return Material(
       color: Colors.transparent,
       child: InkWell(
-        borderRadius: BorderRadius.circular(20),
+        borderRadius: BorderRadius.circular(tabRadius),
         onTap: onTap,
-        child: AnimatedContainer(
+        child: TweenAnimationBuilder<double>(
+          tween: Tween<double>(end: selected ? 1 : 0),
           duration: animationDuration,
           curve: Curves.easeInOutCubic,
-          padding: const EdgeInsets.only(left: 14, right: 8),
-          decoration: BoxDecoration(
-            color: selected
-                ? colors.primaryContainer.withValues(alpha: 0.88)
-                : colors.surface.withValues(alpha: 0.58),
-            borderRadius: BorderRadius.circular(20),
-            border: Border.all(
-              color: selected
-                  ? colors.primary.withValues(alpha: 0.34)
-                  : colors.outlineVariant.withValues(alpha: 0.22),
-            ),
-            boxShadow: [
-              BoxShadow(
-                color: selected
-                    ? colors.primary.withValues(alpha: 0.12)
-                    : colors.shadow.withValues(alpha: 0.02),
-                blurRadius: selected ? 12 : 4,
-                offset: const Offset(0, 3),
-              ),
-            ],
-          ),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              ConstrainedBox(
-                constraints: const BoxConstraints(maxWidth: 130),
-                child: AnimatedDefaultTextStyle(
-                  duration: animationDuration,
-                  curve: Curves.easeInOutCubic,
-                  style: titleStyle,
-                  child: Text(
-                    title,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
+          builder: (context, t, _) {
+            final backgroundColor = Color.lerp(
+              colors.surface.withValues(alpha: 0.58),
+              colors.primaryContainer.withValues(alpha: 0.88),
+              t,
+            )!;
+            final borderColor = Color.lerp(
+              colors.outlineVariant.withValues(alpha: 0.22),
+              colors.primary.withValues(alpha: 0.34),
+              t,
+            )!;
+            final shadowColor = Color.lerp(
+              colors.shadow.withValues(alpha: 0.02),
+              colors.primary.withValues(alpha: 0.12),
+              t,
+            )!;
+            final textColor = Color.lerp(
+              colors.onSurface,
+              colors.onPrimaryContainer,
+              t,
+            )!;
+            final iconColor = Color.lerp(
+              colors.onSurfaceVariant,
+              colors.onPrimaryContainer,
+              t,
+            )!;
+            return Container(
+              padding: const EdgeInsets.only(left: 14, right: 8),
+              decoration: BoxDecoration(
+                color: backgroundColor,
+                borderRadius: BorderRadius.circular(tabRadius),
+                border: Border.all(color: borderColor),
+                boxShadow: [
+                  BoxShadow(
+                    color: shadowColor,
+                    blurRadius: 4 + (8 * t),
+                    offset: const Offset(0, 3),
                   ),
-                ),
+                ],
               ),
-              const SizedBox(width: 4),
-              TweenAnimationBuilder<Color?>(
-                tween: ColorTween(
-                  end: selected
-                      ? colors.onPrimaryContainer
-                      : colors.onSurfaceVariant,
-                ),
-                duration: animationDuration,
-                curve: Curves.easeInOutCubic,
-                builder: (context, iconColor, child) {
-                  return IconButton(
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  ConstrainedBox(
+                    constraints: const BoxConstraints(maxWidth: 130),
+                    child: Text(
+                      title,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style:
+                          theme.textTheme.titleSmall?.copyWith(
+                            fontWeight: FontWeight.w700,
+                            color: textColor,
+                          ) ??
+                          TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w700,
+                            color: textColor,
+                          ),
+                    ),
+                  ),
+                  const SizedBox(width: 4),
+                  IconButton(
                     visualDensity: VisualDensity.compact,
                     onPressed: onClose,
                     iconSize: 18,
                     splashRadius: 18,
                     tooltip: 'Закрыть вкладку',
                     color: iconColor,
-                    icon: child!,
-                  );
-                },
-                child: const Icon(Icons.close_rounded),
+                    icon: const Icon(Icons.close_rounded),
+                  ),
+                ],
               ),
-            ],
-          ),
+            );
+          },
         ),
       ),
     );
