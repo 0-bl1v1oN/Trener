@@ -44,6 +44,8 @@ class PultTabEntry {
 enum PultAddResult { added, updated, exists }
 
 class PultHeaderCustomization {
+  static const Object _keepValue = Object();
+
   final String? avatarId;
   final String? avatarFrameId;
   final String backgroundId;
@@ -69,13 +71,17 @@ class PultHeaderCustomization {
   }
 
   PultHeaderCustomization copyWith({
-    String? avatarId,
-    String? avatarFrameId,
+    Object? avatarId = _keepValue,
+    Object? avatarFrameId = _keepValue,
     String? backgroundId,
   }) {
     return PultHeaderCustomization(
-      avatarId: avatarId,
-      avatarFrameId: avatarFrameId,
+      avatarId: identical(avatarId, _keepValue)
+          ? this.avatarId
+          : avatarId as String?,
+      avatarFrameId: identical(avatarFrameId, _keepValue)
+          ? this.avatarFrameId
+          : avatarFrameId as String?,
       backgroundId: backgroundId ?? this.backgroundId,
     );
   }

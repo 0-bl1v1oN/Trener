@@ -54,25 +54,25 @@ class _PultHeaderAvatarOption {
   final String id;
   final String title;
   final String assetPath;
-  final bool isVideo;
 
   const _PultHeaderAvatarOption({
     required this.id,
     required this.title,
     required this.assetPath,
-    this.isVideo = false,
   });
 }
 
 class _PultHeaderFrameOption {
   final String id;
   final String title;
-  final Color assetPath;
+  final String assetPath;
+  final bool isVideo;
 
   const _PultHeaderFrameOption({
     required this.id,
     required this.title,
     required this.assetPath,
+    this.isVideo = false,
   });
 }
 
@@ -321,6 +321,7 @@ class _PultWorkoutPageState extends State<_PultWorkoutPage>
     with SingleTickerProviderStateMixin, AutomaticKeepAliveClientMixin {
   static const String _attendanceMarker = '[attended]';
   static const String headerVideoAsset = 'assets/branding/pult_header.mp4';
+  static const double _headerAvatarSize = 78;
   static const String _videoBackgroundId = 'video_fire';
   static const String _headerAssetsRoot = 'assets/pult_customization';
   static const List<_PultHeaderAvatarOption> _avatarOptions =
@@ -371,6 +372,7 @@ class _PultWorkoutPageState extends State<_PultWorkoutPage>
   bool _loading = true;
   bool _completing = false;
   Timer? _draftDebounce;
+  Timer? _videoPlaybackSyncTimer;
   late final AnimationController _headerGlowController;
   VideoPlayerController? _headerVideoController;
   VideoPlayerController? _backgroundAssetVideoController;
@@ -389,6 +391,10 @@ class _PultWorkoutPageState extends State<_PultWorkoutPage>
       vsync: this,
       duration: const Duration(milliseconds: 2600),
     )..repeat(reverse: true);
+    _videoPlaybackSyncTimer = Timer.periodic(const Duration(seconds: 1), (_) {
+      if (!mounted || !widget.isActive) return;
+      unawaited(_syncHeaderVideoPlayback());
+    });
     unawaited(_prepareHeaderVideo());
     unawaited(_loadHeaderCustomization());
     _load();
@@ -518,7 +524,9 @@ class _PultWorkoutPageState extends State<_PultWorkoutPage>
       await _frameAssetVideoController?.dispose();
       _frameAssetVideoController = null;
       _frameAssetVideoPath = null;
-      if (framePath != null && frame.isVideo && _isVideoAssetPath(framePath)) {
+      if (framePath != null &&
+          frame?.isVideo == true &&
+          _isVideoAssetPath(framePath)) {
         final controller = VideoPlayerController.asset(framePath);
         try {
           await controller.initialize();
@@ -540,6 +548,7 @@ class _PultWorkoutPageState extends State<_PultWorkoutPage>
   @override
   void dispose() {
     _draftDebounce?.cancel();
+    _videoPlaybackSyncTimer?.cancel();
     unawaited(_saveDrafts());
     for (final controller in [
       ..._kgControllers.values,
@@ -845,6 +854,12 @@ class _PultWorkoutPageState extends State<_PultWorkoutPage>
     return null;
   }
 
+  bool get _backgroundUsesVideo {
+    final backgroundPath = _selectedBackground?.assetPath;
+    return _useVideoBackground ||
+        (backgroundPath != null && _isVideoAssetPath(backgroundPath));
+  }
+
   Future<void> _openHeaderCustomizationSheet() async {
     final theme = Theme.of(context);
     final colors = theme.colorScheme;
@@ -925,7 +940,7 @@ class _PultWorkoutPageState extends State<_PultWorkoutPage>
               padding: const EdgeInsets.all(12),
               child: Row(
                 children: [
-                  _buildHeaderAvatar(theme, colors, size: 52),
+                  _buildHeaderAvatar(colors, size: _headerAvatarSize),
                   const SizedBox(width: 12),
                   Expanded(
                     child: Text(
@@ -1047,51 +1062,55 @@ class _PultWorkoutPageState extends State<_PultWorkoutPage>
     );
   }
 
-  Widget _buildHeaderAvatar(
-    ThemeData theme,
-    ColorScheme colors, {
-    double size = 52,
-  }) {
+  Widget _buildHeaderAvatar(ColorScheme colors, {double size = 52}) {
     final avatar = _selectedAvatar;
     final frame = _selectedFrame;
+    final avatarCore = avatar == null
+        ? Container(
+            width: size,
+            height: size,
+            color: colors.surface.withValues(alpha: 0.78),
+            alignment: Alignment.center,
+            child: Icon(Icons.fitness_center_rounded, color: colors.primary),
+          )
+        : Image.asset(
+            avatar.assetPath,
+            width: size,
+            height: size,
+            fit: BoxFit.cover,
+            errorBuilder: (context, error, stackTrace) {
+              return Container(
+                width: size,
+                height: size,
+                color: colors.surface.withValues(alpha: 0.78),
+                alignment: Alignment.center,
+                child: Icon(Icons.person_rounded, color: colors.primary),
+              );
+            },
+          );
+
+    if (frame == null) {
+      return SizedBox(
+        width: size,
+        height: size,
+        child: ClipOval(child: avatarCore),
+      );
+    }
+
+    final avatarInset = size * 0.12;
     return SizedBox(
       width: size,
       height: size,
       child: Stack(
         alignment: Alignment.center,
         children: [
-          ClipOval(
-            child: avatar == null
-                ? Container(
-                    width: size,
-                    height: size,
-                    color: colors.surface.withValues(alpha: 0.78),
-                    alignment: Alignment.center,
-                    child: Icon(
-                      Icons.fitness_center_rounded,
-                      color: colors.primary,
-                    ),
-                  )
-                : Image.asset(
-                    avatar.assetPath,
-                    width: size,
-                    height: size,
-                    fit: BoxFit.cover,
-                    errorBuilder: (context, error, stackTrace) {
-                      return Container(
-                        width: size,
-                        height: size,
-                        color: colors.surface.withValues(alpha: 0.78),
-                        alignment: Alignment.center,
-                        child: Icon(
-                          Icons.person_rounded,
-                          color: colors.primary,
-                        ),
-                      );
-                    },
-                  ),
+          _buildFrameLayer(frame, size),
+          Positioned.fill(
+            child: Padding(
+              padding: EdgeInsets.all(avatarInset),
+              child: ClipOval(child: avatarCore),
+            ),
           ),
-          if (frame != null) _buildFrameLayer(frame, size),
         ],
       ),
     );
@@ -1099,18 +1118,23 @@ class _PultWorkoutPageState extends State<_PultWorkoutPage>
 
   Widget _buildFrameLayer(_PultHeaderFrameOption frame, double size) {
     if (frame.isVideo) {
+      if (_backgroundUsesVideo) {
+        return _buildAnimatedFrameFallback(size);
+      }
       final controller = _frameAssetVideoController;
       if (controller != null && controller.value.isInitialized) {
         return IgnorePointer(
-          child: SizedBox(
-            width: size,
-            height: size,
-            child: FittedBox(
-              fit: BoxFit.cover,
-              child: SizedBox(
-                width: controller.value.size.width,
-                height: controller.value.size.height,
-                child: VideoPlayer(controller),
+          child: ClipOval(
+            child: SizedBox(
+              width: size,
+              height: size,
+              child: FittedBox(
+                fit: BoxFit.cover,
+                child: SizedBox(
+                  width: controller.value.size.width,
+                  height: controller.value.size.height,
+                  child: VideoPlayer(controller),
+                ),
               ),
             ),
           ),
@@ -1122,13 +1146,42 @@ class _PultWorkoutPageState extends State<_PultWorkoutPage>
         child: const Icon(Icons.movie_creation_rounded, color: Colors.white70),
       );
     }
-    return Image.asset(
-      frame.assetPath,
-      width: size,
-      height: size,
-      fit: BoxFit.contain,
-      errorBuilder: (context, error, stackTrace) {
-        return const SizedBox.shrink();
+    return ClipOval(
+      child: Image.asset(
+        frame.assetPath,
+        width: size,
+        height: size,
+        fit: BoxFit.cover,
+        errorBuilder: (context, error, stackTrace) {
+          return const SizedBox.shrink();
+        },
+      ),
+    );
+  }
+
+  Widget _buildAnimatedFrameFallback(double size) {
+    return AnimatedBuilder(
+      animation: _headerGlowController,
+      builder: (context, child) {
+        final t = _headerGlowController.value;
+        return ClipOval(
+          child: DecoratedBox(
+            decoration: BoxDecoration(
+              gradient: SweepGradient(
+                startAngle: math.pi * 2 * t,
+                endAngle: (math.pi * 2 * t) + (math.pi * 2),
+                colors: const [
+                  Color(0xFF4F46E5),
+                  Color(0xFF7C3AED),
+                  Color(0xFFEC4899),
+                  Color(0xFFF59E0B),
+                  Color(0xFF4F46E5),
+                ],
+              ),
+            ),
+            child: SizedBox(width: size, height: size),
+          ),
+        );
       },
     );
   }
@@ -1397,17 +1450,22 @@ class _PultWorkoutPageState extends State<_PultWorkoutPage>
                         ),
 
                         Padding(
-                          padding: const EdgeInsets.all(18),
+                          padding: const EdgeInsets.fromLTRB(8, 12, 12, 12),
                           child: Row(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              _buildHeaderAvatar(theme, colors),
+                              _buildHeaderAvatar(
+                                colors,
+                                size: _headerAvatarSize,
+                              ),
                               const SizedBox(width: 14),
                               Expanded(
                                 child: Column(
                                   crossAxisAlignment: CrossAxisAlignment.start,
                                   children: [
-                                    if (_headerVideoFailed)
+                                    if (_headerVideoFailed &&
+                                        _useVideoBackground &&
+                                        _selectedBackground?.assetPath == null)
                                       Padding(
                                         padding: const EdgeInsets.only(
                                           bottom: 8,
