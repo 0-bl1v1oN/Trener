@@ -34,6 +34,42 @@ Future<void> warmUpPultHeaderVideo() {
   return _PultHeaderVideoWarmup.ensureWarmedUp();
 }
 
+class _PultHeaderBackgroundOption {
+  final String id;
+  final String title;
+  final String subtitle;
+
+  const _PultHeaderBackgroundOption({
+    required this.id,
+    required this.title,
+    required this.subtitle,
+  });
+}
+
+class _PultHeaderAvatarOption {
+  final String id;
+  final String title;
+  final String emoji;
+
+  const _PultHeaderAvatarOption({
+    required this.id,
+    required this.title,
+    required this.emoji,
+  });
+}
+
+class _PultHeaderFrameOption {
+  final String id;
+  final String title;
+  final Color color;
+
+  const _PultHeaderFrameOption({
+    required this.id,
+    required this.title,
+    required this.color,
+  });
+}
+
 class PultScreen extends StatefulWidget {
   const PultScreen({super.key});
 
@@ -279,6 +315,19 @@ class _PultWorkoutPageState extends State<_PultWorkoutPage>
     with SingleTickerProviderStateMixin, AutomaticKeepAliveClientMixin {
   static const String _attendanceMarker = '[attended]';
   static const String headerVideoAsset = 'assets/branding/pult_header.mp4';
+  static const String _videoBackgroundId = 'video_fire';
+  static const List<_PultHeaderAvatarOption> _avatarOptions =
+      <_PultHeaderAvatarOption>[];
+  static const List<_PultHeaderFrameOption> _frameOptions =
+      <_PultHeaderFrameOption>[];
+  static const List<_PultHeaderBackgroundOption> _backgroundOptions =
+      <_PultHeaderBackgroundOption>[
+        _PultHeaderBackgroundOption(
+          id: _videoBackgroundId,
+          title: 'Огненный',
+          subtitle: 'Текущий анимированный фон',
+        ),
+      ];
 
   final Map<int, TextEditingController> _kgControllers =
       <int, TextEditingController>{};
@@ -298,6 +347,8 @@ class _PultWorkoutPageState extends State<_PultWorkoutPage>
   VideoPlayerController? _headerVideoController;
   bool _headerVideoFailed = false;
   bool _headerVisualReady = false;
+  PultHeaderCustomization _headerCustomization =
+      const PultHeaderCustomization();
 
   @override
   void initState() {
@@ -307,6 +358,7 @@ class _PultWorkoutPageState extends State<_PultWorkoutPage>
       duration: const Duration(milliseconds: 2600),
     )..repeat(reverse: true);
     unawaited(_prepareHeaderVideo());
+    unawaited(_loadHeaderCustomization());
     _load();
   }
 
@@ -321,6 +373,21 @@ class _PultWorkoutPageState extends State<_PultWorkoutPage>
     await _PultHeaderVideoWarmup.ensureWarmedUp();
     if (!mounted) return;
     await _initHeaderVideo();
+  }
+
+  Future<void> _loadHeaderCustomization() async {
+    final custom = await PultStore.loadHeaderCustomization(widget.tab.clientId);
+    if (!mounted) return;
+    setState(() {
+      _headerCustomization = custom;
+    });
+  }
+
+  Future<void> _saveHeaderCustomization(PultHeaderCustomization next) async {
+    setState(() {
+      _headerCustomization = next;
+    });
+    await PultStore.saveHeaderCustomization(widget.tab.clientId, next);
   }
 
   Future<void> _initHeaderVideo() async {
@@ -637,6 +704,183 @@ class _PultWorkoutPageState extends State<_PultWorkoutPage>
     );
   }
 
+  bool get _useVideoBackground =>
+      _headerCustomization.backgroundId == _videoBackgroundId;
+
+  _PultHeaderAvatarOption? get _selectedAvatar {
+    final id = _headerCustomization.avatarId;
+    if (id == null) return null;
+    for (final item in _avatarOptions) {
+      if (item.id == id) return item;
+    }
+    return null;
+  }
+
+  _PultHeaderFrameOption? get _selectedFrame {
+    final id = _headerCustomization.avatarFrameId;
+    if (id == null) return null;
+    for (final item in _frameOptions) {
+      if (item.id == id) return item;
+    }
+    return null;
+  }
+
+  Future<void> _openHeaderCustomizationSheet() async {
+    final theme = Theme.of(context);
+    final colors = theme.colorScheme;
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      showDragHandle: true,
+      backgroundColor: colors.surface,
+      builder: (sheetContext) {
+        return DefaultTabController(
+          length: 3,
+          child: SafeArea(
+            child: SizedBox(
+              height: MediaQuery.of(sheetContext).size.height * 0.74,
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
+                child: Column(
+                  children: [
+                    _buildCustomizationPreview(sheetContext),
+                    const SizedBox(height: 14),
+                    TabBar(
+                      tabs: const [
+                        Tab(text: 'Аватар'),
+                        Tab(text: 'Рамка'),
+                        Tab(text: 'Фон'),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+                    Expanded(
+                      child: TabBarView(
+                        children: [
+                          _buildAvatarTab(sheetContext),
+                          _buildFrameTab(sheetContext),
+                          _buildBackgroundTab(sheetContext),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _buildCustomizationPreview(BuildContext context) {
+    final theme = Theme.of(context);
+    final colors = theme.colorScheme;
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(20),
+        color: colors.surfaceContainerHighest,
+      ),
+      child: Row(
+        children: [
+          _buildHeaderAvatar(theme, colors),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Text(
+              'Предпросмотр шапки',
+              style: theme.textTheme.titleMedium?.copyWith(
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildAvatarTab(BuildContext context) {
+    if (_avatarOptions.isEmpty) {
+      return const Center(child: Text('Аватары скоро появятся'));
+    }
+    return ListView.builder(
+      itemCount: _avatarOptions.length,
+      itemBuilder: (context, index) {
+        final option = _avatarOptions[index];
+        final selected = option.id == _headerCustomization.avatarId;
+        return ListTile(
+          leading: Text(option.emoji, style: const TextStyle(fontSize: 24)),
+          title: Text(option.title),
+          trailing: selected ? const Icon(Icons.check_circle) : null,
+          onTap: () => _saveHeaderCustomization(
+            _headerCustomization.copyWith(avatarId: option.id),
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _buildFrameTab(BuildContext context) {
+    if (_frameOptions.isEmpty) {
+      return const Center(child: Text('Рамки скоро появятся'));
+    }
+    return ListView.builder(
+      itemCount: _frameOptions.length,
+      itemBuilder: (context, index) {
+        final option = _frameOptions[index];
+        final selected = option.id == _headerCustomization.avatarFrameId;
+        return ListTile(
+          leading: CircleAvatar(backgroundColor: option.color),
+          title: Text(option.title),
+          trailing: selected ? const Icon(Icons.check_circle) : null,
+          onTap: () => _saveHeaderCustomization(
+            _headerCustomization.copyWith(avatarFrameId: option.id),
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _buildBackgroundTab(BuildContext context) {
+    return ListView.builder(
+      itemCount: _backgroundOptions.length,
+      itemBuilder: (context, index) {
+        final option = _backgroundOptions[index];
+        final selected = option.id == _headerCustomization.backgroundId;
+        return ListTile(
+          leading: const Icon(Icons.photo_filter_rounded),
+          title: Text(option.title),
+          subtitle: Text(option.subtitle),
+          trailing: selected ? const Icon(Icons.check_circle) : null,
+          onTap: () => _saveHeaderCustomization(
+            _headerCustomization.copyWith(backgroundId: option.id),
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _buildHeaderAvatar(ThemeData theme, ColorScheme colors) {
+    final avatar = _selectedAvatar;
+    final frame = _selectedFrame;
+    return Container(
+      width: 52,
+      height: 52,
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        color: colors.surface.withValues(alpha: 0.78),
+        border: Border.all(
+          color: frame?.color ?? colors.primary.withValues(alpha: 0.28),
+          width: frame == null ? 1 : 2,
+        ),
+      ),
+      alignment: Alignment.center,
+      child: avatar == null
+          ? Icon(Icons.fitness_center_rounded, color: colors.primary)
+          : Text(avatar.emoji, style: theme.textTheme.titleLarge),
+    );
+  }
+
   @override
   bool get wantKeepAlive => true;
 
@@ -679,7 +923,10 @@ class _PultWorkoutPageState extends State<_PultWorkoutPage>
             final wave2 = math.sin((t * math.pi * 2) + (math.pi / 2));
 
             final video = _headerVideoController;
-            final hasVideo = video != null && video.value.isInitialized;
+            final hasVideo =
+                _useVideoBackground &&
+                video != null &&
+                video.value.isInitialized;
             return Container(
               decoration: BoxDecoration(
                 borderRadius: BorderRadius.circular(28),
@@ -704,169 +951,170 @@ class _PultWorkoutPageState extends State<_PultWorkoutPage>
                   ),
                 ],
               ),
-              child: ClipRRect(
-                borderRadius: BorderRadius.circular(28),
-                child: Stack(
-                  clipBehavior: Clip.none,
-                  children: [
-                    Positioned.fill(
-                      child: hasVideo
-                          ? FittedBox(
-                              fit: BoxFit.cover,
-                              child: SizedBox(
-                                width: video.value.size.width,
-                                height: video.value.size.height,
-                                child: VideoPlayer(video),
-                              ),
-                            )
-                          : !_headerVisualReady && widget.isActive
-                          ? ColoredBox(color: colors.surfaceContainerHighest)
-                          : DecoratedBox(
-                              decoration: BoxDecoration(
-                                gradient: LinearGradient(
-                                  colors: [
-                                    Color.lerp(
-                                      colors.primary.withValues(alpha: 0.55),
-                                      colors.tertiary.withValues(alpha: 0.62),
-                                      t,
-                                    )!,
-                                    Color.lerp(
-                                      colors.primaryContainer.withValues(
-                                        alpha: 0.92,
-                                      ),
-                                      colors.tertiaryContainer.withValues(
-                                        alpha: 0.94,
-                                      ),
-                                      t,
-                                    )!,
-                                    Color.lerp(
-                                      colors.surfaceContainerHighest.withValues(
-                                        alpha: 0.92,
-                                      ),
-                                      colors.primary.withValues(alpha: 0.50),
-                                      t,
-                                    )!,
-                                  ],
-                                  transform: GradientRotation(
-                                    (math.pi * 2) * t,
+              child: Material(
+                color: Colors.transparent,
+                child: InkWell(
+                  borderRadius: BorderRadius.circular(28),
+                  onTap: _openHeaderCustomizationSheet,
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(28),
+                    child: Stack(
+                      clipBehavior: Clip.none,
+                      children: [
+                        Positioned.fill(
+                          child: hasVideo
+                              ? FittedBox(
+                                  fit: BoxFit.cover,
+                                  child: SizedBox(
+                                    width: video.value.size.width,
+                                    height: video.value.size.height,
+                                    child: VideoPlayer(video),
                                   ),
-                                  stops: [0, 0.5 + (0.18 * wave), 1],
-                                  begin: Alignment(
-                                    -1.2 + (1.2 * t),
-                                    -1.15 + (0.25 * wave),
-                                  ),
-                                  end: Alignment(
-                                    1.15 - (1.0 * t),
-                                    1.1 - (0.34 * wave2),
+                                )
+                              : !_headerVisualReady && widget.isActive
+                              ? ColoredBox(
+                                  color: colors.surfaceContainerHighest,
+                                )
+                              : DecoratedBox(
+                                  decoration: BoxDecoration(
+                                    gradient: LinearGradient(
+                                      colors: [
+                                        Color.lerp(
+                                          colors.primary.withValues(
+                                            alpha: 0.55,
+                                          ),
+                                          colors.tertiary.withValues(
+                                            alpha: 0.62,
+                                          ),
+                                          t,
+                                        )!,
+                                        Color.lerp(
+                                          colors.primaryContainer.withValues(
+                                            alpha: 0.92,
+                                          ),
+                                          colors.tertiaryContainer.withValues(
+                                            alpha: 0.94,
+                                          ),
+                                          t,
+                                        )!,
+                                        Color.lerp(
+                                          colors.surfaceContainerHighest
+                                              .withValues(alpha: 0.92),
+                                          colors.primary.withValues(
+                                            alpha: 0.50,
+                                          ),
+                                          t,
+                                        )!,
+                                      ],
+                                      transform: GradientRotation(
+                                        (math.pi * 2) * t,
+                                      ),
+                                      stops: [0, 0.5 + (0.18 * wave), 1],
+                                      begin: Alignment(
+                                        -1.2 + (1.2 * t),
+                                        -1.15 + (0.25 * wave),
+                                      ),
+                                      end: Alignment(
+                                        1.15 - (1.0 * t),
+                                        1.1 - (0.34 * wave2),
+                                      ),
+                                    ),
                                   ),
                                 ),
+                        ),
+                        Positioned.fill(
+                          child: DecoratedBox(
+                            decoration: BoxDecoration(
+                              gradient: LinearGradient(
+                                colors: [
+                                  Colors.black.withValues(
+                                    alpha: hasVideo ? 0.16 : 0.05,
+                                  ),
+                                  Colors.black.withValues(
+                                    alpha: hasVideo ? 0.08 : 0.0,
+                                  ),
+                                  Colors.black.withValues(
+                                    alpha: hasVideo ? 0.28 : 0.08,
+                                  ),
+                                ],
+                                begin: Alignment.topLeft,
+                                end: Alignment.bottomRight,
                               ),
                             ),
-                    ),
-                    Positioned.fill(
-                      child: DecoratedBox(
-                        decoration: BoxDecoration(
-                          gradient: LinearGradient(
-                            colors: [
-                              Colors.black.withValues(
-                                alpha: hasVideo ? 0.16 : 0.05,
-                              ),
-                              Colors.black.withValues(
-                                alpha: hasVideo ? 0.08 : 0.0,
-                              ),
-                              Colors.black.withValues(
-                                alpha: hasVideo ? 0.28 : 0.08,
-                              ),
-                            ],
-                            begin: Alignment.topLeft,
-                            end: Alignment.bottomRight,
                           ),
                         ),
-                      ),
-                    ),
 
-                    Padding(
-                      padding: const EdgeInsets.all(18),
-                      child: Row(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Container(
-                            width: 52,
-                            height: 52,
-                            decoration: BoxDecoration(
-                              shape: BoxShape.circle,
-                              color: colors.surface.withValues(
-                                alpha: hasVideo ? 0.78 : 0.68,
-                              ),
-                              border: Border.all(
-                                color: colors.primary.withValues(alpha: 0.28),
-                              ),
-                            ),
-                            child: Icon(
-                              Icons.fitness_center_rounded,
-                              color: colors.primary,
-                            ),
-                          ),
-                          const SizedBox(width: 14),
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                if (_headerVideoFailed)
-                                  Padding(
-                                    padding: const EdgeInsets.only(bottom: 8),
-                                    child: Text(
-                                      'Видео-фон не найден, включён анимированный градиент',
-                                      style: theme.textTheme.labelSmall
+                        Padding(
+                          padding: const EdgeInsets.all(18),
+                          child: Row(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              _buildHeaderAvatar(theme, colors),
+                              const SizedBox(width: 14),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    if (_headerVideoFailed)
+                                      Padding(
+                                        padding: const EdgeInsets.only(
+                                          bottom: 8,
+                                        ),
+                                        child: Text(
+                                          'Видео-фон не найден, включён анимированный градиент',
+                                          style: theme.textTheme.labelSmall
+                                              ?.copyWith(
+                                                color: colors.onSurface
+                                                    .withValues(alpha: 0.78),
+                                                fontWeight: FontWeight.w600,
+                                              ),
+                                        ),
+                                      ),
+                                    Align(
+                                      alignment: Alignment.centerRight,
+                                      child: Container(
+                                        padding: const EdgeInsets.symmetric(
+                                          horizontal: 10,
+                                          vertical: 6,
+                                        ),
+                                        decoration: BoxDecoration(
+                                          color: colors.surface.withValues(
+                                            alpha: 0.54,
+                                          ),
+                                          borderRadius: BorderRadius.circular(
+                                            999,
+                                          ),
+                                        ),
+                                        child: Text(
+                                          DateFormat(
+                                            'dd.MM.yyyy',
+                                            'ru_RU',
+                                          ).format(data.day),
+                                          style: theme.textTheme.labelMedium
+                                              ?.copyWith(
+                                                fontWeight: FontWeight.w700,
+                                              ),
+                                        ),
+                                      ),
+                                    ),
+                                    const SizedBox(height: 10),
+                                    Text(
+                                      data.clientName,
+                                      style: theme.textTheme.headlineSmall
                                           ?.copyWith(
-                                            color: colors.onSurface.withValues(
-                                              alpha: 0.78,
-                                            ),
-                                            fontWeight: FontWeight.w600,
+                                            fontWeight: FontWeight.w800,
+                                            letterSpacing: 0.1,
                                           ),
                                     ),
-                                  ),
-                                Align(
-                                  alignment: Alignment.centerRight,
-                                  child: Container(
-                                    padding: const EdgeInsets.symmetric(
-                                      horizontal: 10,
-                                      vertical: 6,
-                                    ),
-                                    decoration: BoxDecoration(
-                                      color: colors.surface.withValues(
-                                        alpha: 0.54,
-                                      ),
-                                      borderRadius: BorderRadius.circular(999),
-                                    ),
-                                    child: Text(
-                                      DateFormat(
-                                        'dd.MM.yyyy',
-                                        'ru_RU',
-                                      ).format(data.day),
-                                      style: theme.textTheme.labelMedium
-                                          ?.copyWith(
-                                            fontWeight: FontWeight.w700,
-                                          ),
-                                    ),
-                                  ),
+                                  ],
                                 ),
-                                const SizedBox(height: 10),
-                                Text(
-                                  data.clientName,
-                                  style: theme.textTheme.headlineSmall
-                                      ?.copyWith(
-                                        fontWeight: FontWeight.w800,
-                                        letterSpacing: 0.1,
-                                      ),
-                                ),
-                              ],
-                            ),
+                              ),
+                            ],
                           ),
-                        ],
-                      ),
+                        ),
+                      ],
                     ),
-                  ],
+                  ),
                 ),
               ),
             );
