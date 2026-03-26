@@ -84,6 +84,10 @@ flutter:
     - assets/clients/
     - assets/branding/
     - assets/branding/march8_cards/
+    - assets/pult_customization/
+    - assets/pult_customization/avatars/
+    - assets/pult_customization/frames/
+    - assets/pult_customization/backgrounds/
     - assets/workout_day_icons/
 
   # To add assets to your application, add an assets section, like this:

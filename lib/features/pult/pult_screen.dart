@@ -38,35 +38,41 @@ class _PultHeaderBackgroundOption {
   final String id;
   final String title;
   final String subtitle;
+  final String? assetPath;
+  final IconData icon;
 
   const _PultHeaderBackgroundOption({
     required this.id,
     required this.title,
     required this.subtitle,
+    this.assetPath,
+    this.icon = Icons.photo_filter_rounded,
   });
 }
 
 class _PultHeaderAvatarOption {
   final String id;
   final String title;
-  final String emoji;
+  final String assetPath;
+  final bool isVideo;
 
   const _PultHeaderAvatarOption({
     required this.id,
     required this.title,
-    required this.emoji,
+    required this.assetPath,
+    this.isVideo = false,
   });
 }
 
 class _PultHeaderFrameOption {
   final String id;
   final String title;
-  final Color color;
+  final Color assetPath;
 
   const _PultHeaderFrameOption({
     required this.id,
     required this.title,
-    required this.color,
+    required this.assetPath,
   });
 }
 
@@ -316,16 +322,38 @@ class _PultWorkoutPageState extends State<_PultWorkoutPage>
   static const String _attendanceMarker = '[attended]';
   static const String headerVideoAsset = 'assets/branding/pult_header.mp4';
   static const String _videoBackgroundId = 'video_fire';
+  static const String _headerAssetsRoot = 'assets/pult_customization';
   static const List<_PultHeaderAvatarOption> _avatarOptions =
-      <_PultHeaderAvatarOption>[];
+      <_PultHeaderAvatarOption>[
+        _PultHeaderAvatarOption(
+          id: 'default_avatar',
+          title: 'Базовый аватар',
+          assetPath: '$_headerAssetsRoot/avatars/avatar_default.png',
+        ),
+      ];
   static const List<_PultHeaderFrameOption> _frameOptions =
-      <_PultHeaderFrameOption>[];
+      <_PultHeaderFrameOption>[
+        _PultHeaderFrameOption(
+          id: 'default_frame',
+          title: 'Базовая рамка',
+          assetPath: '$_headerAssetsRoot/frames/frame_default.mp4',
+          isVideo: true,
+        ),
+      ];
   static const List<_PultHeaderBackgroundOption> _backgroundOptions =
       <_PultHeaderBackgroundOption>[
         _PultHeaderBackgroundOption(
           id: _videoBackgroundId,
           title: 'Огненный',
           subtitle: 'Текущий анимированный фон',
+          icon: Icons.local_fire_department_rounded,
+        ),
+        _PultHeaderBackgroundOption(
+          id: 'default_media',
+          title: 'Кастомный фон',
+          subtitle: 'Из папки assets/pult_customization/backgrounds',
+          assetPath: '$_headerAssetsRoot/backgrounds/background_default.mp4',
+          icon: Icons.image_rounded,
         ),
       ];
 
@@ -345,6 +373,10 @@ class _PultWorkoutPageState extends State<_PultWorkoutPage>
   Timer? _draftDebounce;
   late final AnimationController _headerGlowController;
   VideoPlayerController? _headerVideoController;
+  VideoPlayerController? _backgroundAssetVideoController;
+  VideoPlayerController? _frameAssetVideoController;
+  String? _backgroundAssetVideoPath;
+  String? _frameAssetVideoPath;
   bool _headerVideoFailed = false;
   bool _headerVisualReady = false;
   PultHeaderCustomization _headerCustomization =
@@ -381,12 +413,14 @@ class _PultWorkoutPageState extends State<_PultWorkoutPage>
     setState(() {
       _headerCustomization = custom;
     });
+    await _syncSelectedVideoAssets();
   }
 
   Future<void> _saveHeaderCustomization(PultHeaderCustomization next) async {
     setState(() {
       _headerCustomization = next;
     });
+    await _syncSelectedVideoAssets();
     await PultStore.saveHeaderCustomization(widget.tab.clientId, next);
   }
 
@@ -415,17 +449,92 @@ class _PultWorkoutPageState extends State<_PultWorkoutPage>
 
   Future<void> _syncHeaderVideoPlayback() async {
     final controller = _headerVideoController;
-    if (controller == null || !controller.value.isInitialized) return;
+
     if (widget.isActive) {
-      if (!controller.value.isPlaying) {
-        await controller.play();
+      if (controller != null && controller.value.isInitialized) {
+        if (!controller.value.isPlaying) {
+          await controller.play();
+        }
       }
+      await _playOptionalController(_backgroundAssetVideoController);
+      await _playOptionalController(_frameAssetVideoController);
     } else {
-      if (controller.value.isPlaying) {
-        await controller.pause();
+      if (controller != null && controller.value.isInitialized) {
+        if (controller.value.isPlaying) {
+          await controller.pause();
+        }
+        await controller.seekTo(Duration.zero);
       }
-      await controller.seekTo(Duration.zero);
+      await _pauseAndRewindOptionalController(_backgroundAssetVideoController);
+      await _pauseAndRewindOptionalController(_frameAssetVideoController);
     }
+  }
+
+  Future<void> _playOptionalController(
+    VideoPlayerController? controller,
+  ) async {
+    if (controller == null || !controller.value.isInitialized) return;
+    if (!controller.value.isPlaying) {
+      await controller.play();
+    }
+  }
+
+  Future<void> _pauseAndRewindOptionalController(
+    VideoPlayerController? controller,
+  ) async {
+    if (controller == null || !controller.value.isInitialized) return;
+    if (controller.value.isPlaying) {
+      await controller.pause();
+    }
+    await controller.seekTo(Duration.zero);
+  }
+
+  bool _isVideoAssetPath(String assetPath) {
+    return assetPath.toLowerCase().endsWith('.mp4');
+  }
+
+  Future<void> _syncSelectedVideoAssets() async {
+    final backgroundPath = _selectedBackground?.assetPath;
+    if (backgroundPath != _backgroundAssetVideoPath) {
+      await _backgroundAssetVideoController?.dispose();
+      _backgroundAssetVideoController = null;
+      _backgroundAssetVideoPath = null;
+      if (backgroundPath != null && _isVideoAssetPath(backgroundPath)) {
+        final controller = VideoPlayerController.asset(backgroundPath);
+        try {
+          await controller.initialize();
+          await controller.setLooping(true);
+          await controller.setVolume(0);
+          _backgroundAssetVideoController = controller;
+          _backgroundAssetVideoPath = backgroundPath;
+        } catch (_) {
+          await controller.dispose();
+        }
+      }
+    }
+    final frame = _selectedFrame;
+    final framePath = frame?.assetPath;
+    if (framePath != _frameAssetVideoPath) {
+      await _frameAssetVideoController?.dispose();
+      _frameAssetVideoController = null;
+      _frameAssetVideoPath = null;
+      if (framePath != null && frame.isVideo && _isVideoAssetPath(framePath)) {
+        final controller = VideoPlayerController.asset(framePath);
+        try {
+          await controller.initialize();
+          await controller.setLooping(true);
+          await controller.setVolume(0);
+          _frameAssetVideoController = controller;
+          _frameAssetVideoPath = framePath;
+        } catch (_) {
+          await controller.dispose();
+        }
+      }
+    }
+
+    if (!mounted) return;
+    setState(() {});
+    await _syncHeaderVideoPlayback();
   }
 
   @override
@@ -442,6 +551,8 @@ class _PultWorkoutPageState extends State<_PultWorkoutPage>
       node.dispose();
     }
     _headerVideoController?.dispose();
+    _backgroundAssetVideoController?.dispose();
+    _frameAssetVideoController?.dispose();
     _headerGlowController.dispose();
     _pageScrollController.dispose();
     super.dispose();
@@ -725,6 +836,15 @@ class _PultWorkoutPageState extends State<_PultWorkoutPage>
     return null;
   }
 
+  _PultHeaderBackgroundOption? get _selectedBackground {
+    for (final item in _backgroundOptions) {
+      if (item.id == _headerCustomization.backgroundId) {
+        return item;
+      }
+    }
+    return null;
+  }
+
   Future<void> _openHeaderCustomizationSheet() async {
     final theme = Theme.of(context);
     final colors = theme.colorScheme;
@@ -782,19 +902,45 @@ class _PultWorkoutPageState extends State<_PultWorkoutPage>
         borderRadius: BorderRadius.circular(20),
         color: colors.surfaceContainerHighest,
       ),
-      child: Row(
-        children: [
-          _buildHeaderAvatar(theme, colors),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Text(
-              'Предпросмотр шапки',
-              style: theme.textTheme.titleMedium?.copyWith(
-                fontWeight: FontWeight.w700,
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(16),
+        child: Stack(
+          children: [
+            Positioned.fill(child: _buildPreviewBackground(colors)),
+            Positioned.fill(
+              child: DecoratedBox(
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    colors: [
+                      Colors.black.withValues(alpha: 0.06),
+                      Colors.black.withValues(alpha: 0.2),
+                    ],
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
+                  ),
+                ),
               ),
             ),
-          ),
-        ],
+            Padding(
+              padding: const EdgeInsets.all(12),
+              child: Row(
+                children: [
+                  _buildHeaderAvatar(theme, colors, size: 52),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Text(
+                      'Предпросмотр шапки',
+                      style: theme.textTheme.titleMedium?.copyWith(
+                        fontWeight: FontWeight.w700,
+                        color: Colors.white,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -809,7 +955,17 @@ class _PultWorkoutPageState extends State<_PultWorkoutPage>
         final option = _avatarOptions[index];
         final selected = option.id == _headerCustomization.avatarId;
         return ListTile(
-          leading: Text(option.emoji, style: const TextStyle(fontSize: 24)),
+          leading: ClipOval(
+            child: Image.asset(
+              option.assetPath,
+              width: 42,
+              height: 42,
+              fit: BoxFit.cover,
+              errorBuilder: (context, error, stackTrace) {
+                return const CircleAvatar(child: Icon(Icons.person_rounded));
+              },
+            ),
+          ),
           title: Text(option.title),
           trailing: selected ? const Icon(Icons.check_circle) : null,
           onTap: () => _saveHeaderCustomization(
@@ -830,7 +986,21 @@ class _PultWorkoutPageState extends State<_PultWorkoutPage>
         final option = _frameOptions[index];
         final selected = option.id == _headerCustomization.avatarFrameId;
         return ListTile(
-          leading: CircleAvatar(backgroundColor: option.color),
+          leading: SizedBox(
+            width: 42,
+            height: 42,
+            child: option.isVideo
+                ? const CircleAvatar(child: Icon(Icons.movie_creation_rounded))
+                : Image.asset(
+                    option.assetPath,
+                    fit: BoxFit.contain,
+                    errorBuilder: (context, error, stackTrace) {
+                      return const CircleAvatar(
+                        child: Icon(Icons.crop_square_rounded),
+                      );
+                    },
+                  ),
+          ),
           title: Text(option.title),
           trailing: selected ? const Icon(Icons.check_circle) : null,
           onTap: () => _saveHeaderCustomization(
@@ -847,8 +1017,25 @@ class _PultWorkoutPageState extends State<_PultWorkoutPage>
       itemBuilder: (context, index) {
         final option = _backgroundOptions[index];
         final selected = option.id == _headerCustomization.backgroundId;
+        final isVideo =
+            option.assetPath != null && _isVideoAssetPath(option.assetPath!);
         return ListTile(
-          leading: const Icon(Icons.photo_filter_rounded),
+          leading: option.assetPath == null
+              ? Icon(option.icon)
+              : isVideo
+              ? Icon(option.icon)
+              : ClipRRect(
+                  borderRadius: BorderRadius.circular(8),
+                  child: Image.asset(
+                    option.assetPath!,
+                    width: 44,
+                    height: 44,
+                    fit: BoxFit.cover,
+                    errorBuilder: (context, error, stackTrace) {
+                      return Icon(option.icon);
+                    },
+                  ),
+                ),
           title: Text(option.title),
           subtitle: Text(option.subtitle),
           trailing: selected ? const Icon(Icons.check_circle) : null,
@@ -860,24 +1047,183 @@ class _PultWorkoutPageState extends State<_PultWorkoutPage>
     );
   }
 
-  Widget _buildHeaderAvatar(ThemeData theme, ColorScheme colors) {
+  Widget _buildHeaderAvatar(
+    ThemeData theme,
+    ColorScheme colors, {
+    double size = 52,
+  }) {
     final avatar = _selectedAvatar;
     final frame = _selectedFrame;
-    return Container(
-      width: 52,
-      height: 52,
+    return SizedBox(
+      width: size,
+      height: size,
+      child: Stack(
+        alignment: Alignment.center,
+        children: [
+          ClipOval(
+            child: avatar == null
+                ? Container(
+                    width: size,
+                    height: size,
+                    color: colors.surface.withValues(alpha: 0.78),
+                    alignment: Alignment.center,
+                    child: Icon(
+                      Icons.fitness_center_rounded,
+                      color: colors.primary,
+                    ),
+                  )
+                : Image.asset(
+                    avatar.assetPath,
+                    width: size,
+                    height: size,
+                    fit: BoxFit.cover,
+                    errorBuilder: (context, error, stackTrace) {
+                      return Container(
+                        width: size,
+                        height: size,
+                        color: colors.surface.withValues(alpha: 0.78),
+                        alignment: Alignment.center,
+                        child: Icon(
+                          Icons.person_rounded,
+                          color: colors.primary,
+                        ),
+                      );
+                    },
+                  ),
+          ),
+          if (frame != null) _buildFrameLayer(frame, size),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildFrameLayer(_PultHeaderFrameOption frame, double size) {
+    if (frame.isVideo) {
+      final controller = _frameAssetVideoController;
+      if (controller != null && controller.value.isInitialized) {
+        return IgnorePointer(
+          child: SizedBox(
+            width: size,
+            height: size,
+            child: FittedBox(
+              fit: BoxFit.cover,
+              child: SizedBox(
+                width: controller.value.size.width,
+                height: controller.value.size.height,
+                child: VideoPlayer(controller),
+              ),
+            ),
+          ),
+        );
+      }
+      return SizedBox(
+        width: size,
+        height: size,
+        child: const Icon(Icons.movie_creation_rounded, color: Colors.white70),
+      );
+    }
+    return Image.asset(
+      frame.assetPath,
+      width: size,
+      height: size,
+      fit: BoxFit.contain,
+      errorBuilder: (context, error, stackTrace) {
+        return const SizedBox.shrink();
+      },
+    );
+  }
+
+  Widget _buildPreviewBackground(ColorScheme colors) {
+    final selectedBackground = _selectedBackground;
+    final assetPath = selectedBackground?.assetPath;
+    if (assetPath != null) {
+      if (_isVideoAssetPath(assetPath)) {
+        final controller = _backgroundAssetVideoController;
+        if (controller != null && controller.value.isInitialized) {
+          return FittedBox(
+            fit: BoxFit.cover,
+            child: SizedBox(
+              width: controller.value.size.width,
+              height: controller.value.size.height,
+              child: VideoPlayer(controller),
+            ),
+          );
+        }
+        return _buildFallbackPreviewGradient(colors);
+      }
+      return Image.asset(
+        assetPath,
+        fit: BoxFit.cover,
+        errorBuilder: (context, error, stackTrace) {
+          return _buildFallbackPreviewGradient(colors);
+        },
+      );
+    }
+    if (_useVideoBackground) {
+      return DecoratedBox(
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            colors: [
+              const Color(0xFF3A1C71).withValues(alpha: 0.82),
+              const Color(0xFFFF6A00).withValues(alpha: 0.78),
+            ],
+          ),
+        ),
+        child: const Center(
+          child: Icon(Icons.local_fire_department_rounded, color: Colors.white),
+        ),
+      );
+    }
+    return _buildFallbackPreviewGradient(colors);
+  }
+
+  Widget _buildFallbackPreviewGradient(ColorScheme colors) {
+    return DecoratedBox(
       decoration: BoxDecoration(
-        shape: BoxShape.circle,
-        color: colors.surface.withValues(alpha: 0.78),
-        border: Border.all(
-          color: frame?.color ?? colors.primary.withValues(alpha: 0.28),
-          width: frame == null ? 1 : 2,
+        gradient: LinearGradient(
+          colors: [
+            colors.primary.withValues(alpha: 0.8),
+            colors.tertiary.withValues(alpha: 0.7),
+          ],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
         ),
       ),
-      alignment: Alignment.center,
-      child: avatar == null
-          ? Icon(Icons.fitness_center_rounded, color: colors.primary)
-          : Text(avatar.emoji, style: theme.textTheme.titleLarge),
+    );
+  }
+
+  Widget _buildAnimatedHeaderGradient(
+    ColorScheme colors,
+    double t,
+    double wave,
+    double wave2,
+  ) {
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          colors: [
+            Color.lerp(
+              colors.primary.withValues(alpha: 0.55),
+              colors.tertiary.withValues(alpha: 0.62),
+              t,
+            )!,
+            Color.lerp(
+              colors.primaryContainer.withValues(alpha: 0.92),
+              colors.tertiaryContainer.withValues(alpha: 0.94),
+              t,
+            )!,
+            Color.lerp(
+              colors.surfaceContainerHighest.withValues(alpha: 0.92),
+              colors.primary.withValues(alpha: 0.50),
+              t,
+            )!,
+          ],
+          transform: GradientRotation((math.pi * 2) * t),
+          stops: [0, 0.5 + (0.18 * wave), 1],
+          begin: Alignment(-1.2 + (1.2 * t), -1.15 + (0.25 * wave)),
+          end: Alignment(1.15 - (1.0 * t), 1.1 - (0.34 * wave2)),
+        ),
+      ),
     );
   }
 
@@ -927,6 +1273,12 @@ class _PultWorkoutPageState extends State<_PultWorkoutPage>
                 _useVideoBackground &&
                 video != null &&
                 video.value.isInitialized;
+            final backgroundAssetPath = _selectedBackground?.assetPath;
+            final hasBackgroundAssetVideo =
+                backgroundAssetPath != null &&
+                _isVideoAssetPath(backgroundAssetPath) &&
+                _backgroundAssetVideoController != null &&
+                _backgroundAssetVideoController!.value.isInitialized;
             return Container(
               decoration: BoxDecoration(
                 borderRadius: BorderRadius.circular(28),
@@ -971,55 +1323,55 @@ class _PultWorkoutPageState extends State<_PultWorkoutPage>
                                     child: VideoPlayer(video),
                                   ),
                                 )
+                              : backgroundAssetPath != null
+                              ? hasBackgroundAssetVideo
+                                    ? FittedBox(
+                                        fit: BoxFit.cover,
+                                        child: SizedBox(
+                                          width:
+                                              _backgroundAssetVideoController!
+                                                  .value
+                                                  .size
+                                                  .width,
+                                          height:
+                                              _backgroundAssetVideoController!
+                                                  .value
+                                                  .size
+                                                  .height,
+                                          child: VideoPlayer(
+                                            _backgroundAssetVideoController!,
+                                          ),
+                                        ),
+                                      )
+                                    : _isVideoAssetPath(backgroundAssetPath)
+                                    ? _buildAnimatedHeaderGradient(
+                                        colors,
+                                        t,
+                                        wave,
+                                        wave2,
+                                      )
+                                    : Image.asset(
+                                        backgroundAssetPath,
+                                        fit: BoxFit.cover,
+                                        errorBuilder:
+                                            (context, error, stackTrace) {
+                                              return _buildAnimatedHeaderGradient(
+                                                colors,
+                                                t,
+                                                wave,
+                                                wave2,
+                                              );
+                                            },
+                                      )
                               : !_headerVisualReady && widget.isActive
                               ? ColoredBox(
                                   color: colors.surfaceContainerHighest,
                                 )
-                              : DecoratedBox(
-                                  decoration: BoxDecoration(
-                                    gradient: LinearGradient(
-                                      colors: [
-                                        Color.lerp(
-                                          colors.primary.withValues(
-                                            alpha: 0.55,
-                                          ),
-                                          colors.tertiary.withValues(
-                                            alpha: 0.62,
-                                          ),
-                                          t,
-                                        )!,
-                                        Color.lerp(
-                                          colors.primaryContainer.withValues(
-                                            alpha: 0.92,
-                                          ),
-                                          colors.tertiaryContainer.withValues(
-                                            alpha: 0.94,
-                                          ),
-                                          t,
-                                        )!,
-                                        Color.lerp(
-                                          colors.surfaceContainerHighest
-                                              .withValues(alpha: 0.92),
-                                          colors.primary.withValues(
-                                            alpha: 0.50,
-                                          ),
-                                          t,
-                                        )!,
-                                      ],
-                                      transform: GradientRotation(
-                                        (math.pi * 2) * t,
-                                      ),
-                                      stops: [0, 0.5 + (0.18 * wave), 1],
-                                      begin: Alignment(
-                                        -1.2 + (1.2 * t),
-                                        -1.15 + (0.25 * wave),
-                                      ),
-                                      end: Alignment(
-                                        1.15 - (1.0 * t),
-                                        1.1 - (0.34 * wave2),
-                                      ),
-                                    ),
-                                  ),
+                              : _buildAnimatedHeaderGradient(
+                                  colors,
+                                  t,
+                                  wave,
+                                  wave2,
                                 ),
                         ),
                         Positioned.fill(

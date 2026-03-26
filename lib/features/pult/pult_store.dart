@@ -149,9 +149,8 @@ class PultStore {
     );
     revision.value++;
   }
-}
 
-static Future<PultHeaderCustomization> loadHeaderCustomization(
+  static Future<PultHeaderCustomization> loadHeaderCustomization(
     String clientId,
   ) async {
     final prefs = await SharedPreferences.getInstance();
@@ -180,3 +179,4 @@ static Future<PultHeaderCustomization> loadHeaderCustomization(
       jsonEncode(customization.toJson()),
     );
   }
+}
