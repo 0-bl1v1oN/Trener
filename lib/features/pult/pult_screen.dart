@@ -372,7 +372,7 @@ class _PultWorkoutPageState extends State<_PultWorkoutPage>
   bool _loading = true;
   bool _completing = false;
   Timer? _draftDebounce;
-  Timer? _videoPlaybackSyncTimer;
+
   late final AnimationController _headerGlowController;
   VideoPlayerController? _headerVideoController;
   VideoPlayerController? _backgroundAssetVideoController;
@@ -391,10 +391,7 @@ class _PultWorkoutPageState extends State<_PultWorkoutPage>
       vsync: this,
       duration: const Duration(milliseconds: 2600),
     )..repeat(reverse: true);
-    _videoPlaybackSyncTimer = Timer.periodic(const Duration(seconds: 1), (_) {
-      if (!mounted || !widget.isActive) return;
-      unawaited(_syncHeaderVideoPlayback());
-    });
+
     unawaited(_prepareHeaderVideo());
     unawaited(_loadHeaderCustomization());
     _load();
@@ -404,7 +401,7 @@ class _PultWorkoutPageState extends State<_PultWorkoutPage>
   void didUpdateWidget(covariant _PultWorkoutPage oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.isActive == widget.isActive) return;
-    unawaited(_syncHeaderVideoPlayback());
+    unawaited(_syncHeaderVideoPlayback(restart: widget.isActive));
   }
 
   Future<void> _prepareHeaderVideo() async {
@@ -437,7 +434,7 @@ class _PultWorkoutPageState extends State<_PultWorkoutPage>
       await controller.initialize();
       await controller.setLooping(true);
       await controller.setVolume(0);
-      await _syncHeaderVideoPlayback();
+      await _syncHeaderVideoPlayback(restart: widget.isActive);
       if (!mounted) return;
       setState(() {
         _headerVisualReady = true;
@@ -453,36 +450,31 @@ class _PultWorkoutPageState extends State<_PultWorkoutPage>
     }
   }
 
-  Future<void> _syncHeaderVideoPlayback() async {
-    final controller = _headerVideoController;
+  Future<void> _syncHeaderVideoPlayback({bool restart = false}) async {
+    final controllers = <VideoPlayerController>[
+      if (_headerVideoController?.value.isInitialized == true)
+        _headerVideoController!,
+      if (_backgroundAssetVideoController?.value.isInitialized == true)
+        _backgroundAssetVideoController!,
+      if (_frameAssetVideoController?.value.isInitialized == true)
+        _frameAssetVideoController!,
+    ];
 
     if (widget.isActive) {
-      if (controller != null && controller.value.isInitialized) {
-        if (!controller.value.isPlaying) {
-          await controller.play();
-        }
-      }
-      await _playOptionalController(_backgroundAssetVideoController);
-      await _playOptionalController(_frameAssetVideoController);
-    } else {
-      if (controller != null && controller.value.isInitialized) {
-        if (controller.value.isPlaying) {
-          await controller.pause();
-        }
-        await controller.seekTo(Duration.zero);
-      }
-      await _pauseAndRewindOptionalController(_backgroundAssetVideoController);
-      await _pauseAndRewindOptionalController(_frameAssetVideoController);
+      await Future.wait(
+        controllers.map((controller) async {
+          if (restart) {
+            await controller.seekTo(Duration.zero);
+          }
+          if (!controller.value.isPlaying) {
+            await controller.play();
+          }
+        }),
+      );
+      return;
     }
-  }
 
-  Future<void> _playOptionalController(
-    VideoPlayerController? controller,
-  ) async {
-    if (controller == null || !controller.value.isInitialized) return;
-    if (!controller.value.isPlaying) {
-      await controller.play();
-    }
+    await Future.wait(controllers.map(_pauseAndRewindOptionalController));
   }
 
   Future<void> _pauseAndRewindOptionalController(
@@ -501,7 +493,8 @@ class _PultWorkoutPageState extends State<_PultWorkoutPage>
 
   Future<void> _syncSelectedVideoAssets() async {
     final backgroundPath = _selectedBackground?.assetPath;
-    if (backgroundPath != _backgroundAssetVideoPath) {
+    final backgroundChanged = backgroundPath != _backgroundAssetVideoPath;
+    if (backgroundChanged) {
       await _backgroundAssetVideoController?.dispose();
       _backgroundAssetVideoController = null;
       _backgroundAssetVideoPath = null;
@@ -520,7 +513,10 @@ class _PultWorkoutPageState extends State<_PultWorkoutPage>
     }
     final frame = _selectedFrame;
     final framePath = frame?.assetPath;
-    if (framePath != _frameAssetVideoPath) {
+    final shouldReloadFrame =
+        framePath != _frameAssetVideoPath ||
+        (backgroundChanged && framePath != null && frame?.isVideo == true);
+    if (shouldReloadFrame) {
       await _frameAssetVideoController?.dispose();
       _frameAssetVideoController = null;
       _frameAssetVideoPath = null;
@@ -542,13 +538,13 @@ class _PultWorkoutPageState extends State<_PultWorkoutPage>
 
     if (!mounted) return;
     setState(() {});
-    await _syncHeaderVideoPlayback();
+    await _syncHeaderVideoPlayback(restart: widget.isActive);
   }
 
   @override
   void dispose() {
     _draftDebounce?.cancel();
-    _videoPlaybackSyncTimer?.cancel();
+
     unawaited(_saveDrafts());
     for (final controller in [
       ..._kgControllers.values,
