@@ -413,12 +413,10 @@ class _PultWorkoutPageState extends State<_PultWorkoutPage>
     if (widget.isActive) {
       _startVideoDiagnostics();
       unawaited(_syncSelectedVideoAssets());
+      unawaited(_nudgeActivePlayback());
     } else {
       _videoDiagnosticsTimer?.cancel();
-    }
-    unawaited(_syncHeaderVideoPlayback(restart: widget.isActive));
-    if (widget.isActive) {
-      unawaited(_nudgeActivePlayback());
+      unawaited(_syncHeaderVideoPlayback());
     }
   }
 
@@ -523,13 +521,21 @@ class _PultWorkoutPageState extends State<_PultWorkoutPage>
         }),
       );
       await Future.wait(
-        hiddenControllers.map(_pauseAndRewindOptionalController),
+        hiddenControllers.map(
+          (controller) =>
+              _pauseAndRewindOptionalController(controller, rewind: false),
+        ),
       );
       _logVideoState('sync_active');
       return;
     }
 
-    await Future.wait(allControllers.map(_pauseAndRewindOptionalController));
+    await Future.wait(
+      allControllers.map(
+        (controller) =>
+            _pauseAndRewindOptionalController(controller, rewind: false),
+      ),
+    );
     _logVideoState('sync_inactive');
   }
 
@@ -558,13 +564,16 @@ class _PultWorkoutPageState extends State<_PultWorkoutPage>
   }
 
   Future<void> _pauseAndRewindOptionalController(
-    VideoPlayerController? controller,
+    VideoPlayerController? controller, {
+    bool rewind = true,
   ) async {
     if (controller == null || !controller.value.isInitialized) return;
     if (controller.value.isPlaying) {
       await controller.pause();
     }
-    await controller.seekTo(Duration.zero);
+    if (rewind) {
+      await controller.seekTo(Duration.zero);
+    }
   }
 
   bool _isVideoAssetPath(String assetPath) {
@@ -595,22 +604,8 @@ class _PultWorkoutPageState extends State<_PultWorkoutPage>
 
     final framePos = frame.value.position;
     final bgPos = bg.value.position;
-    final frameAdvanced = _positionAdvanced(
-      current: framePos,
-      previous: _lastFramePosition,
-      duration: frame.value.duration,
-    );
-    final bgAdvanced = _positionAdvanced(
-      current: bgPos,
-      previous: _lastBackgroundPosition,
-      duration: bg.value.duration,
-    );
 
-    final suspicious =
-        frame.value.isPlaying != bg.value.isPlaying ||
-        (frame.value.isPlaying &&
-            bg.value.isPlaying &&
-            frameAdvanced != bgAdvanced);
+    final suspicious = frame.value.isPlaying != bg.value.isPlaying;
     if (suspicious) {
       _logVideoState('diagnostic_suspect');
       // Important: do not aggressively resume a paused stream here.
@@ -621,22 +616,6 @@ class _PultWorkoutPageState extends State<_PultWorkoutPage>
 
     _lastFramePosition = framePos;
     _lastBackgroundPosition = bgPos;
-  }
-
-  bool _positionAdvanced({
-    required Duration current,
-    required Duration? previous,
-    required Duration duration,
-  }) {
-    if (previous == null) return true;
-    if (current >= previous) return true;
-    final totalMs = duration.inMilliseconds;
-    if (totalMs <= 0) return false;
-    final prevMs = previous.inMilliseconds;
-    final currentMs = current.inMilliseconds;
-    final wrappedAround =
-        prevMs > (totalMs * 0.7) && currentMs < (totalMs * 0.3);
-    return wrappedAround;
   }
 
   bool _isCustomVideoBackgroundActive() {
@@ -712,6 +691,12 @@ class _PultWorkoutPageState extends State<_PultWorkoutPage>
           await controller.dispose();
         }
       }
+    }
+
+    final assetsReloaded = backgroundChanged || shouldReloadFrame;
+    if (!assetsReloaded) {
+      await _syncHeaderVideoPlayback();
+      return;
     }
 
     if (!mounted) return;
