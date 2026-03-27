@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:math' as math;
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:video_player/video_player.dart';
@@ -19,6 +20,7 @@ class _PultHeaderVideoWarmup {
   static Future<void> _warmUp() async {
     final controller = VideoPlayerController.asset(
       _PultWorkoutPageState.headerVideoAsset,
+      videoPlayerOptions: VideoPlayerOptions(mixWithOthers: true),
     );
     try {
       await controller.initialize();
@@ -382,6 +384,9 @@ class _PultWorkoutPageState extends State<_PultWorkoutPage>
   bool _headerVideoFailed = false;
   bool _headerVisualReady = false;
   bool _isCustomizationSheetOpen = false;
+  Timer? _videoDiagnosticsTimer;
+  Duration? _lastFramePosition;
+  Duration? _lastBackgroundPosition;
   PultHeaderCustomization _headerCustomization =
       const PultHeaderCustomization();
 
@@ -395,6 +400,9 @@ class _PultWorkoutPageState extends State<_PultWorkoutPage>
 
     unawaited(_prepareHeaderVideo());
     unawaited(_loadHeaderCustomization());
+    if (widget.isActive) {
+      _startVideoDiagnostics();
+    }
     _load();
   }
 
@@ -402,6 +410,12 @@ class _PultWorkoutPageState extends State<_PultWorkoutPage>
   void didUpdateWidget(covariant _PultWorkoutPage oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.isActive == widget.isActive) return;
+    if (widget.isActive) {
+      _startVideoDiagnostics();
+      unawaited(_syncSelectedVideoAssets());
+    } else {
+      _videoDiagnosticsTimer?.cancel();
+    }
     unawaited(_syncHeaderVideoPlayback(restart: widget.isActive));
     if (widget.isActive) {
       unawaited(_nudgeActivePlayback());
@@ -432,7 +446,10 @@ class _PultWorkoutPageState extends State<_PultWorkoutPage>
   }
 
   Future<void> _initHeaderVideo() async {
-    final controller = VideoPlayerController.asset(headerVideoAsset);
+    final controller = VideoPlayerController.asset(
+      headerVideoAsset,
+      videoPlayerOptions: VideoPlayerOptions(mixWithOthers: true),
+    );
     _headerVideoController = controller;
     try {
       await controller.initialize();
@@ -508,10 +525,12 @@ class _PultWorkoutPageState extends State<_PultWorkoutPage>
       await Future.wait(
         hiddenControllers.map(_pauseAndRewindOptionalController),
       );
+      _logVideoState('sync_active');
       return;
     }
 
     await Future.wait(allControllers.map(_pauseAndRewindOptionalController));
+    _logVideoState('sync_inactive');
   }
 
   List<VideoPlayerController> _visibleVideoControllers() {
@@ -552,6 +571,96 @@ class _PultWorkoutPageState extends State<_PultWorkoutPage>
     return assetPath.toLowerCase().endsWith('.mp4');
   }
 
+  void _startVideoDiagnostics() {
+    if (!kDebugMode) return;
+    if (!widget.isActive) return;
+    _videoDiagnosticsTimer?.cancel();
+    _videoDiagnosticsTimer = Timer.periodic(const Duration(seconds: 1), (_) {
+      unawaited(_runVideoDiagnostics());
+    });
+  }
+
+  Future<void> _runVideoDiagnostics() async {
+    if (!mounted || !widget.isActive) return;
+    if (!_isCustomVideoBackgroundActive()) return;
+
+    final frame = _frameAssetVideoController;
+    final bg = _backgroundAssetVideoController;
+    if (frame == null ||
+        bg == null ||
+        !frame.value.isInitialized ||
+        !bg.value.isInitialized) {
+      return;
+    }
+
+    final framePos = frame.value.position;
+    final bgPos = bg.value.position;
+    final frameAdvanced = _positionAdvanced(
+      current: framePos,
+      previous: _lastFramePosition,
+      duration: frame.value.duration,
+    );
+    final bgAdvanced = _positionAdvanced(
+      current: bgPos,
+      previous: _lastBackgroundPosition,
+      duration: bg.value.duration,
+    );
+
+    final suspicious =
+        frame.value.isPlaying != bg.value.isPlaying ||
+        (frame.value.isPlaying &&
+            bg.value.isPlaying &&
+            frameAdvanced != bgAdvanced);
+    if (suspicious) {
+      _logVideoState('diagnostic_suspect');
+      // Important: do not aggressively resume a paused stream here.
+      // On some Android devices this creates ping-pong behavior where
+      // frame/background steal playback from each other.
+      return;
+    }
+
+    _lastFramePosition = framePos;
+    _lastBackgroundPosition = bgPos;
+  }
+
+  bool _positionAdvanced({
+    required Duration current,
+    required Duration? previous,
+    required Duration duration,
+  }) {
+    if (previous == null) return true;
+    if (current >= previous) return true;
+    final totalMs = duration.inMilliseconds;
+    if (totalMs <= 0) return false;
+    final prevMs = previous.inMilliseconds;
+    final currentMs = current.inMilliseconds;
+    final wrappedAround =
+        prevMs > (totalMs * 0.7) && currentMs < (totalMs * 0.3);
+    return wrappedAround;
+  }
+
+  bool _isCustomVideoBackgroundActive() {
+    final path = _selectedBackground?.assetPath;
+    return path != null &&
+        _isVideoAssetPath(path) &&
+        _backgroundAssetVideoController?.value.isInitialized == true;
+  }
+
+  void _logVideoState(String tag) {
+    if (!kDebugMode) return;
+    final header = _headerVideoController?.value;
+    final bg = _backgroundAssetVideoController?.value;
+    final frame = _frameAssetVideoController?.value;
+    debugPrint(
+      '[PULT_VIDEO][$tag] '
+      'visible=${_visibleVideoControllers().length} '
+      'header={init:${header?.isInitialized ?? false},play:${header?.isPlaying ?? false},pos:${header?.position.inMilliseconds ?? -1}} '
+      'bg={init:${bg?.isInitialized ?? false},play:${bg?.isPlaying ?? false},pos:${bg?.position.inMilliseconds ?? -1}} '
+      'frame={init:${frame?.isInitialized ?? false},play:${frame?.isPlaying ?? false},pos:${frame?.position.inMilliseconds ?? -1}} '
+      'customBg=${_selectedBackground?.assetPath ?? 'none'}',
+    );
+  }
+
   Future<void> _syncSelectedVideoAssets() async {
     final backgroundPath = _selectedBackground?.assetPath;
     final backgroundChanged = backgroundPath != _backgroundAssetVideoPath;
@@ -560,7 +669,11 @@ class _PultWorkoutPageState extends State<_PultWorkoutPage>
       _backgroundAssetVideoController = null;
       _backgroundAssetVideoPath = null;
       if (backgroundPath != null && _isVideoAssetPath(backgroundPath)) {
-        final controller = VideoPlayerController.asset(backgroundPath);
+        final controller = VideoPlayerController.asset(
+          backgroundPath,
+          viewType: VideoViewType.textureView,
+          videoPlayerOptions: VideoPlayerOptions(mixWithOthers: true),
+        );
         try {
           await controller.initialize();
           await controller.setLooping(true);
@@ -582,7 +695,13 @@ class _PultWorkoutPageState extends State<_PultWorkoutPage>
       if (framePath != null &&
           frame?.isVideo == true &&
           _isVideoAssetPath(framePath)) {
-        final controller = VideoPlayerController.asset(framePath);
+        final controller = VideoPlayerController.asset(
+          framePath,
+          // On some Android GPUs, two texture views can freeze one stream.
+          // Render frame via platform view to avoid texture contention.
+          viewType: VideoViewType.platformView,
+          videoPlayerOptions: VideoPlayerOptions(mixWithOthers: true),
+        );
         try {
           await controller.initialize();
           await controller.setLooping(true);
@@ -596,7 +715,10 @@ class _PultWorkoutPageState extends State<_PultWorkoutPage>
     }
 
     if (!mounted) return;
+    _lastFramePosition = null;
+    _lastBackgroundPosition = null;
     setState(() {});
+    _logVideoState('assets_synced');
     await _syncHeaderVideoPlayback(restart: widget.isActive);
     unawaited(_nudgeActivePlayback());
   }
@@ -604,6 +726,7 @@ class _PultWorkoutPageState extends State<_PultWorkoutPage>
   @override
   void dispose() {
     _draftDebounce?.cancel();
+    _videoDiagnosticsTimer?.cancel();
 
     unawaited(_saveDrafts());
     for (final controller in [
