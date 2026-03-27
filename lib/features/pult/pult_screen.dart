@@ -1,8 +1,10 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:math' as math;
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
 import 'package:video_player/video_player.dart';
 
@@ -363,7 +365,7 @@ class _PultWorkoutPageState extends State<_PultWorkoutPage>
           isVideo: true,
         ),
       ];
-  static const List<_PultHeaderBackgroundOption> _backgroundOptions =
+  static const List<_PultHeaderBackgroundOption> _defaultBackgroundOptions =
       <_PultHeaderBackgroundOption>[
         _PultHeaderBackgroundOption(
           id: _videoBackgroundId,
@@ -407,6 +409,8 @@ class _PultWorkoutPageState extends State<_PultWorkoutPage>
   Timer? _videoDiagnosticsTimer;
   Duration? _lastFramePosition;
   Duration? _lastBackgroundPosition;
+  List<_PultHeaderBackgroundOption> _backgroundOptions =
+      _defaultBackgroundOptions;
   PultHeaderCustomization _headerCustomization =
       const PultHeaderCustomization();
 
@@ -423,6 +427,7 @@ class _PultWorkoutPageState extends State<_PultWorkoutPage>
     if (widget.isActive) {
       _startVideoDiagnostics();
     }
+    unawaited(_loadBackgroundOptions());
     _load();
   }
 
@@ -453,6 +458,77 @@ class _PultWorkoutPageState extends State<_PultWorkoutPage>
       _headerCustomization = custom;
     });
     await _syncSelectedVideoAssets();
+  }
+
+  Future<void> _loadBackgroundOptions() async {
+    try {
+      final manifestRaw = await rootBundle.loadString('AssetManifest.json');
+      final decoded = jsonDecode(manifestRaw);
+      if (decoded is! Map<String, dynamic>) return;
+      final paths =
+          decoded.keys
+              .where(
+                (path) => path.startsWith(
+                  '$_headerAssetsRoot/backgrounds/background_',
+                ),
+              )
+              .toList()
+            ..sort((a, b) {
+              int extractNumber(String path) {
+                final match = RegExp(r'background_(\d+)').firstMatch(path);
+                return int.tryParse(match?.group(1) ?? '') ?? 0;
+              }
+
+              return extractNumber(a).compareTo(extractNumber(b));
+            });
+
+      final generated = <_PultHeaderBackgroundOption>[
+        _defaultBackgroundOptions.first,
+      ];
+      for (final path in paths) {
+        final match = RegExp(r'background_(\d+)').firstMatch(path);
+        final idx = match?.group(1);
+        if (idx == null) continue;
+        generated.add(
+          _PultHeaderBackgroundOption(
+            id: 'background_$idx',
+            title: 'Фон $idx',
+            subtitle: 'Кастомный фон #$idx',
+            assetPath: path,
+            icon: Icons.image_rounded,
+          ),
+        );
+      }
+
+      if (generated.length == 1) {
+        generated.addAll(_defaultBackgroundOptions.skip(1));
+      }
+
+      if (!mounted) return;
+      setState(() {
+        _backgroundOptions = generated;
+      });
+      if (_backgroundOptions.any(
+        (item) => item.id == _headerCustomization.backgroundId,
+      )) {
+        return;
+      }
+      if (_headerCustomization.backgroundId == 'default_media') {
+        String? firstCustomId;
+        for (final item in _backgroundOptions) {
+          if (item.id == _videoBackgroundId) continue;
+          firstCustomId = item.id;
+          break;
+        }
+        if (firstCustomId != null) {
+          await _saveHeaderCustomization(
+            _headerCustomization.copyWith(backgroundId: firstCustomId),
+          );
+        }
+      }
+    } catch (_) {
+      // Fallback to default options if manifest parsing fails.
+    }
   }
 
   Future<void> _saveHeaderCustomization(PultHeaderCustomization next) async {
@@ -1032,6 +1108,11 @@ class _PultWorkoutPageState extends State<_PultWorkoutPage>
   }
 
   _PultHeaderBackgroundOption? get _selectedBackground {
+    if (_headerCustomization.backgroundId == 'default_media') {
+      for (final item in _backgroundOptions) {
+        if (item.id != _videoBackgroundId) return item;
+      }
+    }
     for (final item in _backgroundOptions) {
       if (item.id == _headerCustomization.backgroundId) {
         return item;
