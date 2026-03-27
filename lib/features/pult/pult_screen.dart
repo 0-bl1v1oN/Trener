@@ -402,6 +402,9 @@ class _PultWorkoutPageState extends State<_PultWorkoutPage>
     super.didUpdateWidget(oldWidget);
     if (oldWidget.isActive == widget.isActive) return;
     unawaited(_syncHeaderVideoPlayback(restart: widget.isActive));
+    if (widget.isActive) {
+      unawaited(_nudgeActivePlayback());
+    }
   }
 
   Future<void> _prepareHeaderVideo() async {
@@ -435,6 +438,7 @@ class _PultWorkoutPageState extends State<_PultWorkoutPage>
       await controller.setLooping(true);
       await controller.setVolume(0);
       await _syncHeaderVideoPlayback(restart: widget.isActive);
+      unawaited(_nudgeActivePlayback());
       if (!mounted) return;
       setState(() {
         _headerVisualReady = true;
@@ -447,6 +451,38 @@ class _PultWorkoutPageState extends State<_PultWorkoutPage>
         _headerVisualReady = true;
         _headerVideoFailed = true;
       });
+    }
+  }
+
+  Future<void> _ensureActiveControllersPlaying() async {
+    if (!widget.isActive) return;
+    final controllers = <VideoPlayerController>[
+      if (_headerVideoController?.value.isInitialized == true)
+        _headerVideoController!,
+      if (_backgroundAssetVideoController?.value.isInitialized == true)
+        _backgroundAssetVideoController!,
+      if (_frameAssetVideoController?.value.isInitialized == true)
+        _frameAssetVideoController!,
+    ];
+
+    await Future.wait(
+      controllers.map((controller) async {
+        if (!controller.value.isPlaying) {
+          await controller.play();
+        }
+      }),
+    );
+  }
+
+  Future<void> _nudgeActivePlayback() async {
+    if (!widget.isActive) return;
+    for (final delay in const [
+      Duration(milliseconds: 120),
+      Duration(milliseconds: 420),
+    ]) {
+      await Future.delayed(delay);
+      if (!mounted || !widget.isActive) return;
+      await _ensureActiveControllersPlaying();
     }
   }
 
@@ -539,6 +575,7 @@ class _PultWorkoutPageState extends State<_PultWorkoutPage>
     if (!mounted) return;
     setState(() {});
     await _syncHeaderVideoPlayback(restart: widget.isActive);
+    unawaited(_nudgeActivePlayback());
   }
 
   @override
