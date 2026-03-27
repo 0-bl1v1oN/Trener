@@ -1,5 +1,5 @@
 import 'dart:async';
-import 'dart:convert';
+
 import 'dart:math' as math;
 
 import 'package:flutter/foundation.dart';
@@ -462,15 +462,28 @@ class _PultWorkoutPageState extends State<_PultWorkoutPage>
 
   Future<void> _loadBackgroundOptions() async {
     try {
-      final manifestRaw = await rootBundle.loadString('AssetManifest.json');
-      final decoded = jsonDecode(manifestRaw);
-      if (decoded is! Map<String, dynamic>) return;
+      final manifest = await AssetManifest.loadFromAssetBundle(rootBundle);
+      final allPaths = manifest
+          .listAssets()
+          .where((path) => path.startsWith('$_headerAssetsRoot/backgrounds/'))
+          .toList();
+
+      String? defaultPath;
+      for (final path in allPaths) {
+        if (RegExp(r'background_default(\.[^/]+)?$').hasMatch(path)) {
+          defaultPath = path;
+          break;
+        }
+      }
+
       final paths =
-          decoded.keys
+          allPaths
               .where(
-                (path) => path.startsWith(
-                  '$_headerAssetsRoot/backgrounds/background_',
-                ),
+                (path) =>
+                    path.startsWith(
+                      '$_headerAssetsRoot/backgrounds/background_',
+                    ) &&
+                    RegExp(r'background_(\d+)').hasMatch(path),
               )
               .toList()
             ..sort((a, b) {
@@ -485,6 +498,17 @@ class _PultWorkoutPageState extends State<_PultWorkoutPage>
       final generated = <_PultHeaderBackgroundOption>[
         _defaultBackgroundOptions.first,
       ];
+      if (defaultPath != null) {
+        generated.add(
+          _PultHeaderBackgroundOption(
+            id: 'default_media',
+            title: 'Кастомный фон',
+            subtitle: 'Из папки assets/pult_customization/backgrounds',
+            assetPath: defaultPath,
+            icon: Icons.image_rounded,
+          ),
+        );
+      }
       for (final path in paths) {
         final match = RegExp(r'background_(\d+)').firstMatch(path);
         final idx = match?.group(1);
