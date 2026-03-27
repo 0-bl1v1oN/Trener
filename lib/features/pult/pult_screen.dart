@@ -381,6 +381,7 @@ class _PultWorkoutPageState extends State<_PultWorkoutPage>
   String? _frameAssetVideoPath;
   bool _headerVideoFailed = false;
   bool _headerVisualReady = false;
+  bool _isCustomizationSheetOpen = false;
   PultHeaderCustomization _headerCustomization =
       const PultHeaderCustomization();
 
@@ -456,14 +457,7 @@ class _PultWorkoutPageState extends State<_PultWorkoutPage>
 
   Future<void> _ensureActiveControllersPlaying() async {
     if (!widget.isActive) return;
-    final controllers = <VideoPlayerController>[
-      if (_headerVideoController?.value.isInitialized == true)
-        _headerVideoController!,
-      if (_backgroundAssetVideoController?.value.isInitialized == true)
-        _backgroundAssetVideoController!,
-      if (_frameAssetVideoController?.value.isInitialized == true)
-        _frameAssetVideoController!,
-    ];
+    final controllers = _visibleVideoControllers();
 
     await Future.wait(
       controllers.map((controller) async {
@@ -487,7 +481,7 @@ class _PultWorkoutPageState extends State<_PultWorkoutPage>
   }
 
   Future<void> _syncHeaderVideoPlayback({bool restart = false}) async {
-    final controllers = <VideoPlayerController>[
+    final allControllers = <VideoPlayerController>[
       if (_headerVideoController?.value.isInitialized == true)
         _headerVideoController!,
       if (_backgroundAssetVideoController?.value.isInitialized == true)
@@ -495,10 +489,14 @@ class _PultWorkoutPageState extends State<_PultWorkoutPage>
       if (_frameAssetVideoController?.value.isInitialized == true)
         _frameAssetVideoController!,
     ];
+    final visibleControllers = _visibleVideoControllers();
+    final hiddenControllers = allControllers
+        .where((controller) => !visibleControllers.contains(controller))
+        .toList();
 
     if (widget.isActive) {
       await Future.wait(
-        controllers.map((controller) async {
+        visibleControllers.map((controller) async {
           if (restart) {
             await controller.seekTo(Duration.zero);
           }
@@ -507,10 +505,37 @@ class _PultWorkoutPageState extends State<_PultWorkoutPage>
           }
         }),
       );
+      await Future.wait(
+        hiddenControllers.map(_pauseAndRewindOptionalController),
+      );
       return;
     }
 
-    await Future.wait(controllers.map(_pauseAndRewindOptionalController));
+    await Future.wait(allControllers.map(_pauseAndRewindOptionalController));
+  }
+
+  List<VideoPlayerController> _visibleVideoControllers() {
+    final controllers = <VideoPlayerController>[];
+
+    final selectedBackground = _selectedBackground;
+    final selectedBackgroundPath = selectedBackground?.assetPath;
+    final useCustomBackgroundVideo =
+        selectedBackgroundPath != null &&
+        _isVideoAssetPath(selectedBackgroundPath) &&
+        _backgroundAssetVideoController?.value.isInitialized == true;
+
+    if (useCustomBackgroundVideo) {
+      controllers.add(_backgroundAssetVideoController!);
+    } else if (_useVideoBackground &&
+        _headerVideoController?.value.isInitialized == true) {
+      controllers.add(_headerVideoController!);
+    }
+
+    if (_frameAssetVideoController?.value.isInitialized == true) {
+      controllers.add(_frameAssetVideoController!);
+    }
+
+    return controllers;
   }
 
   Future<void> _pauseAndRewindOptionalController(
@@ -549,9 +574,7 @@ class _PultWorkoutPageState extends State<_PultWorkoutPage>
     }
     final frame = _selectedFrame;
     final framePath = frame?.assetPath;
-    final shouldReloadFrame =
-        framePath != _frameAssetVideoPath ||
-        (backgroundChanged && framePath != null && frame?.isVideo == true);
+    final shouldReloadFrame = framePath != _frameAssetVideoPath;
     if (shouldReloadFrame) {
       await _frameAssetVideoController?.dispose();
       _frameAssetVideoController = null;
@@ -890,48 +913,58 @@ class _PultWorkoutPageState extends State<_PultWorkoutPage>
   Future<void> _openHeaderCustomizationSheet() async {
     final theme = Theme.of(context);
     final colors = theme.colorScheme;
-    await showModalBottomSheet<void>(
-      context: context,
-      isScrollControlled: true,
-      showDragHandle: true,
-      backgroundColor: colors.surface,
-      builder: (sheetContext) {
-        return DefaultTabController(
-          length: 3,
-          child: SafeArea(
-            child: SizedBox(
-              height: MediaQuery.of(sheetContext).size.height * 0.74,
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
-                child: Column(
-                  children: [
-                    _buildCustomizationPreview(sheetContext),
-                    const SizedBox(height: 14),
-                    TabBar(
-                      tabs: const [
-                        Tab(text: 'Аватар'),
-                        Tab(text: 'Рамка'),
-                        Tab(text: 'Фон'),
-                      ],
-                    ),
-                    const SizedBox(height: 8),
-                    Expanded(
-                      child: TabBarView(
-                        children: [
-                          _buildAvatarTab(sheetContext),
-                          _buildFrameTab(sheetContext),
-                          _buildBackgroundTab(sheetContext),
+    setState(() {
+      _isCustomizationSheetOpen = true;
+    });
+    try {
+      await showModalBottomSheet<void>(
+        context: context,
+        isScrollControlled: true,
+        showDragHandle: true,
+        backgroundColor: colors.surface,
+        builder: (sheetContext) {
+          return DefaultTabController(
+            length: 3,
+            child: SafeArea(
+              child: SizedBox(
+                height: MediaQuery.of(sheetContext).size.height * 0.74,
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
+                  child: Column(
+                    children: [
+                      _buildCustomizationPreview(sheetContext),
+                      const SizedBox(height: 14),
+                      TabBar(
+                        tabs: const [
+                          Tab(text: 'Аватар'),
+                          Tab(text: 'Рамка'),
+                          Tab(text: 'Фон'),
                         ],
                       ),
-                    ),
-                  ],
+                      const SizedBox(height: 8),
+                      Expanded(
+                        child: TabBarView(
+                          children: [
+                            _buildAvatarTab(sheetContext),
+                            _buildFrameTab(sheetContext),
+                            _buildBackgroundTab(sheetContext),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
               ),
             ),
-          ),
-        );
-      },
-    );
+          );
+        },
+      );
+    } finally {
+      if (!mounted) return;
+      setState(() {
+        _isCustomizationSheetOpen = false;
+      });
+    }
   }
 
   Widget _buildCustomizationPreview(BuildContext context) {
@@ -1089,7 +1122,11 @@ class _PultWorkoutPageState extends State<_PultWorkoutPage>
     );
   }
 
-  Widget _buildHeaderAvatar(ColorScheme colors, {double size = 52}) {
+  Widget _buildHeaderAvatar(
+    ColorScheme colors, {
+    double size = 52,
+    bool enableAnimatedFrame = true,
+  }) {
     final avatar = _selectedAvatar;
     final frame = _selectedFrame;
     final avatarCore = avatar == null
@@ -1131,7 +1168,10 @@ class _PultWorkoutPageState extends State<_PultWorkoutPage>
       child: Stack(
         alignment: Alignment.center,
         children: [
-          _buildFrameLayer(frame, size),
+          if (!enableAnimatedFrame)
+            _buildStaticFrameFallback(size)
+          else
+            _buildFrameLayer(frame, size),
           Positioned.fill(
             child: Padding(
               padding: EdgeInsets.all(avatarInset),
@@ -1157,7 +1197,12 @@ class _PultWorkoutPageState extends State<_PultWorkoutPage>
                 child: SizedBox(
                   width: controller.value.size.width,
                   height: controller.value.size.height,
-                  child: VideoPlayer(controller),
+                  child: VideoPlayer(
+                    controller,
+                    key: ValueKey<String>(
+                      'pult_header_frame_${_frameAssetVideoPath ?? 'none'}',
+                    ),
+                  ),
                 ),
               ),
             ),
@@ -1183,6 +1228,19 @@ class _PultWorkoutPageState extends State<_PultWorkoutPage>
     );
   }
 
+  Widget _buildStaticFrameFallback(double size) {
+    return SizedBox(
+      width: size,
+      height: size,
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          shape: BoxShape.circle,
+          border: Border.all(color: Colors.white70, width: 2),
+        ),
+      ),
+    );
+  }
+
   Widget _buildPreviewBackground(ColorScheme colors) {
     final selectedBackground = _selectedBackground;
     final assetPath = selectedBackground?.assetPath;
@@ -1195,7 +1253,12 @@ class _PultWorkoutPageState extends State<_PultWorkoutPage>
             child: SizedBox(
               width: controller.value.size.width,
               height: controller.value.size.height,
-              child: VideoPlayer(controller),
+              child: VideoPlayer(
+                controller,
+                key: ValueKey<String>(
+                  'pult_preview_bg_${_backgroundAssetVideoPath ?? 'none'}',
+                ),
+              ),
             ),
           );
         }
@@ -1319,12 +1382,15 @@ class _PultWorkoutPageState extends State<_PultWorkoutPage>
             final wave2 = math.sin((t * math.pi * 2) + (math.pi / 2));
 
             final video = _headerVideoController;
+            final shouldRenderHeaderVideos = !_isCustomizationSheetOpen;
             final hasVideo =
+                shouldRenderHeaderVideos &&
                 _useVideoBackground &&
                 video != null &&
                 video.value.isInitialized;
             final backgroundAssetPath = _selectedBackground?.assetPath;
             final hasBackgroundAssetVideo =
+                shouldRenderHeaderVideos &&
                 backgroundAssetPath != null &&
                 _isVideoAssetPath(backgroundAssetPath) &&
                 _backgroundAssetVideoController != null &&
@@ -1370,7 +1436,12 @@ class _PultWorkoutPageState extends State<_PultWorkoutPage>
                                   child: SizedBox(
                                     width: video.value.size.width,
                                     height: video.value.size.height,
-                                    child: VideoPlayer(video),
+                                    child: VideoPlayer(
+                                      video,
+                                      key: const ValueKey<String>(
+                                        'pult_header_builtin_video',
+                                      ),
+                                    ),
                                   ),
                                 )
                               : backgroundAssetPath != null
@@ -1390,6 +1461,9 @@ class _PultWorkoutPageState extends State<_PultWorkoutPage>
                                                   .height,
                                           child: VideoPlayer(
                                             _backgroundAssetVideoController!,
+                                            key: ValueKey<String>(
+                                              'pult_header_bg_${_backgroundAssetVideoPath ?? 'none'}',
+                                            ),
                                           ),
                                         ),
                                       )
@@ -1454,6 +1528,7 @@ class _PultWorkoutPageState extends State<_PultWorkoutPage>
                               _buildHeaderAvatar(
                                 colors,
                                 size: _headerAvatarSize,
+                                enableAnimatedFrame: !_isCustomizationSheetOpen,
                               ),
                               const SizedBox(width: 14),
                               Expanded(
