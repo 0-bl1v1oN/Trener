@@ -32,6 +32,26 @@ class _PultHeaderVideoWarmup {
   }
 }
 
+class _PultAssetVideoWarmup {
+  static final Map<String, Future<void>> _futures = <String, Future<void>>{};
+
+  static Future<void> warmUp(String assetPath) {
+    return _futures.putIfAbsent(assetPath, () async {
+      final controller = VideoPlayerController.asset(
+        assetPath,
+        videoPlayerOptions: VideoPlayerOptions(mixWithOthers: true),
+      );
+      try {
+        await controller.initialize();
+      } catch (_) {
+        // best effort warm-up
+      } finally {
+        await controller.dispose();
+      }
+    });
+  }
+}
+
 Future<void> warmUpPultHeaderVideo() {
   return _PultHeaderVideoWarmup.ensureWarmedUp();
 }
@@ -566,7 +586,7 @@ class _PultWorkoutPageState extends State<_PultWorkoutPage>
   Future<void> _pauseAndRewindOptionalController(
     VideoPlayerController? controller, {
     bool rewind = true,
-  ) async {
+  }) async {
     if (controller == null || !controller.value.isInitialized) return;
     if (controller.value.isPlaying) {
       await controller.pause();
@@ -648,6 +668,7 @@ class _PultWorkoutPageState extends State<_PultWorkoutPage>
       _backgroundAssetVideoController = null;
       _backgroundAssetVideoPath = null;
       if (backgroundPath != null && _isVideoAssetPath(backgroundPath)) {
+        await _PultAssetVideoWarmup.warmUp(backgroundPath);
         final controller = VideoPlayerController.asset(
           backgroundPath,
           viewType: VideoViewType.textureView,
@@ -674,6 +695,7 @@ class _PultWorkoutPageState extends State<_PultWorkoutPage>
       if (framePath != null &&
           frame?.isVideo == true &&
           _isVideoAssetPath(framePath)) {
+        await _PultAssetVideoWarmup.warmUp(framePath);
         final controller = VideoPlayerController.asset(
           framePath,
           // On some Android GPUs, two texture views can freeze one stream.
@@ -1296,20 +1318,18 @@ class _PultWorkoutPageState extends State<_PultWorkoutPage>
       final controller = _frameAssetVideoController;
       if (controller != null && controller.value.isInitialized) {
         return IgnorePointer(
-          child: ClipOval(
-            child: SizedBox(
-              width: size,
-              height: size,
-              child: FittedBox(
-                fit: BoxFit.cover,
-                child: SizedBox(
-                  width: controller.value.size.width,
-                  height: controller.value.size.height,
-                  child: VideoPlayer(
-                    controller,
-                    key: ValueKey<String>(
-                      'pult_header_frame_${_frameAssetVideoPath ?? 'none'}',
-                    ),
+          child: SizedBox(
+            width: size,
+            height: size,
+            child: FittedBox(
+              fit: BoxFit.cover,
+              child: SizedBox(
+                width: controller.value.size.width,
+                height: controller.value.size.height,
+                child: VideoPlayer(
+                  controller,
+                  key: ValueKey<String>(
+                    'pult_header_frame_${_frameAssetVideoPath ?? 'none'}',
                   ),
                 ),
               ),
@@ -1323,16 +1343,14 @@ class _PultWorkoutPageState extends State<_PultWorkoutPage>
         child: const Icon(Icons.movie_creation_rounded, color: Colors.white70),
       );
     }
-    return ClipOval(
-      child: Image.asset(
-        frame.assetPath,
-        width: size,
-        height: size,
-        fit: BoxFit.cover,
-        errorBuilder: (context, error, stackTrace) {
-          return const SizedBox.shrink();
-        },
-      ),
+    return Image.asset(
+      frame.assetPath,
+      width: size,
+      height: size,
+      fit: BoxFit.cover,
+      errorBuilder: (context, error, stackTrace) {
+        return const SizedBox.shrink();
+      },
     );
   }
 
@@ -1342,7 +1360,7 @@ class _PultWorkoutPageState extends State<_PultWorkoutPage>
       height: size,
       child: DecoratedBox(
         decoration: BoxDecoration(
-          shape: BoxShape.circle,
+          borderRadius: BorderRadius.circular(8),
           border: Border.all(color: Colors.white70, width: 2),
         ),
       ),
