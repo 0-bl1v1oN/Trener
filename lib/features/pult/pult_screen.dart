@@ -100,6 +100,101 @@ class _PultHeaderFrameOption {
   });
 }
 
+class _BackgroundOptionPreview extends StatefulWidget {
+  const _BackgroundOptionPreview({required this.option});
+
+  final _PultHeaderBackgroundOption option;
+
+  @override
+  State<_BackgroundOptionPreview> createState() =>
+      _BackgroundOptionPreviewState();
+}
+
+class _BackgroundOptionPreviewState extends State<_BackgroundOptionPreview> {
+  VideoPlayerController? _controller;
+
+  bool get _isVideo =>
+      widget.option.assetPath != null &&
+      widget.option.assetPath!.toLowerCase().endsWith('.mp4');
+
+  @override
+  void initState() {
+    super.initState();
+    if (_isVideo) {
+      unawaited(_initVideo());
+    }
+  }
+
+  Future<void> _initVideo() async {
+    final path = widget.option.assetPath;
+    if (path == null) return;
+    final controller = VideoPlayerController.asset(path);
+    _controller = controller;
+    try {
+      await controller.initialize();
+      await controller.setVolume(0);
+      await controller.pause();
+      await controller.seekTo(Duration.zero);
+      if (!mounted) return;
+      setState(() {});
+    } catch (_) {
+      await controller.dispose();
+      _controller = null;
+    }
+  }
+
+  @override
+  void dispose() {
+    _controller?.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final path = widget.option.assetPath;
+    if (path == null) {
+      return Icon(widget.option.icon);
+    }
+    if (_isVideo) {
+      final controller = _controller;
+      if (controller != null && controller.value.isInitialized) {
+        return ClipRRect(
+          borderRadius: BorderRadius.circular(8),
+          child: SizedBox(
+            width: 44,
+            height: 44,
+            child: FittedBox(
+              fit: BoxFit.cover,
+              child: SizedBox(
+                width: controller.value.size.width,
+                height: controller.value.size.height,
+                child: VideoPlayer(controller),
+              ),
+            ),
+          ),
+        );
+      }
+      return const SizedBox(
+        width: 44,
+        height: 44,
+        child: Icon(Icons.movie_creation_rounded),
+      );
+    }
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(8),
+      child: Image.asset(
+        path,
+        width: 44,
+        height: 44,
+        fit: BoxFit.cover,
+        errorBuilder: (context, error, stackTrace) {
+          return Icon(widget.option.icon);
+        },
+      ),
+    );
+  }
+}
+
 class PultScreen extends StatefulWidget {
   const PultScreen({super.key});
 
@@ -1159,7 +1254,7 @@ class _PultWorkoutPageState extends State<_PultWorkoutPage>
         backgroundColor: colors.surface,
         builder: (sheetContext) {
           return DefaultTabController(
-            length: 3,
+            length: 1,
             child: SafeArea(
               child: SizedBox(
                 height: MediaQuery.of(sheetContext).size.height * 0.74,
@@ -1169,21 +1264,11 @@ class _PultWorkoutPageState extends State<_PultWorkoutPage>
                     children: [
                       _buildCustomizationPreview(sheetContext),
                       const SizedBox(height: 14),
-                      TabBar(
-                        tabs: const [
-                          Tab(text: 'Аватар'),
-                          Tab(text: 'Рамка'),
-                          Tab(text: 'Фон'),
-                        ],
-                      ),
+                      TabBar(tabs: const [Tab(text: 'Фон')]),
                       const SizedBox(height: 8),
                       Expanded(
                         child: TabBarView(
-                          children: [
-                            _buildAvatarTab(sheetContext),
-                            _buildFrameTab(sheetContext),
-                            _buildBackgroundTab(sheetContext),
-                          ],
+                          children: [_buildBackgroundTab(sheetContext)],
                         ),
                       ),
                     ],
@@ -1233,20 +1318,15 @@ class _PultWorkoutPageState extends State<_PultWorkoutPage>
             ),
             Padding(
               padding: const EdgeInsets.all(12),
-              child: Row(
-                children: [
-                  _buildHeaderAvatar(colors, size: _headerAvatarSize),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Text(
-                      'Предпросмотр шапки',
-                      style: theme.textTheme.titleMedium?.copyWith(
-                        fontWeight: FontWeight.w700,
-                        color: Colors.white,
-                      ),
-                    ),
+              child: Align(
+                alignment: Alignment.centerLeft,
+                child: Text(
+                  'Предпросмотр шапки',
+                  style: theme.textTheme.titleMedium?.copyWith(
+                    fontWeight: FontWeight.w700,
+                    color: Colors.white,
                   ),
-                ],
+                ),
               ),
             ),
           ],
@@ -1327,25 +1407,9 @@ class _PultWorkoutPageState extends State<_PultWorkoutPage>
       itemBuilder: (context, index) {
         final option = _backgroundOptions[index];
         final selected = option.id == _headerCustomization.backgroundId;
-        final isVideo =
-            option.assetPath != null && _isVideoAssetPath(option.assetPath!);
+
         return ListTile(
-          leading: option.assetPath == null
-              ? Icon(option.icon)
-              : isVideo
-              ? Icon(option.icon)
-              : ClipRRect(
-                  borderRadius: BorderRadius.circular(8),
-                  child: Image.asset(
-                    option.assetPath!,
-                    width: 44,
-                    height: 44,
-                    fit: BoxFit.cover,
-                    errorBuilder: (context, error, stackTrace) {
-                      return Icon(option.icon);
-                    },
-                  ),
-                ),
+          leading: _BackgroundOptionPreview(option: option),
           title: Text(option.title),
           subtitle: Text(option.subtitle),
           trailing: selected ? const Icon(Icons.check_circle) : null,
@@ -1480,7 +1544,7 @@ class _PultWorkoutPageState extends State<_PultWorkoutPage>
         final controller = _backgroundAssetVideoController;
         if (controller != null && controller.value.isInitialized) {
           return FittedBox(
-            fit: BoxFit.cover,
+            fit: BoxFit.contain,
             child: SizedBox(
               width: controller.value.size.width,
               height: controller.value.size.height,
@@ -1497,7 +1561,7 @@ class _PultWorkoutPageState extends State<_PultWorkoutPage>
       }
       return Image.asset(
         assetPath,
-        fit: BoxFit.cover,
+        fit: BoxFit.contain,
         errorBuilder: (context, error, stackTrace) {
           return _buildFallbackPreviewGradient(colors);
         },
@@ -1756,12 +1820,6 @@ class _PultWorkoutPageState extends State<_PultWorkoutPage>
                           child: Row(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              _buildHeaderAvatar(
-                                colors,
-                                size: _headerAvatarSize,
-                                enableAnimatedFrame: !_isCustomizationSheetOpen,
-                              ),
-                              const SizedBox(width: 14),
                               Expanded(
                                 child: Column(
                                   crossAxisAlignment: CrossAxisAlignment.start,
