@@ -328,9 +328,9 @@ class _PultScreenState extends State<PultScreen> {
             : Column(
                 children: [
                   Container(
-                    height: 72,
-                    margin: const EdgeInsets.fromLTRB(12, 10, 12, 6),
-                    padding: const EdgeInsets.symmetric(vertical: 10),
+                    height: 56,
+                    margin: const EdgeInsets.fromLTRB(12, 6, 12, 2),
+                    padding: const EdgeInsets.symmetric(vertical: 6),
                     decoration: BoxDecoration(
                       color: colors.surfaceContainerHighest.withValues(
                         alpha: 0.68,
@@ -351,7 +351,7 @@ class _PultScreenState extends State<PultScreen> {
                       scrollDirection: Axis.horizontal,
                       padding: const EdgeInsets.symmetric(horizontal: 12),
                       itemCount: _tabs.length,
-                      separatorBuilder: (_, __) => const SizedBox(width: 8),
+                      separatorBuilder: (_, __) => const SizedBox(width: 6),
                       itemBuilder: (context, index) {
                         final tab = _tabs[index];
                         final selected = index == activeTabIndex;
@@ -1667,7 +1667,7 @@ class _PultWorkoutPageState extends State<_PultWorkoutPage>
 
     return ListView(
       controller: _pageScrollController,
-      padding: const EdgeInsets.fromLTRB(12, 8, 12, 16),
+      padding: const EdgeInsets.fromLTRB(12, 2, 12, 16),
       children: [
         AnimatedBuilder(
           animation: _headerGlowController,
@@ -1869,13 +1869,36 @@ class _PultWorkoutPageState extends State<_PultWorkoutPage>
                                       ),
                                     ),
                                     const SizedBox(height: 10),
-                                    Text(
-                                      data.clientName,
-                                      style: theme.textTheme.headlineSmall
-                                          ?.copyWith(
-                                            fontWeight: FontWeight.w800,
-                                            letterSpacing: 0.1,
-                                          ),
+                                    Container(
+                                      padding: const EdgeInsets.symmetric(
+                                        horizontal: 12,
+                                        vertical: 8,
+                                      ),
+                                      decoration: BoxDecoration(
+                                        borderRadius: BorderRadius.circular(14),
+                                        gradient: LinearGradient(
+                                          begin: Alignment.centerLeft,
+                                          end: Alignment.centerRight,
+                                          colors: [
+                                            Colors.black.withValues(
+                                              alpha: 0.42,
+                                            ),
+                                            Colors.black.withValues(
+                                              alpha: 0.18,
+                                            ),
+                                          ],
+                                        ),
+                                      ),
+                                      child: Text(
+                                        data.clientName,
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                        style: theme.textTheme.headlineSmall
+                                            ?.copyWith(
+                                              fontWeight: FontWeight.w800,
+                                              letterSpacing: 0.1,
+                                            ),
+                                      ),
                                     ),
                                   ],
                                 ),
@@ -2174,7 +2197,7 @@ class _PultClientTab extends StatelessWidget {
     final theme = Theme.of(context);
     final colors = theme.colorScheme;
     const animationDuration = Duration(milliseconds: 220);
-    const tabRadius = 12.0;
+    const tabRadius = 10.0;
     return Material(
       color: Colors.transparent,
       child: InkWell(
@@ -2211,7 +2234,7 @@ class _PultClientTab extends StatelessWidget {
               t,
             )!;
             return Container(
-              padding: const EdgeInsets.only(left: 14, right: 8),
+              padding: const EdgeInsets.only(left: 12, right: 6),
               decoration: BoxDecoration(
                 color: backgroundColor,
                 borderRadius: BorderRadius.circular(tabRadius),
@@ -2245,12 +2268,17 @@ class _PultClientTab extends StatelessWidget {
                           ),
                     ),
                   ),
-                  const SizedBox(width: 4),
+                  const SizedBox(width: 2),
                   IconButton(
+                    constraints: const BoxConstraints(
+                      minWidth: 28,
+                      minHeight: 28,
+                    ),
+                    padding: EdgeInsets.zero,
                     visualDensity: VisualDensity.compact,
                     onPressed: onClose,
-                    iconSize: 18,
-                    splashRadius: 18,
+                    iconSize: 16,
+                    splashRadius: 16,
                     tooltip: 'Закрыть вкладку',
                     color: iconColor,
                     icon: const Icon(Icons.close_rounded),
