@@ -53,6 +53,11 @@ dependencies:
   file_picker: ^8.1.2
   share_plus: ^10.0.2
   video_player: ^2.9.5
+
+  # firebase
+  firebase_core: ^3.13.0
+  firebase_storage: ^12.3.0
+
   cupertino_icons: ^1.0.8
 
 
