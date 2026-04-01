@@ -194,6 +194,49 @@ class _ClientDetailScreenState extends State<ClientDetailScreen> {
     });
   }
 
+  Future<void> _purchaseSubscription() async {
+    final current = await db.getClientById(widget.clientId);
+    if (current == null) return;
+    if (current.plan == null || current.plan == 'Пробный') {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Сначала выбери абонемент 4/8/12 для клиента'),
+        ),
+      );
+      return;
+    }
+
+    final initialDate = current.planEnd ?? DateTime.now();
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: initialDate,
+      firstDate: DateTime(2020, 1, 1),
+      lastDate: DateTime(2035, 12, 31),
+      locale: const Locale('ru', 'RU'),
+    );
+
+    if (picked == null) return;
+    final startDate = DateTime(picked.year, picked.month, picked.day);
+    final nextEnd = startDate.add(const Duration(days: 28));
+
+    await db.renewClientPlanKeepingProgramDay(
+      clientId: current.id,
+      startDate: startDate,
+      days: 28,
+    );
+
+    await db.clearClientPlanEndAlertOverride(current.id);
+
+    await _load();
+    if (!mounted) return;
+    final startFmt = DateFormat('dd.MM.yyyy', 'ru_RU').format(startDate);
+    final endFmt = DateFormat('dd.MM.yyyy', 'ru_RU').format(nextEnd);
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('Абонемент продлён: с $startFmt до $endFmt')),
+    );
+  }
+
   Future<bool> _saveClientData() async {
     final name = _nameController.text.trim();
     if (name.isEmpty) return false;
@@ -578,6 +621,15 @@ class _ClientDetailScreenState extends State<ClientDetailScreen> {
                                   ),
                             ),
                           ],
+                        ),
+                      ),
+                      const SizedBox(height: 10),
+                      SizedBox(
+                        width: double.infinity,
+                        child: FilledButton.tonalIcon(
+                          onPressed: _purchaseSubscription,
+                          icon: const Icon(Icons.shopping_bag_outlined),
+                          label: const Text('Покупка абонемента'),
                         ),
                       ),
                     ],

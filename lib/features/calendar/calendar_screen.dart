@@ -2259,19 +2259,12 @@ class _CalendarScreenState extends State<CalendarScreen>
     final baseDate = DateTime(base.year, base.month, base.day);
     final nextEnd = baseDate.add(Duration(days: days));
 
-    await db.upsertClient(
-      ClientsCompanion(
-        id: Value(client.id),
-        name: Value(client.name),
-        gender: Value(client.gender),
-        plan: Value(client.plan),
-        planStart: Value(baseDate),
-        planEnd: Value(nextEnd),
-      ),
+    await db.renewClientPlanKeepingProgramDay(
+      clientId: client.id,
+      startDate: baseDate,
+      days: days,
     );
 
-    await db.syncProgramStateFromClient(client.id);
-    await db.restartClientPlanProgress(client.id);
     await db.clearClientPlanEndAlertOverride(client.id);
 
     if (!mounted) return;

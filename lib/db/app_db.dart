@@ -2438,6 +2438,53 @@ class AppDb extends _$AppDb {
     );
   }
 
+  /// Продлевает абонемент, выдаёт новый пакет занятий, но сохраняет
+  /// текущую последовательность тренировочных дней (без дополнительного
+  /// сдвига программы).
+  Future<void> renewClientPlanKeepingProgramDay({
+    required String clientId,
+    required DateTime startDate,
+    int days = 28,
+  }) async {
+    final c = await getClientById(clientId);
+    if (c == null) return;
+
+    final planSize = _parsePlanSize(c.plan);
+    if (planSize <= 0) return;
+
+    final start = DateTime(startDate.year, startDate.month, startDate.day);
+    final end = start.add(Duration(days: days));
+
+    await upsertClient(
+      ClientsCompanion(
+        id: Value(c.id),
+        name: Value(c.name),
+        gender: Value(c.gender),
+        plan: Value(c.plan),
+        planStart: Value(start),
+        planEnd: Value(end),
+      ),
+    );
+
+    await ensureProgramStateForClient(clientId);
+    final st = await (select(
+      clientProgramStates,
+    )..where((t) => t.clientId.equals(clientId))).getSingleOrNull();
+    if (st == null) return;
+
+    await (update(
+      clientProgramStates,
+    )..where((t) => t.clientId.equals(clientId))).write(
+      ClientProgramStatesCompanion(
+        planSize: Value(planSize),
+        planInstance: Value(st.planInstance + 1),
+        completedInPlan: const Value(0),
+        planStart: Value(start),
+        planEnd: Value(end),
+      ),
+    );
+  }
+
   Future<int?> getNextPlannedTemplateIdxForClient(String clientId) async {
     final c = await getClientById(clientId);
     if (c == null) return null;
