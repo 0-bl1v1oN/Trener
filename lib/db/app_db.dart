@@ -2472,12 +2472,24 @@ class AppDb extends _$AppDb {
     )..where((t) => t.clientId.equals(clientId))).getSingleOrNull();
     if (st == null) return;
 
+    final gender = _programTrackByClient(c);
+    final cycleLen = _cycleLenByGender(gender);
+    final nextTemplateAsCycleStart = _mod(
+      st.cycleStartIndex + st.nextOffset,
+      cycleLen,
+    );
+
     await (update(
       clientProgramStates,
     )..where((t) => t.clientId.equals(clientId))).write(
       ClientProgramStatesCompanion(
         planSize: Value(planSize),
         planInstance: Value(st.planInstance + 1),
+        // Новый пакет должен начинаться с 0 выполненных занятий,
+        // но первый день обязан остаться тем, который уже был "следующим"
+        // до продления (без дополнительного сдвига программы).
+        cycleStartIndex: Value(nextTemplateAsCycleStart),
+        nextOffset: const Value(0),
         completedInPlan: const Value(0),
         planStart: Value(start),
         planEnd: Value(end),
