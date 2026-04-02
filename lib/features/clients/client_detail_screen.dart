@@ -628,7 +628,24 @@ class _ClientDetailScreenState extends State<ClientDetailScreen> {
                         width: double.infinity,
                         child: FilledButton.tonalIcon(
                           onPressed: _purchaseSubscription,
-                          icon: const Icon(Icons.shopping_bag_outlined),
+                          style: FilledButton.styleFrom(
+                            minimumSize: const Size.fromHeight(54),
+                            backgroundColor: colors.secondaryContainer
+                                .withOpacity(0.44),
+                            foregroundColor: colors.onSecondaryContainer,
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(22),
+                            ),
+                            side: BorderSide(
+                              color: colors.outlineVariant.withOpacity(0.22),
+                            ),
+                            textStyle: Theme.of(context).textTheme.titleMedium
+                                ?.copyWith(fontWeight: FontWeight.w500),
+                          ),
+                          icon: const Icon(
+                            Icons.shopping_bag_outlined,
+                            size: 20,
+                          ),
                           label: const Text('Покупка абонемента'),
                         ),
                       ),
