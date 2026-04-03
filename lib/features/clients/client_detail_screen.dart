@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:ui';
 import 'package:drift/drift.dart' show Value;
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
@@ -626,27 +627,71 @@ class _ClientDetailScreenState extends State<ClientDetailScreen> {
                       const SizedBox(height: 10),
                       SizedBox(
                         width: double.infinity,
-                        child: FilledButton.tonalIcon(
-                          onPressed: _purchaseSubscription,
-                          style: FilledButton.styleFrom(
-                            minimumSize: const Size.fromHeight(54),
-                            backgroundColor: colors.secondaryContainer
-                                .withOpacity(0.44),
-                            foregroundColor: colors.onSecondaryContainer,
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(22),
+                        child: ClipRRect(
+                          borderRadius: BorderRadius.circular(24),
+                          child: BackdropFilter(
+                            filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
+                            child: Container(
+                              decoration: BoxDecoration(
+                                borderRadius: BorderRadius.circular(24),
+                                color: colors.surface.withOpacity(0.2),
+                                border: Border.all(
+                                  color: colors.outlineVariant.withOpacity(0.3),
+                                ),
+                                gradient: LinearGradient(
+                                  begin: Alignment.topCenter,
+                                  end: Alignment.bottomCenter,
+                                  colors: [
+                                    colors.onSurface.withOpacity(0.07),
+                                    colors.primary.withOpacity(0.12),
+                                  ],
+                                ),
+                                boxShadow: [
+                                  BoxShadow(
+                                    color: colors.primary.withOpacity(0.16),
+                                    blurRadius: 18,
+                                    offset: const Offset(0, 8),
+                                  ),
+                                ],
+                              ),
+                              child: FilledButton.tonalIcon(
+                                onPressed: _purchaseSubscription,
+                                style: FilledButton.styleFrom(
+                                  minimumSize: const Size.fromHeight(60),
+                                  backgroundColor: Colors.transparent,
+                                  foregroundColor: colors.onSurface,
+                                  shadowColor: Colors.transparent,
+                                  surfaceTintColor: Colors.transparent,
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(24),
+                                  ),
+                                  textStyle: Theme.of(context)
+                                      .textTheme
+                                      .titleLarge
+                                      ?.copyWith(fontWeight: FontWeight.w600),
+                                ),
+                                icon: Container(
+                                  width: 32,
+                                  height: 32,
+                                  decoration: BoxDecoration(
+                                    shape: BoxShape.circle,
+                                    color: colors.surface.withOpacity(0.26),
+                                    border: Border.all(
+                                      color: colors.onSurface.withOpacity(0.14),
+                                    ),
+                                  ),
+                                  child: const Icon(
+                                    Icons.shopping_bag_outlined,
+                                    size: 18,
+                                  ),
+                                ),
+                                label: const Text('Покупка абонемента'),
+                              ),
+                              
+                              ),
                             ),
-                            side: BorderSide(
-                              color: colors.outlineVariant.withOpacity(0.22),
-                            ),
-                            textStyle: Theme.of(context).textTheme.titleMedium
-                                ?.copyWith(fontWeight: FontWeight.w500),
+                            
                           ),
-                          icon: const Icon(
-                            Icons.shopping_bag_outlined,
-                            size: 20,
-                          ),
-                          label: const Text('Покупка абонемента'),
                         ),
                       ),
                     ],
