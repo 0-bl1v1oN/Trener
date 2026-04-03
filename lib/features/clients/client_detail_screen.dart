@@ -636,17 +636,58 @@ class _ClientDetailScreenState extends State<ClientDetailScreen> {
                                 borderRadius: BorderRadius.circular(24),
                                 color: colors.surface.withOpacity(0.2),
                                 border: Border.all(
-                                  color: colors.outlineVariant.withOpacity(
-                                    0.22,
+                                  color: colors.outlineVariant.withOpacity(0.3),
+                                ),
+                                gradient: LinearGradient(
+                                  begin: Alignment.topCenter,
+                                  end: Alignment.bottomCenter,
+                                  colors: [
+                                    colors.onSurface.withOpacity(0.07),
+                                    colors.primary.withOpacity(0.12),
+                                  ],
+                                ),
+                                boxShadow: [
+                                  BoxShadow(
+                                    color: colors.primary.withOpacity(0.16),
+                                    blurRadius: 18,
+                                    offset: const Offset(0, 8),
+                                  ),
+                                ],
+                              ),
+                              child: FilledButton.tonalIcon(
+                                onPressed: _purchaseSubscription,
+                                style: FilledButton.styleFrom(
+                                  minimumSize: const Size.fromHeight(60),
+                                  backgroundColor: Colors.transparent,
+                                  foregroundColor: colors.onSurface,
+                                  shadowColor: Colors.transparent,
+                                  surfaceTintColor: Colors.transparent,
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(24),
+                                  ),
+                                  textStyle: Theme.of(context)
+                                      .textTheme
+                                      .titleLarge
+                                      ?.copyWith(fontWeight: FontWeight.w600),
+                                ),
+                                icon: Container(
+                                  width: 32,
+                                  height: 32,
+                                  decoration: BoxDecoration(
+                                    shape: BoxShape.circle,
+                                    color: colors.surface.withOpacity(0.26),
+                                    border: Border.all(
+                                      color: colors.onSurface.withOpacity(0.14),
+                                    ),
+                                  ),
+                                  child: const Icon(
+                                    Icons.shopping_bag_outlined,
+                                    size: 18,
                                   ),
                                 ),
-                              ),
-                              child: const Icon(
-                                Icons.shopping_bag_outlined,
-                                size: 18,
+                                label: const Text('Покупка абонемента'),
                               ),
                             ),
-                            label: const Text('Покупка абонемента'),
                           ),
                         ),
                       ),

@@ -479,10 +479,16 @@ class _PultWorkoutPageState extends State<_PultWorkoutPage>
 
   final Map<int, TextEditingController> _kgControllers =
       <int, TextEditingController>{};
+  final Map<int, TextEditingController> _nameControllers =
+      <int, TextEditingController>{};
   final Map<int, TextEditingController> _repsControllers =
       <int, TextEditingController>{};
   final Map<int, FocusNode> _kgFocusNodes = <int, FocusNode>{};
   final Map<int, FocusNode> _repsFocusNodes = <int, FocusNode>{};
+  final Map<int, FocusNode> _nameFocusNodes = <int, FocusNode>{};
+  final Map<int, Timer> _nameSaveDebounces = <int, Timer>{};
+  final Set<int> _nameSaveInFlight = <int>{};
+  final Map<int, String> _persistedExerciseNames = <int, String>{};
   final Map<int, GlobalKey> _exerciseKeys = <int, GlobalKey>{};
   final ScrollController _pageScrollController = ScrollController();
 
@@ -985,6 +991,11 @@ class _PultWorkoutPageState extends State<_PultWorkoutPage>
         _repsControllers[e.templateExerciseId] = TextEditingController(
           text: e.lastReps?.toString() ?? '',
         )..addListener(_handleInputChanged);
+        _nameControllers[e.templateExerciseId] =
+            TextEditingController(text: e.name)..addListener(() {
+              _scheduleExerciseNameSave(e.templateExerciseId);
+            });
+        _persistedExerciseNames[e.templateExerciseId] = e.name;
 
         _kgFocusNodes[e.templateExerciseId] = FocusNode()
           ..addListener(() {
@@ -1002,6 +1013,17 @@ class _PultWorkoutPageState extends State<_PultWorkoutPage>
             if (node?.hasFocus == true && controller != null) {
               _scheduleSelectAll(controller);
               _scheduleBringIntoView(e.templateExerciseId);
+            }
+          });
+        _nameFocusNodes[e.templateExerciseId] = FocusNode()
+          ..addListener(() {
+            final node = _nameFocusNodes[e.templateExerciseId];
+            final controller = _nameControllers[e.templateExerciseId];
+            if (node?.hasFocus == true && controller != null) {
+              _scheduleSelectAll(controller);
+              _scheduleBringIntoView(e.templateExerciseId);
+            } else {
+              _scheduleExerciseNameSave(e.templateExerciseId, immediate: true);
             }
           });
       }
@@ -1029,16 +1051,29 @@ class _PultWorkoutPageState extends State<_PultWorkoutPage>
     for (final controller in [
       ..._kgControllers.values,
       ..._repsControllers.values,
+      ..._nameControllers.values,
     ]) {
       controller.dispose();
     }
-    for (final node in [..._kgFocusNodes.values, ..._repsFocusNodes.values]) {
+    for (final node in [
+      ..._kgFocusNodes.values,
+      ..._repsFocusNodes.values,
+      ..._nameFocusNodes.values,
+    ]) {
       node.dispose();
+    }
+
+    for (final timer in _nameSaveDebounces.values) {
+      timer.cancel();
     }
     _kgControllers.clear();
     _repsControllers.clear();
     _kgFocusNodes.clear();
     _repsFocusNodes.clear();
+    _nameFocusNodes.clear();
+    _nameSaveDebounces.clear();
+    _nameSaveInFlight.clear();
+    _persistedExerciseNames.clear();
     _exerciseKeys.clear();
   }
 
@@ -1083,6 +1118,92 @@ class _PultWorkoutPageState extends State<_PultWorkoutPage>
     );
   }
 
+  Future<String?> _showExerciseNameDialog({
+    required String title,
+    required String actionLabel,
+    String initialValue = '',
+  }) async {
+    final controller = TextEditingController(text: initialValue);
+    final focusNode = FocusNode();
+
+    final result = await showDialog<String>(
+      context: context,
+      builder: (dialogContext) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (!focusNode.hasFocus) {
+            focusNode.requestFocus();
+          }
+          controller.selection = TextSelection(
+            baseOffset: 0,
+            extentOffset: controller.text.length,
+          );
+        });
+
+        return AlertDialog(
+          title: Text(title),
+          content: TextField(
+            controller: controller,
+            focusNode: focusNode,
+            decoration: const InputDecoration(
+              labelText: 'Название упражнения',
+              border: OutlineInputBorder(),
+            ),
+            onSubmitted: (_) =>
+                Navigator.of(dialogContext).pop(controller.text.trim()),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(),
+              child: const Text('Отмена'),
+            ),
+            FilledButton(
+              onPressed: () =>
+                  Navigator.of(dialogContext).pop(controller.text.trim()),
+              child: Text(actionLabel),
+            ),
+          ],
+        );
+      },
+    );
+
+    focusNode.dispose();
+    controller.dispose();
+    return result;
+  }
+
+  Future<void> _addExercise() async {
+    final data = _data;
+    if (data == null) return;
+
+    await _saveDrafts();
+
+    final name = await _showExerciseNameDialog(
+      title: 'Новое упражнение',
+      actionLabel: 'Добавить',
+    );
+    if (name == null || name.trim().isEmpty) return;
+
+    int? templateId;
+    if (data.exercises.isNotEmpty) {
+      templateId = data.exercises.first.templateId;
+    } else {
+      templateId = await widget.db.getTemplateIdForClientTemplateIdx(
+        clientId: widget.tab.clientId,
+        templateIdx: widget.tab.templateIdx,
+      );
+    }
+    if (templateId == null) return;
+
+    await widget.db.addWorkoutExerciseForClient(
+      clientId: widget.tab.clientId,
+      templateId: templateId,
+      name: name,
+    );
+
+    if (!mounted) return;
+    await _load();
+  }
+
   Future<void> _completeDay() async {
     if (_completing || _data == null) return;
 
@@ -1121,6 +1242,50 @@ class _PultWorkoutPageState extends State<_PultWorkoutPage>
     } finally {
       if (mounted) {
         setState(() => _completing = false);
+      }
+    }
+  }
+
+  void _scheduleExerciseNameSave(
+    int templateExerciseId, {
+    bool immediate = false,
+  }) {
+    _nameSaveDebounces[templateExerciseId]?.cancel();
+    if (immediate) {
+      unawaited(_saveExerciseName(templateExerciseId));
+      return;
+    }
+    _nameSaveDebounces[templateExerciseId] = Timer(
+      const Duration(milliseconds: 450),
+      () => unawaited(_saveExerciseName(templateExerciseId)),
+    );
+  }
+
+  Future<void> _saveExerciseName(int templateExerciseId) async {
+    if (_nameSaveInFlight.contains(templateExerciseId)) return;
+    final controller = _nameControllers[templateExerciseId];
+    if (controller == null) return;
+
+    final nextName = controller.text.trim();
+    if (nextName.isEmpty) return;
+
+    final persisted = _persistedExerciseNames[templateExerciseId];
+    if (persisted == nextName) return;
+
+    _nameSaveInFlight.add(templateExerciseId);
+    try {
+      await widget.db.renameWorkoutExerciseForClient(
+        clientId: widget.tab.clientId,
+        templateExerciseId: templateExerciseId,
+        newName: nextName,
+      );
+      _persistedExerciseNames[templateExerciseId] = nextName;
+    } finally {
+      _nameSaveInFlight.remove(templateExerciseId);
+      final current = controller.text.trim();
+      if (current.isNotEmpty &&
+          current != _persistedExerciseNames[templateExerciseId]) {
+        _scheduleExerciseNameSave(templateExerciseId);
       }
     }
   }
@@ -1199,6 +1364,45 @@ class _PultWorkoutPageState extends State<_PultWorkoutPage>
         borderRadius: BorderRadius.circular(16),
         borderSide: BorderSide(
           color: colors.primary.withValues(alpha: 0.72),
+          width: 1.4,
+        ),
+      ),
+    );
+  }
+
+  InputDecoration _nameCellDecoration(
+    BuildContext context, {
+    required bool highlighted,
+  }) {
+    final colors = Theme.of(context).colorScheme;
+    return InputDecoration(
+      isDense: true,
+      hintText: 'Название упражнения',
+      hintStyle: TextStyle(
+        color: colors.onSurfaceVariant.withValues(alpha: 0.58),
+        fontWeight: FontWeight.w500,
+      ),
+      prefixIcon: Icon(
+        Icons.edit_outlined,
+        size: 16,
+        color: colors.onSurfaceVariant.withValues(alpha: 0.62),
+      ),
+      filled: true,
+      fillColor: highlighted
+          ? colors.surfaceContainerHighest.withValues(alpha: 0.42)
+          : colors.surface.withValues(alpha: 0.38),
+      contentPadding: const EdgeInsets.symmetric(horizontal: 8, vertical: 10),
+      border: OutlineInputBorder(borderRadius: BorderRadius.circular(14)),
+      enabledBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(14),
+        borderSide: BorderSide(
+          color: colors.outlineVariant.withValues(alpha: 0.26),
+        ),
+      ),
+      focusedBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(14),
+        borderSide: BorderSide(
+          color: colors.primary.withValues(alpha: 0.7),
           width: 1.4,
         ),
       ),
@@ -1955,16 +2159,29 @@ class _PultWorkoutPageState extends State<_PultWorkoutPage>
                 child: Row(
                   children: [
                     Expanded(
-                      flex: 5,
-                      child: Text(
-                        'Упражнение',
-                        style: theme.textTheme.titleSmall?.copyWith(
-                          fontWeight: FontWeight.w700,
-                        ),
+                      flex: 6,
+                      child: Row(
+                        children: [
+                          Expanded(
+                            child: Text(
+                              'Упражнение',
+                              style: theme.textTheme.titleSmall?.copyWith(
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                          ),
+                          IconButton(
+                            onPressed: _addExercise,
+                            tooltip: 'Добавить упражнение',
+                            icon: const Icon(Icons.add_circle_outline_rounded),
+                            visualDensity: VisualDensity.compact,
+                            color: colors.primary,
+                          ),
+                        ],
                       ),
                     ),
                     Expanded(
-                      flex: 3,
+                      flex: 2,
                       child: Text(
                         'Вес',
                         textAlign: TextAlign.center,
@@ -1974,7 +2191,7 @@ class _PultWorkoutPageState extends State<_PultWorkoutPage>
                       ),
                     ),
                     Expanded(
-                      flex: 3,
+                      flex: 2,
                       child: Text(
                         'Повт.',
                         textAlign: TextAlign.center,
@@ -2031,7 +2248,7 @@ class _PultWorkoutPageState extends State<_PultWorkoutPage>
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             Expanded(
-                              flex: 5,
+                              flex: 6,
                               child: Row(
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
@@ -2062,16 +2279,40 @@ class _PultWorkoutPageState extends State<_PultWorkoutPage>
                                   ),
                                   const SizedBox(width: 10),
                                   Expanded(
-                                    child: Padding(
-                                      padding: const EdgeInsets.only(top: 8),
-                                      child: Text(
-                                        exercise.name,
-                                        style: theme.textTheme.bodyLarge
-                                            ?.copyWith(
-                                              fontWeight: FontWeight.w600,
-                                              height: 1.35,
-                                            ),
+                                    child: TextField(
+                                      controller:
+                                          _nameControllers[exercise
+                                              .templateExerciseId],
+                                      focusNode:
+                                          _nameFocusNodes[exercise
+                                              .templateExerciseId],
+                                      decoration: _nameCellDecoration(
+                                        context,
+                                        highlighted:
+                                            _nameControllers[exercise
+                                                    .templateExerciseId]!
+                                                .text
+                                                .trim()
+                                                .isNotEmpty,
                                       ),
+                                      onTap: () => _scheduleSelectAll(
+                                        _nameControllers[exercise
+                                            .templateExerciseId]!,
+                                      ),
+                                      maxLines: 1,
+                                      textInputAction: TextInputAction.done,
+                                      textAlignVertical:
+                                          TextAlignVertical.center,
+                                      onSubmitted: (_) =>
+                                          _scheduleExerciseNameSave(
+                                            exercise.templateExerciseId,
+                                            immediate: true,
+                                          ),
+                                      style: theme.textTheme.titleMedium
+                                          ?.copyWith(
+                                            fontWeight: FontWeight.w700,
+                                            height: 1.2,
+                                          ),
                                     ),
                                   ),
                                 ],
@@ -2079,7 +2320,7 @@ class _PultWorkoutPageState extends State<_PultWorkoutPage>
                             ),
                             const SizedBox(width: 10),
                             Expanded(
-                              flex: 3,
+                              flex: 2,
                               child: TextField(
                                 controller: kgController,
                                 focusNode:
@@ -2103,7 +2344,7 @@ class _PultWorkoutPageState extends State<_PultWorkoutPage>
                             ),
                             const SizedBox(width: 10),
                             Expanded(
-                              flex: 3,
+                              flex: 2,
                               child: TextField(
                                 controller: repsController,
                                 focusNode:
