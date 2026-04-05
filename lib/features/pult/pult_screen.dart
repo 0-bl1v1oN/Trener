@@ -1370,37 +1370,82 @@ class _PultWorkoutPageState extends State<_PultWorkoutPage>
     );
   }
 
-  InputDecoration _nameCellDecoration(
-    BuildContext context, {
-    required bool highlighted,
+  Widget _buildExerciseNameField({
+    required BuildContext context,
+    required WorkoutExerciseVm exercise,
+    required ThemeData theme,
   }) {
+    final controller = _nameControllers[exercise.templateExerciseId]!;
+    final focusNode = _nameFocusNodes[exercise.templateExerciseId]!;
     final colors = Theme.of(context).colorScheme;
-    return InputDecoration(
-      isDense: true,
-      hintText: 'Название упражнения',
-      hintStyle: TextStyle(
-        color: colors.onSurfaceVariant.withValues(alpha: 0.58),
-        fontWeight: FontWeight.w500,
-      ),
-
-      filled: true,
-      fillColor: highlighted
-          ? colors.surfaceContainerHighest.withValues(alpha: 0.42)
-          : colors.surface.withValues(alpha: 0.38),
-      contentPadding: const EdgeInsets.fromLTRB(12, 12, 12, 8),
-      border: OutlineInputBorder(borderRadius: BorderRadius.circular(14)),
-      enabledBorder: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(14),
-        borderSide: BorderSide(
-          color: colors.outlineVariant.withValues(alpha: 0.26),
-        ),
-      ),
-      focusedBorder: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(14),
-        borderSide: BorderSide(
-          color: colors.primary.withValues(alpha: 0.7),
-          width: 1.4,
-        ),
+    return SizedBox(
+      height: 72,
+      child: AnimatedBuilder(
+        animation: Listenable.merge([controller, focusNode]),
+        builder: (context, child) {
+          final highlighted = controller.text.trim().isNotEmpty;
+          final focused = focusNode.hasFocus;
+          final fieldStyle = theme.textTheme.titleMedium?.copyWith(
+            fontWeight: FontWeight.w700,
+            height: 1,
+            leadingDistribution: TextLeadingDistribution.even,
+          );
+          return LayoutBuilder(
+            builder: (context, constraints) {
+              final probeText = controller.text.trim().isEmpty
+                  ? 'Название упражнения'
+                  : controller.text;
+              final probePainter = TextPainter(
+                text: TextSpan(text: probeText, style: fieldStyle),
+                maxLines: 1,
+                textDirection: Directionality.of(context),
+              )..layout(maxWidth: math.max(0, constraints.maxWidth - 24));
+              final isSingleLine = !probePainter.didExceedMaxLines;
+              return DecoratedBox(
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(14),
+                  color: highlighted
+                      ? colors.surfaceContainerHighest.withValues(alpha: 0.42)
+                      : colors.surface.withValues(alpha: 0.38),
+                  border: Border.all(
+                    color: focused
+                        ? colors.primary.withValues(alpha: 0.7)
+                        : colors.outlineVariant.withValues(alpha: 0.26),
+                    width: focused ? 1.4 : 1,
+                  ),
+                ),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 12),
+                  child: Center(
+                    child: SizedBox(
+                      width: double.infinity,
+                      child: TextField(
+                        controller: controller,
+                        focusNode: focusNode,
+                        decoration: InputDecoration(
+                          isCollapsed: true,
+                          border: InputBorder.none,
+                          hintText: 'Название упражнения',
+                          hintStyle: TextStyle(
+                            color: colors.onSurfaceVariant.withValues(alpha: 0.58),
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                        onTap: () => _scheduleSelectAll(controller),
+                        minLines: 1,
+                        maxLines: isSingleLine ? 1 : 2,
+                        keyboardType: TextInputType.multiline,
+                        textAlign: TextAlign.center,
+                        style: fieldStyle,
+                      ),
+                    ),
+                    
+                  ),
+                ),
+              ),
+            },
+          );
+        },
       ),
     );
   }
@@ -2241,17 +2286,17 @@ class _PultWorkoutPageState extends State<_PultWorkoutPage>
                           ),
                         ),
                         child: Row(
-                          crossAxisAlignment: CrossAxisAlignment.start,
+                          crossAxisAlignment: CrossAxisAlignment.center,
                           children: [
                             Expanded(
                               flex: 6,
                               child: Row(
-                                crossAxisAlignment: CrossAxisAlignment.start,
+                                crossAxisAlignment: CrossAxisAlignment.center,
                                 children: [
                                   Container(
                                     width: 28,
                                     height: 28,
-                                    margin: const EdgeInsets.only(top: 6),
+
                                     decoration: BoxDecoration(
                                       shape: BoxShape.circle,
                                       color: colors.primaryContainer.withValues(
@@ -2275,36 +2320,10 @@ class _PultWorkoutPageState extends State<_PultWorkoutPage>
                                   ),
                                   const SizedBox(width: 10),
                                   Expanded(
-                                    child: TextField(
-                                      controller:
-                                          _nameControllers[exercise
-                                              .templateExerciseId],
-                                      focusNode:
-                                          _nameFocusNodes[exercise
-                                              .templateExerciseId],
-                                      decoration: _nameCellDecoration(
-                                        context,
-                                        highlighted:
-                                            _nameControllers[exercise
-                                                    .templateExerciseId]!
-                                                .text
-                                                .trim()
-                                                .isNotEmpty,
-                                      ),
-                                      onTap: () => _scheduleSelectAll(
-                                        _nameControllers[exercise
-                                            .templateExerciseId]!,
-                                      ),
-                                      minLines: 1,
-                                      maxLines: 2,
-                                      keyboardType: TextInputType.multiline,
-                                      textAlign: TextAlign.center,
-                                      textAlignVertical:
-                                          TextAlignVertical.center,
-                                      style: theme.textTheme.titleMedium
-                                          ?.copyWith(
-                                            fontWeight: FontWeight.w700,
-                                          ),
+                                    child: _buildExerciseNameField(
+                                      context: context,
+                                      exercise: exercise,
+                                      theme: theme,
                                     ),
                                   ),
                                 ],
