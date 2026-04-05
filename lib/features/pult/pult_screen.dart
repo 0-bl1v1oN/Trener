@@ -1382,16 +1382,12 @@ class _PultWorkoutPageState extends State<_PultWorkoutPage>
         color: colors.onSurfaceVariant.withValues(alpha: 0.58),
         fontWeight: FontWeight.w500,
       ),
-      prefixIcon: Icon(
-        Icons.edit_outlined,
-        size: 16,
-        color: colors.onSurfaceVariant.withValues(alpha: 0.62),
-      ),
+
       filled: true,
       fillColor: highlighted
           ? colors.surfaceContainerHighest.withValues(alpha: 0.42)
           : colors.surface.withValues(alpha: 0.38),
-      contentPadding: const EdgeInsets.symmetric(horizontal: 8, vertical: 10),
+      contentPadding: const EdgeInsets.fromLTRB(12, 12, 12, 8),
       border: OutlineInputBorder(borderRadius: BorderRadius.circular(14)),
       enabledBorder: OutlineInputBorder(
         borderRadius: BorderRadius.circular(14),
@@ -2299,19 +2295,15 @@ class _PultWorkoutPageState extends State<_PultWorkoutPage>
                                         _nameControllers[exercise
                                             .templateExerciseId]!,
                                       ),
-                                      maxLines: 1,
-                                      textInputAction: TextInputAction.done,
+                                      minLines: 1,
+                                      maxLines: 2,
+                                      keyboardType: TextInputType.multiline,
+                                      textAlign: TextAlign.center,
                                       textAlignVertical:
                                           TextAlignVertical.center,
-                                      onSubmitted: (_) =>
-                                          _scheduleExerciseNameSave(
-                                            exercise.templateExerciseId,
-                                            immediate: true,
-                                          ),
                                       style: theme.textTheme.titleMedium
                                           ?.copyWith(
                                             fontWeight: FontWeight.w700,
-                                            height: 1.2,
                                           ),
                                     ),
                                   ),
