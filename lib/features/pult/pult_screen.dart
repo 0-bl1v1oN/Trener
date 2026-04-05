@@ -1205,27 +1205,32 @@ class _PultWorkoutPageState extends State<_PultWorkoutPage>
     await _load();
   }
 
-  Future<void> _deleteExercise(WorkoutExerciseVm exercise) async {
-    final ok = await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Удалить упражнение?'),
-        content: Text(
-          'Упражнение "${exercise.name}" будет удалено из этого дня программы.',
+  Future<void> _deleteExercise(
+    WorkoutExerciseVm exercise, {
+    bool askConfirmation = true,
+  }) async {
+    if (askConfirmation) {
+      final ok = await showDialog<bool>(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: const Text('Удалить упражнение?'),
+          content: Text(
+            'Упражнение "${exercise.name}" будет удалено из этого дня программы.',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(false),
+              child: const Text('Отмена'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.of(context).pop(true),
+              child: const Text('Удалить'),
+            ),
+          ],
         ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(false),
-            child: const Text('Отмена'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.of(context).pop(true),
-            child: const Text('Удалить'),
-          ),
-        ],
-      ),
-    );
-    if (ok != true) return;
+      );
+      if (ok != true) return;
+    }
 
     await _saveDrafts();
 
@@ -2293,100 +2298,108 @@ class _PultWorkoutPageState extends State<_PultWorkoutPage>
                       final hasKg = kgController.text.trim().isNotEmpty;
                       final hasReps = repsController.text.trim().isNotEmpty;
 
-                      return Container(
-                        key: _exerciseKeys[exercise.templateExerciseId],
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 16,
-                          vertical: 14,
+                      return Dismissible(
+                        key: ValueKey(
+                          'exercise-${exercise.templateExerciseId}',
                         ),
-                        decoration: BoxDecoration(
-                          color: i.isEven
-                              ? colors.surface.withValues(alpha: 0.08)
-                              : Colors.transparent,
-                          border: Border(
-                            top: i == 0
-                                ? BorderSide.none
-                                : BorderSide(
-                                    color: colors.outlineVariant.withValues(
-                                      alpha: 0.18,
-                                    ),
-                                  ),
+                        direction: DismissDirection.endToStart,
+                        confirmDismiss: (_) async {
+                          await _deleteExercise(
+                            exercise,
+                            askConfirmation: false,
+                          );
+                          return true;
+                        },
+                        background: Container(
+                          alignment: Alignment.centerRight,
+                          padding: const EdgeInsets.symmetric(horizontal: 20),
+                          color: colors.error.withValues(alpha: 0.18),
+                          child: Icon(
+                            Icons.delete_outline_rounded,
+                            color: colors.error,
+                            size: 22,
                           ),
                         ),
-                        child: Row(
-                          crossAxisAlignment: CrossAxisAlignment.center,
-                          children: [
-                            Expanded(
-                              flex: 6,
-                              child: Row(
-                                crossAxisAlignment: CrossAxisAlignment.center,
-                                children: [
-                                  Column(
-                                    mainAxisSize: MainAxisSize.min,
-                                    children: [
-                                      Container(
-                                        width: 28,
-                                        height: 28,
-                                        decoration: BoxDecoration(
-                                          shape: BoxShape.circle,
-                                          color: colors.primaryContainer
-                                              .withValues(alpha: 0.45),
-                                          border: Border.all(
-                                            color: colors.primary.withValues(
-                                              alpha: 0.14,
-                                            ),
-                                          ),
-                                        ),
-                                        child: Center(
-                                          child: Text(
-                                            '${i + 1}',
-                                            style: theme.textTheme.labelMedium
-                                                ?.copyWith(
-                                                  fontWeight: FontWeight.w800,
-                                                ),
-                                          ),
-                                        ),
+                        child: Container(
+                          key: _exerciseKeys[exercise.templateExerciseId],
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 16,
+                            vertical: 14,
+                          ),
+                          decoration: BoxDecoration(
+                            color: i.isEven
+                                ? colors.surface.withValues(alpha: 0.08)
+                                : Colors.transparent,
+                            border: Border(
+                              top: i == 0
+                                  ? BorderSide.none
+                                  : BorderSide(
+                                      color: colors.outlineVariant.withValues(
+                                        alpha: 0.18,
                                       ),
+                                    ),
+                            ),
+                          ),
+                          child: Row(
+                            crossAxisAlignment: CrossAxisAlignment.center,
+                            children: [
+                              Expanded(
+                                flex: 6,
+                                child: Row(
+                                  crossAxisAlignment: CrossAxisAlignment.center,
+                                  children: [
+                                    Column(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        Container(
+                                          width: 28,
+                                          height: 28,
+                                          decoration: BoxDecoration(
+                                            shape: BoxShape.circle,
+                                            color: colors.primaryContainer
+                                                .withValues(alpha: 0.45),
+                                            border: Border.all(
+                                              color: colors.primary.withValues(
+                                                alpha: 0.14,
+                                              ),
+                                            ),
+                                          ),
+                                        child: Center(
+                                            child: Text(
+                                              '${i + 1}',
+                                              style: theme.textTheme.labelMedium
+                                                  ?.copyWith(
+                                                    fontWeight: FontWeight.w800,
+                                                  ),
+                                            ),
+                                          ),
+                                        ),
                                       const SizedBox(height: 6),
-                                      Row(
-                                        mainAxisSize: MainAxisSize.min,
-                                        children: [
-                                          IconButton(
-                                            onPressed: () => _addExercise(
-                                              afterExercise: exercise,
-                                            ),
-                                            tooltip: 'Добавить ниже',
-                                            icon: const Icon(
-                                              Icons.add_circle_outline_rounded,
-                                            ),
-                                            visualDensity:
-                                                VisualDensity.compact,
-                                            constraints: const BoxConstraints(
-                                              minWidth: 24,
-                                              minHeight: 24,
-                                            ),
-                                            iconSize: 16,
-                                            color: colors.primary,
-                                            padding: EdgeInsets.zero,
+                                        IconButton(
+                                          onPressed: () => _addExercise(
+                                            afterExercise: exercise,
                                           ),
-                                          IconButton(
-                                            onPressed: () =>
-                                                _deleteExercise(exercise),
-                                            tooltip: 'Удалить упражнение',
-                                            icon: const Icon(
-                                              Icons.delete_outline_rounded,
-                                            ),
-                                            visualDensity:
-                                                VisualDensity.compact,
-                                            constraints: const BoxConstraints(
-                                              minWidth: 24,
-                                              minHeight: 24,
-                                            ),
-                                            iconSize: 16,
-                                            color: colors.error,
-                                            padding: EdgeInsets.zero,
+                                          tooltip: 'Добавить ниже',
+                                          icon: const Icon(
+                                            Icons.add_circle_outline_rounded,
                                           ),
-                                        ],
+                                        visualDensity: VisualDensity.compact,
+                                          constraints: const BoxConstraints(
+                                            minWidth: 24,
+                                            minHeight: 24,
+                                          ),
+                                          iconSize: 16,
+                                          color: colors.primary,
+                                          padding: EdgeInsets.zero,
+                                        ),
+                                      ],
+                                    ),
+                                    const SizedBox(width: 10),
+                                    Expanded(
+                                      child: _buildExerciseNameField(
+                                        context: context,
+                                        exercise: exercise,
+                                        theme: theme,
                                       ),
                                     ],
                                   ),
@@ -2397,57 +2410,59 @@ class _PultWorkoutPageState extends State<_PultWorkoutPage>
                                       exercise: exercise,
                                       theme: theme,
                                     ),
+                                 ],
+                                ),
+                                
+                              ),
+                            const SizedBox(width: 10),
+                              Expanded(
+                                flex: 2,
+                                child: TextField(
+                                  controller: kgController,
+                                  focusNode:
+                                      _kgFocusNodes[exercise.templateExerciseId],
+                                  decoration: _cellDecoration(
+                                    context,
+                                    'Вес',
+                                    highlighted: hasKg,
                                   ),
-                                ],
+                                  onTap: () => _scheduleSelectAll(kgController),
+                                  textAlign: TextAlign.center,
+                                  style: theme.textTheme.titleMedium?.copyWith(
+                                    fontWeight: FontWeight.w700,
+                                    letterSpacing: 0.1,
+                                  ),
+                                  keyboardType:
+                                      const TextInputType.numberWithOptions(
+                                        decimal: true,
+                                      ),
+                                ),
+                                ),
+                              const SizedBox(width: 10),
+                              Expanded(
+                                flex: 2,
+                                child: TextField(
+                                  controller: repsController,
+                                  focusNode:
+                                      _repsFocusNodes[exercise.templateExerciseId],
+                                  decoration: _cellDecoration(
+                                    context,
+                                    'Пов',
+                                    highlighted: hasReps,
+                                  ),
+                                  onTap: () =>
+                                      _scheduleSelectAll(repsController),
+                                  textAlign: TextAlign.center,
+                                  style: theme.textTheme.titleMedium?.copyWith(
+                                    fontWeight: FontWeight.w700,
+                                    letterSpacing: 0.1,
+                                  ),
+                                  keyboardType: TextInputType.number,
+                                ),
+                                
                               ),
-                            ),
-                            const SizedBox(width: 10),
-                            Expanded(
-                              flex: 2,
-                              child: TextField(
-                                controller: kgController,
-                                focusNode:
-                                    _kgFocusNodes[exercise.templateExerciseId],
-                                decoration: _cellDecoration(
-                                  context,
-                                  'Вес',
-                                  highlighted: hasKg,
-                                ),
-                                onTap: () => _scheduleSelectAll(kgController),
-                                textAlign: TextAlign.center,
-                                style: theme.textTheme.titleMedium?.copyWith(
-                                  fontWeight: FontWeight.w700,
-                                  letterSpacing: 0.1,
-                                ),
-                                keyboardType:
-                                    const TextInputType.numberWithOptions(
-                                      decimal: true,
-                                    ),
-                              ),
-                            ),
-                            const SizedBox(width: 10),
-                            Expanded(
-                              flex: 2,
-                              child: TextField(
-                                controller: repsController,
-                                focusNode:
-                                    _repsFocusNodes[exercise
-                                        .templateExerciseId],
-                                decoration: _cellDecoration(
-                                  context,
-                                  'Пов',
-                                  highlighted: hasReps,
-                                ),
-                                onTap: () => _scheduleSelectAll(repsController),
-                                textAlign: TextAlign.center,
-                                style: theme.textTheme.titleMedium?.copyWith(
-                                  fontWeight: FontWeight.w700,
-                                  letterSpacing: 0.1,
-                                ),
-                                keyboardType: TextInputType.number,
-                              ),
-                            ),
-                          ],
+            ],
+          ),
                         ),
                       );
                     },
