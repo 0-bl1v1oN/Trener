@@ -63,6 +63,7 @@ class _PultHeaderBackgroundOption {
   final String title;
   final String subtitle;
   final String? assetPath;
+  final String? previewAssetPath;
   final IconData icon;
 
   const _PultHeaderBackgroundOption({
@@ -70,6 +71,7 @@ class _PultHeaderBackgroundOption {
     required this.title,
     required this.subtitle,
     this.assetPath,
+    this.previewAssetPath,
     this.icon = Icons.photo_filter_rounded,
   });
 }
@@ -101,9 +103,13 @@ class _PultHeaderFrameOption {
 }
 
 class _BackgroundOptionPreview extends StatefulWidget {
-  const _BackgroundOptionPreview({required this.option});
+  const _BackgroundOptionPreview({
+    required this.option,
+    this.enableVideoPreview = false,
+  });
 
   final _PultHeaderBackgroundOption option;
+  final bool enableVideoPreview;
 
   @override
   State<_BackgroundOptionPreview> createState() =>
@@ -113,49 +119,79 @@ class _BackgroundOptionPreview extends StatefulWidget {
 class _BackgroundOptionPreviewState extends State<_BackgroundOptionPreview> {
   VideoPlayerController? _controller;
 
-  bool get _isVideo =>
-      widget.option.assetPath != null &&
-      widget.option.assetPath!.toLowerCase().endsWith('.mp4');
+  String? get _previewPath =>
+      widget.option.previewAssetPath ?? widget.option.assetPath;
 
+  bool get _isVideoPreview =>
+      _previewPath != null && _previewPath!.toLowerCase().endsWith('.mp4');
+
+  bool get _shouldInitVideo => _isVideoPreview && widget.enableVideoPreview;
   @override
   void initState() {
     super.initState();
-    if (_isVideo) {
+    unawaited(_initVideo());
+  }
+
+  @override
+  void didUpdateWidget(covariant _BackgroundOptionPreview oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    final oldPreviewPath =
+        oldWidget.option.previewAssetPath ?? oldWidget.option.assetPath;
+    if (oldPreviewPath != _previewPath ||
+        oldWidget.enableVideoPreview != widget.enableVideoPreview) {
       unawaited(_initVideo());
     }
   }
 
   Future<void> _initVideo() async {
-    final path = widget.option.assetPath;
-    if (path == null) return;
+    final path = _previewPath;
+    if (!_shouldInitVideo || path == null) {
+      await _controller?.dispose();
+      _controller = null;
+      if (mounted) {
+        setState(() {});
+      }
+      return;
+    }
+
+    await _controller?.dispose();
+    _controller = null;
+
+    await _PultAssetVideoWarmup.warmUp(path);
     final controller = VideoPlayerController.asset(path);
-    _controller = controller;
     try {
       await controller.initialize();
       await controller.setVolume(0);
       await controller.pause();
       await controller.seekTo(Duration.zero);
-      if (!mounted) return;
+      if (!mounted || _previewPath != path) {
+        await controller.dispose();
+        return;
+      }
+      _controller = controller;
       setState(() {});
     } catch (_) {
       await controller.dispose();
       _controller = null;
+      if (mounted) {
+        setState(() {});
+      }
     }
   }
 
   @override
   void dispose() {
-    _controller?.dispose();
+    _controller = null;
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
-    final path = widget.option.assetPath;
+    final path = _previewPath;
     if (path == null) {
       return Icon(widget.option.icon);
     }
-    if (_isVideo) {
+    if (_isVideoPreview) {
       final controller = _controller;
       if (controller != null && controller.value.isInitialized) {
         return ClipRRect(
@@ -577,24 +613,74 @@ class _PultWorkoutPageState extends State<_PultWorkoutPage>
         }
       }
 
+      bool isSupportedBackgroundAsset(String path) {
+        final lower = path.toLowerCase();
+        return lower.endsWith('.mp4') ||
+            lower.endsWith('.png') ||
+            lower.endsWith('.jpg') ||
+            lower.endsWith('.jpeg') ||
+            lower.endsWith('.webp');
+      }
+
+      String fileName(String path) => path.split('/').last;
+
+      int extractNumber(String path) {
+        final match = RegExp(r'background_(\d+)').firstMatch(path);
+        return int.tryParse(match?.group(1) ?? '') ?? -1;
+      }
+
+      String baseName(String path) {
+        final file = fileName(path);
+        final dot = file.lastIndexOf('.');
+        return dot > 0 ? file.substring(0, dot) : file;
+      }
+
+      String sanitizeIdPart(String raw) {
+        return raw.replaceAll(RegExp(r'[^a-zA-Z0-9_]+'), '_');
+      }
+
+      bool isVideoAsset(String path) => path.toLowerCase().endsWith('.mp4');
+
       final paths =
           allPaths
               .where(
                 (path) =>
-                    path.startsWith(
-                      '$_headerAssetsRoot/backgrounds/background_',
-                    ) &&
-                    RegExp(r'background_(\d+)').hasMatch(path),
+                    path.startsWith('$_headerAssetsRoot/backgrounds/') &&
+                    !RegExp(r'background_default(\.[^/]+)?$').hasMatch(path) &&
+                    isSupportedBackgroundAsset(path),
               )
               .toList()
             ..sort((a, b) {
-              int extractNumber(String path) {
-                final match = RegExp(r'background_(\d+)').firstMatch(path);
-                return int.tryParse(match?.group(1) ?? '') ?? 0;
+              final aNum = extractNumber(a);
+              final bNum = extractNumber(b);
+              if (aNum >= 0 && bNum >= 0) {
+                if (aNum != bNum) return aNum.compareTo(bNum);
+                return a.compareTo(b);
               }
 
-              return extractNumber(a).compareTo(extractNumber(b));
+              if (aNum >= 0) return -1;
+              if (bNum >= 0) return 1;
+              return a.compareTo(b);
             });
+
+      final groupedByBase = <String, List<String>>{};
+      for (final path in paths) {
+        final key = baseName(path);
+        groupedByBase.putIfAbsent(key, () => <String>[]).add(path);
+      }
+
+      final groupedKeys = groupedByBase.keys.toList()
+        ..sort((a, b) {
+          final aNum = extractNumber(a);
+          final bNum = extractNumber(b);
+          if (aNum >= 0 && bNum >= 0) {
+            if (aNum != bNum) return aNum.compareTo(bNum);
+            return a.compareTo(b);
+          }
+          if (aNum >= 0) return -1;
+          if (bNum >= 0) return 1;
+          return a.compareTo(b);
+        });
 
       final generated = <_PultHeaderBackgroundOption>[
         _defaultBackgroundOptions.first,
@@ -605,21 +691,53 @@ class _PultWorkoutPageState extends State<_PultWorkoutPage>
             id: 'default_media',
             title: 'Кастомный фон',
             subtitle: 'Из папки assets/pult_customization/backgrounds',
+            previewAssetPath: defaultPath,
             assetPath: defaultPath,
             icon: Icons.image_rounded,
           ),
         );
       }
-      for (final path in paths) {
-        final match = RegExp(r'background_(\d+)').firstMatch(path);
+      final seenIds = <String>{
+        _defaultBackgroundOptions.first.id,
+        'default_media',
+      };
+      for (final groupKey in groupedKeys) {
+        final groupPaths = groupedByBase[groupKey]!;
+        String? primaryPath;
+        String? previewPath;
+
+        for (final item in groupPaths) {
+          if (!isVideoAsset(item)) {
+            previewPath = item;
+            break;
+          }
+        }
+        for (final item in groupPaths) {
+          if (isVideoAsset(item)) {
+            primaryPath = item;
+            break;
+          }
+        }
+        primaryPath ??= previewPath;
+        previewPath ??= primaryPath;
+        if (primaryPath == null) continue;
+
+        final match = RegExp(r'background_(\d+)').firstMatch(groupKey);
         final idx = match?.group(1);
-        if (idx == null) continue;
+        final fallbackName = groupKey.replaceFirst('background_', '');
+        final rawIdPart = sanitizeIdPart(idx ?? fallbackName);
+        final id = 'background_$rawIdPart';
+        if (seenIds.contains(id)) continue;
+        seenIds.add(id);
         generated.add(
           _PultHeaderBackgroundOption(
-            id: 'background_$idx',
-            title: 'Фон $idx',
-            subtitle: 'Кастомный фон #$idx',
-            assetPath: path,
+            id: id,
+            title: idx != null ? 'Фон $idx' : 'Фон $fallbackName',
+            subtitle: idx != null
+                ? 'Кастомный фон #$idx'
+                : 'Кастомный фон: ${fileName(primaryPath)}',
+            assetPath: primaryPath,
+            previewAssetPath: previewPath,
             icon: Icons.image_rounded,
           ),
         );
@@ -1538,27 +1656,12 @@ class _PultWorkoutPageState extends State<_PultWorkoutPage>
         showDragHandle: true,
         backgroundColor: colors.surface,
         builder: (sheetContext) {
-          return DefaultTabController(
-            length: 1,
-            child: SafeArea(
-              child: SizedBox(
-                height: MediaQuery.of(sheetContext).size.height * 0.74,
-                child: Padding(
-                  padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
-                  child: Column(
-                    children: [
-                      _buildCustomizationPreview(sheetContext),
-                      const SizedBox(height: 14),
-                      TabBar(tabs: const [Tab(text: 'Фон')]),
-                      const SizedBox(height: 8),
-                      Expanded(
-                        child: TabBarView(
-                          children: [_buildBackgroundTab(sheetContext)],
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
+          return SafeArea(
+            child: SizedBox(
+              height: MediaQuery.of(sheetContext).size.height * 0.74,
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
+                child: _buildBackgroundTab(sheetContext),
               ),
             ),
           );
@@ -1570,54 +1673,6 @@ class _PultWorkoutPageState extends State<_PultWorkoutPage>
         _isCustomizationSheetOpen = false;
       });
     }
-  }
-
-  Widget _buildCustomizationPreview(BuildContext context) {
-    final theme = Theme.of(context);
-    final colors = theme.colorScheme;
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(20),
-        color: colors.surfaceContainerHighest,
-      ),
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(16),
-        child: Stack(
-          children: [
-            Positioned.fill(child: _buildPreviewBackground(colors)),
-            Positioned.fill(
-              child: DecoratedBox(
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    colors: [
-                      Colors.black.withValues(alpha: 0.06),
-                      Colors.black.withValues(alpha: 0.2),
-                    ],
-                    begin: Alignment.topCenter,
-                    end: Alignment.bottomCenter,
-                  ),
-                ),
-              ),
-            ),
-            Padding(
-              padding: const EdgeInsets.all(12),
-              child: Align(
-                alignment: Alignment.centerLeft,
-                child: Text(
-                  'Предпросмотр шапки',
-                  style: theme.textTheme.titleMedium?.copyWith(
-                    fontWeight: FontWeight.w700,
-                    color: Colors.white,
-                  ),
-                ),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
   }
 
   Widget _buildAvatarTab(BuildContext context) {
@@ -1688,13 +1743,17 @@ class _PultWorkoutPageState extends State<_PultWorkoutPage>
 
   Widget _buildBackgroundTab(BuildContext context) {
     return ListView.builder(
+      cacheExtent: 1200,
       itemCount: _backgroundOptions.length,
       itemBuilder: (context, index) {
         final option = _backgroundOptions[index];
         final selected = option.id == _headerCustomization.backgroundId;
 
         return ListTile(
-          leading: _BackgroundOptionPreview(option: option),
+          leading: _BackgroundOptionPreview(
+            option: option,
+            enableVideoPreview: selected,
+          ),
           title: Text(option.title),
           subtitle: Text(option.subtitle),
           trailing: selected ? const Icon(Icons.check_circle) : null,
@@ -1816,70 +1875,6 @@ class _PultWorkoutPageState extends State<_PultWorkoutPage>
         decoration: BoxDecoration(
           borderRadius: BorderRadius.circular(8),
           border: Border.all(color: Colors.white70, width: 2),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildPreviewBackground(ColorScheme colors) {
-    final selectedBackground = _selectedBackground;
-    final assetPath = selectedBackground?.assetPath;
-    if (assetPath != null) {
-      if (_isVideoAssetPath(assetPath)) {
-        final controller = _backgroundAssetVideoController;
-        if (controller != null && controller.value.isInitialized) {
-          return FittedBox(
-            fit: BoxFit.contain,
-            child: SizedBox(
-              width: controller.value.size.width,
-              height: controller.value.size.height,
-              child: VideoPlayer(
-                controller,
-                key: ValueKey<String>(
-                  'pult_preview_bg_${_backgroundAssetVideoPath ?? 'none'}',
-                ),
-              ),
-            ),
-          );
-        }
-        return _buildFallbackPreviewGradient(colors);
-      }
-      return Image.asset(
-        assetPath,
-        fit: BoxFit.contain,
-        errorBuilder: (context, error, stackTrace) {
-          return _buildFallbackPreviewGradient(colors);
-        },
-      );
-    }
-    if (_useVideoBackground) {
-      return DecoratedBox(
-        decoration: BoxDecoration(
-          gradient: LinearGradient(
-            colors: [
-              const Color(0xFF3A1C71).withValues(alpha: 0.82),
-              const Color(0xFFFF6A00).withValues(alpha: 0.78),
-            ],
-          ),
-        ),
-        child: const Center(
-          child: Icon(Icons.local_fire_department_rounded, color: Colors.white),
-        ),
-      );
-    }
-    return _buildFallbackPreviewGradient(colors);
-  }
-
-  Widget _buildFallbackPreviewGradient(ColorScheme colors) {
-    return DecoratedBox(
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          colors: [
-            colors.primary.withValues(alpha: 0.8),
-            colors.tertiary.withValues(alpha: 0.7),
-          ],
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
         ),
       ),
     );
@@ -2364,7 +2359,7 @@ class _PultWorkoutPageState extends State<_PultWorkoutPage>
                                               ),
                                             ),
                                           ),
-                                        child: Center(
+                                          child: Center(
                                             child: Text(
                                               '${i + 1}',
                                               style: theme.textTheme.labelMedium
@@ -2374,7 +2369,7 @@ class _PultWorkoutPageState extends State<_PultWorkoutPage>
                                             ),
                                           ),
                                         ),
-                                      const SizedBox(height: 6),
+                                        const SizedBox(height: 6),
                                         IconButton(
                                           onPressed: () => _addExercise(
                                             afterExercise: exercise,
@@ -2383,7 +2378,7 @@ class _PultWorkoutPageState extends State<_PultWorkoutPage>
                                           icon: const Icon(
                                             Icons.add_circle_outline_rounded,
                                           ),
-                                        visualDensity: VisualDensity.compact,
+                                          visualDensity: VisualDensity.compact,
                                           constraints: const BoxConstraints(
                                             minWidth: 24,
                                             minHeight: 24,
@@ -2401,26 +2396,18 @@ class _PultWorkoutPageState extends State<_PultWorkoutPage>
                                         exercise: exercise,
                                         theme: theme,
                                       ),
-                                    ],
-                                  ),
-                                  const SizedBox(width: 10),
-                                  Expanded(
-                                    child: _buildExerciseNameField(
-                                      context: context,
-                                      exercise: exercise,
-                                      theme: theme,
                                     ),
-                                 ],
+                                  ],
                                 ),
-                                
                               ),
-                            const SizedBox(width: 10),
+                              const SizedBox(width: 10),
                               Expanded(
                                 flex: 2,
                                 child: TextField(
                                   controller: kgController,
                                   focusNode:
-                                      _kgFocusNodes[exercise.templateExerciseId],
+                                      _kgFocusNodes[exercise
+                                          .templateExerciseId],
                                   decoration: _cellDecoration(
                                     context,
                                     'Вес',
@@ -2437,14 +2424,15 @@ class _PultWorkoutPageState extends State<_PultWorkoutPage>
                                         decimal: true,
                                       ),
                                 ),
-                                ),
+                              ),
                               const SizedBox(width: 10),
                               Expanded(
                                 flex: 2,
                                 child: TextField(
                                   controller: repsController,
                                   focusNode:
-                                      _repsFocusNodes[exercise.templateExerciseId],
+                                      _repsFocusNodes[exercise
+                                          .templateExerciseId],
                                   decoration: _cellDecoration(
                                     context,
                                     'Пов',
@@ -2459,10 +2447,9 @@ class _PultWorkoutPageState extends State<_PultWorkoutPage>
                                   ),
                                   keyboardType: TextInputType.number,
                                 ),
-                                
                               ),
-            ],
-          ),
+                            ],
+                          ),
                         ),
                       );
                     },

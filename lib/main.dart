@@ -1,19 +1,44 @@
+import 'dart:async';
+import 'dart:ui';
+
 import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:intl/date_symbol_data_local.dart';
 
 import 'app/app.dart';
 import 'app/app_db_scope.dart';
+import 'app/app_error_reporter.dart';
 import 'db/app_db.dart';
 import 'theme_controller.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  await Firebase.initializeApp();
-  await initializeDateFormatting('ru_RU', null);
-  await themeController.loadTheme();
+  FlutterError.onError = (details) {
+    FlutterError.presentError(details);
+    AppErrorReporter.record(
+      details.exception,
+      details.stack ?? StackTrace.current,
+      source: 'FlutterError',
+    );
+  };
 
-  runApp(const AppBootstrap());
+  PlatformDispatcher.instance.onError = (error, stackTrace) {
+    AppErrorReporter.record(error, stackTrace, source: 'PlatformDispatcher');
+    return false;
+  };
+
+  await runZonedGuarded(
+    () async {
+      await Firebase.initializeApp();
+      await initializeDateFormatting('ru_RU', null);
+      await themeController.loadTheme();
+
+      runApp(const AppBootstrap());
+    },
+    (error, stackTrace) {
+      AppErrorReporter.record(error, stackTrace, source: 'runZonedGuarded');
+    },
+  );
 }
 
 class AppBootstrap extends StatefulWidget {

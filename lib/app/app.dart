@@ -17,6 +17,7 @@ import '../features/more/data_backup_screen.dart';
 import '../features/more/progress_screen.dart';
 import '../theme_controller.dart';
 import 'app_db_scope.dart';
+import 'app_error_reporter.dart';
 
 class MyFitnessApp extends StatefulWidget {
   const MyFitnessApp({super.key});
@@ -117,6 +118,8 @@ class _MyFitnessAppState extends State<MyFitnessApp> {
           // -------------------------------
           routerConfig: _router,
           debugShowCheckedModeBanner: false,
+          builder: (context, child) =>
+              AppErrorOverlay(child: child ?? const SizedBox.shrink()),
         );
       },
     );
