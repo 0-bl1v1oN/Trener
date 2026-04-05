@@ -3757,11 +3757,31 @@ class AppDb extends _$AppDb {
     required String clientId,
     required int templateId,
     required String name,
+    int? insertAfterOrderIndex,
   }) async {
     final normalized = name.trim();
     if (normalized.isEmpty) return;
 
     await _ensureClientAddedExercisesTable();
+
+    if (insertAfterOrderIndex != null) {
+      final insertOrder = insertAfterOrderIndex + 1;
+
+      await customStatement(
+        '''
+        UPDATE client_added_exercises
+        SET order_index = order_index + 1
+        WHERE client_id = ? AND template_id = ? AND order_index >= ?
+        ''',
+        [clientId, templateId, insertOrder],
+      );
+
+      await customStatement(
+        'INSERT INTO client_added_exercises (client_id, template_id, order_index, name) VALUES (?, ?, ?, ?)',
+        [clientId, templateId, insertOrder, normalized],
+      );
+      return;
+    }
 
     final baseMax = await customSelect(
       'SELECT MAX(order_index) AS m FROM ${workoutTemplateExercises.actualTableName} WHERE template_id = ?',

@@ -1171,7 +1171,7 @@ class _PultWorkoutPageState extends State<_PultWorkoutPage>
     return result;
   }
 
-  Future<void> _addExercise() async {
+  Future<void> _addExercise({WorkoutExerciseVm? afterExercise}) async {
     final data = _data;
     if (data == null) return;
 
@@ -1198,6 +1198,40 @@ class _PultWorkoutPageState extends State<_PultWorkoutPage>
       clientId: widget.tab.clientId,
       templateId: templateId,
       name: name,
+      insertAfterOrderIndex: afterExercise?.orderIndex,
+    );
+
+    if (!mounted) return;
+    await _load();
+  }
+
+  Future<void> _deleteExercise(WorkoutExerciseVm exercise) async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Удалить упражнение?'),
+        content: Text(
+          'Упражнение "${exercise.name}" будет удалено из этого дня программы.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('Отмена'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            child: const Text('Удалить'),
+          ),
+        ],
+      ),
+    );
+    if (ok != true) return;
+
+    await _saveDrafts();
+
+    await widget.db.deleteWorkoutExerciseForClient(
+      clientId: widget.tab.clientId,
+      templateExerciseId: exercise.templateExerciseId,
     );
 
     if (!mounted) return;
@@ -1427,7 +1461,9 @@ class _PultWorkoutPageState extends State<_PultWorkoutPage>
                           border: InputBorder.none,
                           hintText: 'Название упражнения',
                           hintStyle: TextStyle(
-                            color: colors.onSurfaceVariant.withValues(alpha: 0.58),
+                            color: colors.onSurfaceVariant.withValues(
+                              alpha: 0.58,
+                            ),
                             fontWeight: FontWeight.w500,
                           ),
                         ),
@@ -1439,10 +1475,9 @@ class _PultWorkoutPageState extends State<_PultWorkoutPage>
                         style: fieldStyle,
                       ),
                     ),
-                    
                   ),
                 ),
-              ),
+              );
             },
           );
         },
@@ -2211,13 +2246,6 @@ class _PultWorkoutPageState extends State<_PultWorkoutPage>
                               ),
                             ),
                           ),
-                          IconButton(
-                            onPressed: _addExercise,
-                            tooltip: 'Добавить упражнение',
-                            icon: const Icon(Icons.add_circle_outline_rounded),
-                            visualDensity: VisualDensity.compact,
-                            color: colors.primary,
-                          ),
                         ],
                       ),
                     ),
@@ -2293,30 +2321,74 @@ class _PultWorkoutPageState extends State<_PultWorkoutPage>
                               child: Row(
                                 crossAxisAlignment: CrossAxisAlignment.center,
                                 children: [
-                                  Container(
-                                    width: 28,
-                                    height: 28,
-
-                                    decoration: BoxDecoration(
-                                      shape: BoxShape.circle,
-                                      color: colors.primaryContainer.withValues(
-                                        alpha: 0.45,
-                                      ),
-                                      border: Border.all(
-                                        color: colors.primary.withValues(
-                                          alpha: 0.14,
+                                  Column(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      Container(
+                                        width: 28,
+                                        height: 28,
+                                        decoration: BoxDecoration(
+                                          shape: BoxShape.circle,
+                                          color: colors.primaryContainer
+                                              .withValues(alpha: 0.45),
+                                          border: Border.all(
+                                            color: colors.primary.withValues(
+                                              alpha: 0.14,
+                                            ),
+                                          ),
+                                        ),
+                                        child: Center(
+                                          child: Text(
+                                            '${i + 1}',
+                                            style: theme.textTheme.labelMedium
+                                                ?.copyWith(
+                                                  fontWeight: FontWeight.w800,
+                                                ),
+                                          ),
                                         ),
                                       ),
-                                    ),
-                                    child: Center(
-                                      child: Text(
-                                        '${i + 1}',
-                                        style: theme.textTheme.labelMedium
-                                            ?.copyWith(
-                                              fontWeight: FontWeight.w800,
+                                      const SizedBox(height: 6),
+                                      Row(
+                                        mainAxisSize: MainAxisSize.min,
+                                        children: [
+                                          IconButton(
+                                            onPressed: () => _addExercise(
+                                              afterExercise: exercise,
                                             ),
+                                            tooltip: 'Добавить ниже',
+                                            icon: const Icon(
+                                              Icons.add_circle_outline_rounded,
+                                            ),
+                                            visualDensity:
+                                                VisualDensity.compact,
+                                            constraints: const BoxConstraints(
+                                              minWidth: 24,
+                                              minHeight: 24,
+                                            ),
+                                            iconSize: 16,
+                                            color: colors.primary,
+                                            padding: EdgeInsets.zero,
+                                          ),
+                                          IconButton(
+                                            onPressed: () =>
+                                                _deleteExercise(exercise),
+                                            tooltip: 'Удалить упражнение',
+                                            icon: const Icon(
+                                              Icons.delete_outline_rounded,
+                                            ),
+                                            visualDensity:
+                                                VisualDensity.compact,
+                                            constraints: const BoxConstraints(
+                                              minWidth: 24,
+                                              minHeight: 24,
+                                            ),
+                                            iconSize: 16,
+                                            color: colors.error,
+                                            padding: EdgeInsets.zero,
+                                          ),
+                                        ],
                                       ),
-                                    ),
+                                    ],
                                   ),
                                   const SizedBox(width: 10),
                                   Expanded(
