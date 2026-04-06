@@ -232,7 +232,9 @@ class _ClientsScreenState extends State<ClientsScreen> {
     await db.initializeSupersetsForNewClient(id);
 
     if (!mounted) return;
-    setState(() => _clientsFuture = db.getAllClients());
+    setState(() {
+      _clientsFuture = db.getAllClients();
+    });
   }
 
   Future<void> _deleteClient(String id) async {
@@ -258,7 +260,9 @@ class _ClientsScreenState extends State<ClientsScreen> {
 
     await db.deleteClientById(id);
     if (!mounted) return;
-    setState(() => _clientsFuture = db.getAllClients());
+    setState(() {
+      _clientsFuture = db.getAllClients();
+    });
   }
 
   @override
@@ -361,7 +365,9 @@ class _ClientsScreenState extends State<ClientsScreen> {
                           onTap: () async {
                             await context.push('/clients/${c.id}');
                             if (!mounted) return;
-                            setState(() => _clientsFuture = db.getAllClients());
+                            setState(() {
+                              _clientsFuture = db.getAllClients();
+                            });
                           },
                           onDelete: () => _deleteClient(c.id),
                         ),

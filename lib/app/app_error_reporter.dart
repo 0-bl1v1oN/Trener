@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+
 import 'package:flutter/services.dart';
 
 class AppErrorReport {
@@ -21,24 +22,57 @@ class AppErrorReport {
 class AppErrorReporter {
   static final ValueNotifier<AppErrorReport?> lastError =
       ValueNotifier<AppErrorReport?>(null);
+  static String? _lastSignature;
+  static DateTime? _lastReportAt;
+  static AppErrorReport? _pendingUiReport;
+  static bool _uiDispatchScheduled = false;
 
   static void record(
     Object error,
     StackTrace stackTrace, {
     required String source,
   }) {
+    final signature = '$source|$error';
+    final now = DateTime.now();
+    final isDuplicate =
+        _lastSignature == signature &&
+        _lastReportAt != null &&
+        now.difference(_lastReportAt!) < const Duration(milliseconds: 800);
+    if (isDuplicate) {
+      return;
+    }
+    _lastSignature = signature;
+    _lastReportAt = now;
     final report = AppErrorReport(
-      timestamp: DateTime.now(),
+      timestamp: now,
       source: source,
       error: error,
       stackTrace: stackTrace,
     );
-    lastError.value = report;
+
     debugPrint('⛔ APP ERROR ${report.formatted}');
+    _pendingUiReport = report;
+    _scheduleOverlayUpdate();
+  }
+
+  static void _scheduleOverlayUpdate() {
+    if (_uiDispatchScheduled) return;
+    _uiDispatchScheduled = true;
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _uiDispatchScheduled = false;
+      final report = _pendingUiReport;
+      _pendingUiReport = null;
+      if (report == null) return;
+      lastError.value = report;
+    });
   }
 
   static void clear() {
     lastError.value = null;
+    _lastSignature = null;
+    _lastReportAt = null;
+    _pendingUiReport = null;
   }
 }
 

@@ -1,12 +1,16 @@
 import 'dart:async';
-
+import 'dart:convert';
+import 'dart:io';
 import 'dart:math' as math;
+import 'dart:typed_data';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
+import 'package:path_provider/path_provider.dart';
 import 'package:video_player/video_player.dart';
+import 'package:video_thumbnail/video_thumbnail.dart';
 
 import '../../app/app_db_scope.dart';
 import '../../db/app_db.dart';
@@ -103,13 +107,9 @@ class _PultHeaderFrameOption {
 }
 
 class _BackgroundOptionPreview extends StatefulWidget {
-  const _BackgroundOptionPreview({
-    required this.option,
-    this.enableVideoPreview = false,
-  });
+  const _BackgroundOptionPreview({required this.option});
 
   final _PultHeaderBackgroundOption option;
-  final bool enableVideoPreview;
 
   @override
   State<_BackgroundOptionPreview> createState() =>
@@ -117,7 +117,10 @@ class _BackgroundOptionPreview extends StatefulWidget {
 }
 
 class _BackgroundOptionPreviewState extends State<_BackgroundOptionPreview> {
-  VideoPlayerController? _controller;
+  static final Map<String, Uint8List> _thumbCache = <String, Uint8List>{};
+  static final Map<String, Future<Uint8List?>> _thumbFutures =
+      <String, Future<Uint8List?>>{};
+  Uint8List? _videoThumb;
 
   String? get _previewPath =>
       widget.option.previewAssetPath ?? widget.option.assetPath;
@@ -125,11 +128,12 @@ class _BackgroundOptionPreviewState extends State<_BackgroundOptionPreview> {
   bool get _isVideoPreview =>
       _previewPath != null && _previewPath!.toLowerCase().endsWith('.mp4');
 
-  bool get _shouldInitVideo => _isVideoPreview && widget.enableVideoPreview;
   @override
   void initState() {
     super.initState();
-    unawaited(_initVideo());
+    if (_isVideoPreview) {
+      unawaited(_loadVideoThumbnail());
+    }
   }
 
   @override
@@ -137,53 +141,63 @@ class _BackgroundOptionPreviewState extends State<_BackgroundOptionPreview> {
     super.didUpdateWidget(oldWidget);
     final oldPreviewPath =
         oldWidget.option.previewAssetPath ?? oldWidget.option.assetPath;
-    if (oldPreviewPath != _previewPath ||
-        oldWidget.enableVideoPreview != widget.enableVideoPreview) {
-      unawaited(_initVideo());
+    if (oldPreviewPath != _previewPath) {
+      _videoThumb = null;
+      if (_isVideoPreview) {
+        unawaited(_loadVideoThumbnail());
+      }
     }
   }
 
-  Future<void> _initVideo() async {
+  Future<void> _loadVideoThumbnail() async {
     final path = _previewPath;
-    if (!_shouldInitVideo || path == null) {
-      await _controller?.dispose();
-      _controller = null;
-      if (mounted) {
-        setState(() {});
-      }
+    if (path == null || !_isVideoPreview) return;
+    final cached = _thumbCache[path];
+    if (cached != null) {
+      if (!mounted || _previewPath != path) return;
+      setState(() {
+        _videoThumb = cached;
+      });
       return;
     }
 
-    await _controller?.dispose();
-    _controller = null;
+    final future = _thumbFutures[path] ??= _buildThumbFromAsset(path);
+    final bytes = await future;
+    if (!mounted || _previewPath != path) return;
+    setState(() {
+      _videoThumb = bytes;
+    });
+  }
 
-    await _PultAssetVideoWarmup.warmUp(path);
-    final controller = VideoPlayerController.asset(path);
+  static Future<Uint8List?> _buildThumbFromAsset(String assetPath) async {
     try {
-      await controller.initialize();
-      await controller.setVolume(0);
-      await controller.pause();
-      await controller.seekTo(Duration.zero);
-      if (!mounted || _previewPath != path) {
-        await controller.dispose();
-        return;
+      final tempDir = await getTemporaryDirectory();
+      final hash = base64UrlEncode(utf8.encode(assetPath));
+      final sourceFile = File('${tempDir.path}/pult_thumb_$hash.mp4');
+      if (!await sourceFile.exists()) {
+        final bytes = await rootBundle.load(assetPath);
+        await sourceFile.writeAsBytes(bytes.buffer.asUint8List(), flush: true);
       }
-      _controller = controller;
-      setState(() {});
+      final data = await VideoThumbnail.thumbnailData(
+        video: sourceFile.path,
+        imageFormat: ImageFormat.JPEG,
+        maxWidth: 240,
+        quality: 55,
+        timeMs: 0,
+      );
+      if (data != null) {
+        _thumbCache[assetPath] = data;
+      }
+      return data;
     } catch (_) {
-      await controller.dispose();
-      _controller = null;
-      if (mounted) {
-        setState(() {});
-      }
+      return null;
+    } finally {
+      _thumbFutures.remove(assetPath);
     }
   }
 
   @override
-  void dispose() {
-    _controller = null;
-    super.dispose();
-  }
+  void dispose() => super.dispose();
 
   @override
   Widget build(BuildContext context) {
@@ -192,22 +206,11 @@ class _BackgroundOptionPreviewState extends State<_BackgroundOptionPreview> {
       return Icon(widget.option.icon);
     }
     if (_isVideoPreview) {
-      final controller = _controller;
-      if (controller != null && controller.value.isInitialized) {
+      final bytes = _videoThumb;
+      if (bytes != null) {
         return ClipRRect(
           borderRadius: BorderRadius.circular(8),
-          child: SizedBox(
-            width: 44,
-            height: 44,
-            child: FittedBox(
-              fit: BoxFit.cover,
-              child: SizedBox(
-                width: controller.value.size.width,
-                height: controller.value.size.height,
-                child: VideoPlayer(controller),
-              ),
-            ),
-          ),
+          child: Image.memory(bytes, width: 44, height: 44, fit: BoxFit.cover),
         );
       }
       return const SizedBox(
@@ -1750,10 +1753,7 @@ class _PultWorkoutPageState extends State<_PultWorkoutPage>
         final selected = option.id == _headerCustomization.backgroundId;
 
         return ListTile(
-          leading: _BackgroundOptionPreview(
-            option: option,
-            enableVideoPreview: selected,
-          ),
+          leading: _BackgroundOptionPreview(option: option),
           title: Text(option.title),
           subtitle: Text(option.subtitle),
           trailing: selected ? const Icon(Icons.check_circle) : null,

@@ -159,18 +159,14 @@ class _EditableTemplateTile extends StatefulWidget {
 
 class _EditableTemplateTileState extends State<_EditableTemplateTile> {
   late Future<List<WorkoutTemplateExercise>> _exFuture;
+  AppDb? _db;
+  bool _futureInitialized = false;
   final Map<int, TextEditingController> _nameCtrls = {};
   final Map<int, FocusNode> _nameFocusNodes = {};
   final Map<int, Timer> _nameSaveDebounces = {};
   final Map<int, String> _persistedExerciseNames = {};
   final Set<int> _nameSaveInFlight = <int>{};
   List<WorkoutTemplateExercise> _lastExercises = const [];
-
-  @override
-  void initState() {
-    super.initState();
-    _exFuture = _loadExercises();
-  }
 
   @override
   void didUpdateWidget(covariant _EditableTemplateTile oldWidget) {
@@ -181,8 +177,23 @@ class _EditableTemplateTileState extends State<_EditableTemplateTile> {
   }
 
   Future<List<WorkoutTemplateExercise>> _loadExercises() {
-    final db = AppDbScope.of(context);
+    final db = _db;
+    if (db == null) {
+      return Future.value(const <WorkoutTemplateExercise>[]);
+    }
     return db.getTemplateExercisesByTemplateId(widget.template.id);
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final nextDb = AppDbScope.of(context);
+    final shouldReload = !_futureInitialized || !identical(_db, nextDb);
+    _db = nextDb;
+    if (shouldReload) {
+      _futureInitialized = true;
+      _exFuture = _loadExercises();
+    }
   }
 
   Future<void> _refreshExercises() async {

@@ -12,23 +12,28 @@ import 'db/app_db.dart';
 import 'theme_controller.dart';
 
 Future<void> main() async {
-  WidgetsFlutterBinding.ensureInitialized();
-  FlutterError.onError = (details) {
-    FlutterError.presentError(details);
-    AppErrorReporter.record(
-      details.exception,
-      details.stack ?? StackTrace.current,
-      source: 'FlutterError',
-    );
-  };
-
-  PlatformDispatcher.instance.onError = (error, stackTrace) {
-    AppErrorReporter.record(error, stackTrace, source: 'PlatformDispatcher');
-    return false;
-  };
-
   await runZonedGuarded(
     () async {
+      WidgetsFlutterBinding.ensureInitialized();
+
+      FlutterError.onError = (details) {
+        FlutterError.presentError(details);
+        AppErrorReporter.record(
+          details.exception,
+          details.stack ?? StackTrace.current,
+          source: 'FlutterError',
+        );
+      };
+
+      PlatformDispatcher.instance.onError = (error, stackTrace) {
+        AppErrorReporter.record(
+          error,
+          stackTrace,
+          source: 'PlatformDispatcher',
+        );
+        return false;
+      };
+
       await Firebase.initializeApp();
       await initializeDateFormatting('ru_RU', null);
       await themeController.loadTheme();
