@@ -281,6 +281,28 @@ class _PultScreenState extends State<PultScreen> {
   GlobalKey _tabKeyFor(String clientId) =>
       _tabKeys.putIfAbsent(clientId, GlobalKey.new);
 
+  Future<void> _completeTabAndSelectNeighbor(String clientId) async {
+    final removeIndex = _tabs.indexWhere((item) => item.clientId == clientId);
+    String? nextActiveClientId;
+    if (removeIndex >= 0) {
+      final remaining = List<PultTabEntry>.from(_tabs)..removeAt(removeIndex);
+      if (remaining.isNotEmpty) {
+        final nextIndex = removeIndex < remaining.length
+            ? removeIndex
+            : remaining.length - 1;
+        nextActiveClientId = remaining[nextIndex].clientId;
+      }
+    }
+
+    if (mounted) {
+      setState(() {
+        _activeClientId = nextActiveClientId;
+      });
+    }
+
+    await PultStore.removeTab(clientId);
+  }
+
   void _scrollActiveTabIntoView({bool animated = true}) {
     final activeClientId = _activeClientId;
     if (activeClientId == null) return;
@@ -444,7 +466,7 @@ class _PultScreenState extends State<PultScreen> {
                                 db: db,
                                 tab: tab,
                                 onCompleted: () =>
-                                    PultStore.removeTab(tab.clientId),
+                                    _completeTabAndSelectNeighbor(tab.clientId),
                                 isActive: index == activeTabIndex,
                               );
                             },
@@ -1574,7 +1596,7 @@ class _PultWorkoutPageState extends State<_PultWorkoutPage>
     final focusNode = _nameFocusNodes[exercise.templateExerciseId]!;
     final colors = Theme.of(context).colorScheme;
     return SizedBox(
-      height: 72,
+      height: 92,
       child: AnimatedBuilder(
         animation: Listenable.merge([controller, focusNode]),
         builder: (context, child) {
@@ -1630,7 +1652,7 @@ class _PultWorkoutPageState extends State<_PultWorkoutPage>
                         ),
                         onTap: () => _scheduleSelectAll(controller),
                         minLines: 1,
-                        maxLines: isSingleLine ? 1 : 2,
+                        maxLines: isSingleLine ? 1 : 3,
                         keyboardType: TextInputType.multiline,
                         textAlign: TextAlign.center,
                         style: fieldStyle,
@@ -2284,8 +2306,8 @@ class _PultWorkoutPageState extends State<_PultWorkoutPage>
                         ],
                       ),
                     ),
-                    Expanded(
-                      flex: 2,
+                    SizedBox(
+                      width: 72,
                       child: Text(
                         'Вес',
                         textAlign: TextAlign.center,
@@ -2294,8 +2316,9 @@ class _PultWorkoutPageState extends State<_PultWorkoutPage>
                         ),
                       ),
                     ),
-                    Expanded(
-                      flex: 2,
+                    const SizedBox(width: 8),
+                    SizedBox(
+                      width: 72,
                       child: Text(
                         'Повт.',
                         textAlign: TextAlign.center,
@@ -2397,9 +2420,9 @@ class _PultWorkoutPageState extends State<_PultWorkoutPage>
                                     ],
                                   ),
                                 ),
-                                const SizedBox(width: 10),
-                                Expanded(
-                                  flex: 2,
+                                const SizedBox(width: 8),
+                                SizedBox(
+                                  width: 72,
                                   child: TextField(
                                     controller: kgController,
                                     focusNode:
@@ -2409,7 +2432,7 @@ class _PultWorkoutPageState extends State<_PultWorkoutPage>
                                       context,
                                       'Вес',
                                       highlighted: hasKg,
-                                    ),
+                                    ).copyWith(counterText: ''),
                                     onTap: () =>
                                         _scheduleSelectAll(kgController),
                                     textAlign: TextAlign.center,
@@ -2418,15 +2441,16 @@ class _PultWorkoutPageState extends State<_PultWorkoutPage>
                                           fontWeight: FontWeight.w700,
                                           letterSpacing: 0.1,
                                         ),
+                                    maxLength: 4,
                                     keyboardType:
                                         const TextInputType.numberWithOptions(
                                           decimal: true,
                                         ),
                                   ),
                                 ),
-                                const SizedBox(width: 10),
-                                Expanded(
-                                  flex: 2,
+                                const SizedBox(width: 8),
+                                SizedBox(
+                                  width: 72,
                                   child: TextField(
                                     controller: repsController,
                                     focusNode:
