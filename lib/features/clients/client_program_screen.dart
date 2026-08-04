@@ -9,6 +9,7 @@ import 'package:share_plus/share_plus.dart';
 
 import '../../app/app_db_scope.dart';
 import '../../db/app_db.dart';
+import '../workouts/exercise_change_flow.dart';
 import '../workouts/workout_screen.dart';
 
 class ClientProgramScreen extends StatefulWidget {
@@ -894,13 +895,20 @@ class _WorkoutPreviewSheetState extends State<WorkoutPreviewSheet> {
       ),
     );
 
-    if (next == null || next.trim().isEmpty) return;
+    final normalized = next?.trim() ?? '';
+    if (normalized.isEmpty || normalized == e.name.trim()) return;
+
+    if (!mounted) return;
+    final kind = await showExerciseChangeDialog(context);
+    if (kind == null || !mounted) return;
 
     final db = AppDbScope.of(context);
-    await db.renameWorkoutExerciseForClient(
+    await applyClientExerciseNameChange(
+      db: db,
       clientId: widget.clientId,
       templateExerciseId: e.templateExerciseId,
-      newName: next,
+      newName: normalized,
+      kind: kind,
     );
     await _patchExercises((current) {
       return current
@@ -910,7 +918,7 @@ class _WorkoutPreviewSheetState extends State<WorkoutPreviewSheet> {
               templateExerciseId: item.templateExerciseId,
               templateId: item.templateId,
               orderIndex: item.orderIndex,
-              name: next,
+              name: normalized,
               lastWeightKg: item.lastWeightKg,
               lastReps: item.lastReps,
               supersetGroup: item.supersetGroup,

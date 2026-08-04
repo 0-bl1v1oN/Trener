@@ -2906,6 +2906,11 @@ class _CalendarScreenState extends State<CalendarScreen>
   }
 
   Future<void> _addAppointmentToPult(AppointmentWithClient item) async {
+    final currentClient = await db.getClientById(item.client.id);
+    if (currentClient?.status != AppDb.activeClientStatus) {
+      _showCalendarMessage('Клиент находится в архиве.');
+      return;
+    }
     final overview = await db.getProgramOverview(item.client.id);
     final nextAbsoluteIndex = overview.st.completedInPlan;
 
@@ -4151,37 +4156,42 @@ class _CalendarScreenState extends State<CalendarScreen>
                                                     ),
                                                     size: 30,
                                                   ),
-                                                  const SizedBox(height: 4),
-                                                  _CalendarOverlayActionButton(
-                                                    tooltip: isInPult
-                                                        ? 'Обновить в Пульте'
-                                                        : 'Добавить в Пульт',
-                                                    backgroundColor: colors
-                                                        .tertiaryContainer
-                                                        .withValues(
-                                                          alpha: 0.78,
-                                                        ),
-                                                    borderColor: colors.tertiary
-                                                        .withValues(
-                                                          alpha: 0.18,
-                                                        ),
-                                                    onTap: () =>
-                                                        _addAppointmentToPult(
-                                                          it,
-                                                        ),
-                                                    child: _CalendarPngIcon(
-                                                      assetPath: isInPult
-                                                          ? 'assets/calendar/pult_added.png'
-                                                          : 'assets/calendar/pult_add.png',
-                                                      fallback: isInPult
-                                                          ? Icons
-                                                                .task_alt_rounded
-                                                          : Icons
-                                                                .dashboard_customize_rounded,
-                                                      size: 22,
+                                                  if (it.client.status ==
+                                                      AppDb
+                                                          .activeClientStatus) ...[
+                                                    const SizedBox(height: 4),
+                                                    _CalendarOverlayActionButton(
+                                                      tooltip: isInPult
+                                                          ? 'Обновить в Пульте'
+                                                          : 'Добавить в Пульт',
+                                                      backgroundColor: colors
+                                                          .tertiaryContainer
+                                                          .withValues(
+                                                            alpha: 0.78,
+                                                          ),
+                                                      borderColor: colors
+                                                          .tertiary
+                                                          .withValues(
+                                                            alpha: 0.18,
+                                                          ),
+                                                      onTap: () =>
+                                                          _addAppointmentToPult(
+                                                            it,
+                                                          ),
+                                                      child: _CalendarPngIcon(
+                                                        assetPath: isInPult
+                                                            ? 'assets/calendar/pult_added.png'
+                                                            : 'assets/calendar/pult_add.png',
+                                                        fallback: isInPult
+                                                            ? Icons
+                                                                  .task_alt_rounded
+                                                            : Icons
+                                                                  .dashboard_customize_rounded,
+                                                        size: 22,
+                                                      ),
+                                                      size: 30,
                                                     ),
-                                                    size: 30,
-                                                  ),
+                                                  ],
                                                 ],
                                               ),
                                             ],

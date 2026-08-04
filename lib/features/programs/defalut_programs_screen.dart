@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 
 import '../../app/app_db_scope.dart';
 import '../../db/app_db.dart';
+import '../workouts/exercise_change_flow.dart';
 
 class DefaultProgramsScreen extends StatefulWidget {
   const DefaultProgramsScreen({super.key});
@@ -163,7 +164,6 @@ class _EditableTemplateTileState extends State<_EditableTemplateTile> {
   bool _futureInitialized = false;
   final Map<int, TextEditingController> _nameCtrls = {};
   final Map<int, FocusNode> _nameFocusNodes = {};
-  final Map<int, Timer> _nameSaveDebounces = {};
   final Map<int, String> _persistedExerciseNames = {};
   final Set<int> _nameSaveInFlight = <int>{};
   List<WorkoutTemplateExercise> _lastExercises = const [];
@@ -210,9 +210,6 @@ class _EditableTemplateTileState extends State<_EditableTemplateTile> {
     for (final f in _nameFocusNodes.values) {
       f.dispose();
     }
-    for (final t in _nameSaveDebounces.values) {
-      t.cancel();
-    }
     super.dispose();
   }
 
@@ -221,9 +218,7 @@ class _EditableTemplateTileState extends State<_EditableTemplateTile> {
     _persistedExerciseNames.putIfAbsent(id, () => e.name);
 
     final controller = _nameCtrls.putIfAbsent(id, () {
-      final c = TextEditingController(text: e.name);
-      c.addListener(() => _scheduleExerciseNameSave(id));
-      return c;
+      return TextEditingController(text: e.name);
     });
 
     final focusNode = _nameFocusNodes.putIfAbsent(id, () {
@@ -239,7 +234,7 @@ class _EditableTemplateTileState extends State<_EditableTemplateTile> {
           return;
         }
 
-        _scheduleExerciseNameSave(id, immediate: true);
+        unawaited(_saveExerciseName(id));
 
         final c = _nameCtrls[id];
         if (c == null) return;
@@ -271,23 +266,6 @@ class _EditableTemplateTileState extends State<_EditableTemplateTile> {
     return _nameFocusNodes.putIfAbsent(templateExerciseId, FocusNode.new);
   }
 
-  void _scheduleExerciseNameSave(
-    int templateExerciseId, {
-    bool immediate = false,
-  }) {
-    _nameSaveDebounces[templateExerciseId]?.cancel();
-
-    if (immediate) {
-      _saveExerciseName(templateExerciseId);
-      return;
-    }
-
-    _nameSaveDebounces[templateExerciseId] = Timer(
-      const Duration(milliseconds: 500),
-      () => _saveExerciseName(templateExerciseId),
-    );
-  }
-
   Future<void> _saveExerciseName(int templateExerciseId) async {
     if (!mounted) return;
     final controller = _nameCtrls[templateExerciseId];
@@ -297,25 +275,37 @@ class _EditableTemplateTileState extends State<_EditableTemplateTile> {
     if (nextName.isEmpty) return;
 
     final savedName = _persistedExerciseNames[templateExerciseId];
-    if (nextName == savedName) return;
+    if (nextName == savedName?.trim()) return;
     if (_nameSaveInFlight.contains(templateExerciseId)) return;
 
     _nameSaveInFlight.add(templateExerciseId);
     try {
       final db = AppDbScope.of(context);
-      await db.renameWorkoutTemplateExercise(
+      final kind = await showExerciseChangeDialog(context);
+      if (!mounted) return;
+      if (kind == null) {
+        _restoreExerciseName(templateExerciseId, savedName);
+        return;
+      }
+      await applyTemplateExerciseNameChange(
+        db: db,
         templateExerciseId: templateExerciseId,
         newName: nextName,
+        kind: kind,
       );
       _persistedExerciseNames[templateExerciseId] = nextName;
     } finally {
       _nameSaveInFlight.remove(templateExerciseId);
-      final current = controller.text.trim();
-      if (current.isNotEmpty &&
-          current != _persistedExerciseNames[templateExerciseId]) {
-        _scheduleExerciseNameSave(templateExerciseId);
-      }
     }
+  }
+
+  void _restoreExerciseName(int templateExerciseId, String? savedName) {
+    final controller = _nameCtrls[templateExerciseId];
+    if (controller == null || savedName == null) return;
+    controller.value = TextEditingValue(
+      text: savedName,
+      selection: TextSelection.collapsed(offset: savedName.length),
+    );
   }
 
   Future<void> _replaceExerciseNameByGender(WorkoutTemplateExercise e) async {
@@ -364,7 +354,17 @@ class _EditableTemplateTileState extends State<_EditableTemplateTile> {
     final replacement = next?.trim() ?? '';
     if (replacement.isEmpty || replacement == e.name.trim()) return;
 
+    if (!mounted) return;
+    final kind = await showExerciseChangeDialog(context);
+    if (kind == null || !mounted) return;
+
     final db = AppDbScope.of(context);
+    if (kind == ExerciseChangeKind.newExercise) {
+      await db.replaceTemplateExerciseIdentitiesByGenderName(
+        gender: widget.template.gender,
+        exerciseName: e.name,
+      );
+    }
     final changed = await db.replaceTemplateExerciseNameByGender(
       gender: widget.template.gender,
       oldName: e.name,

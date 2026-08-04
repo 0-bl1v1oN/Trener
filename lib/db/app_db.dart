@@ -726,45 +726,72 @@ class AppDb extends _$AppDb {
     required String clientId,
     required int templateExerciseId,
   }) async {
-    return transaction(() async {
-      final sourceType = templateExerciseId < 0
-          ? _clientAddedExerciseSource
-          : _templateExerciseSource;
-      final sourceId = templateExerciseId.abs();
-      final now = DateTime.now();
+    final sourceType = templateExerciseId < 0
+        ? _clientAddedExerciseSource
+        : _templateExerciseSource;
+    return transaction(
+      () => _replaceExerciseIdentityBinding(
+        clientId: clientId,
+        sourceType: sourceType,
+        sourceId: templateExerciseId.abs(),
+      ),
+    );
+  }
 
-      await customUpdate(
-        '''
-        UPDATE exercise_identity_bindings
-        SET is_current = 0, retired_at = ?
-        WHERE client_id = ?
-          AND source_type = ?
-          AND source_id = ?
-          AND is_current = 1
-        ''',
-        variables: [
-          Variable<DateTime>(now),
-          Variable.withString(clientId),
-          Variable.withString(sourceType),
-          Variable.withInt(sourceId),
-        ],
-        updates: {exerciseIdentityBindings},
-      );
+  /// Меняет общую identity базового упражнения в редакторе шаблонов.
+  Future<String> replaceTemplateExerciseIdentity({
+    required int templateExerciseId,
+  }) {
+    return transaction(
+      () => _replaceExerciseIdentityBinding(
+        sourceType: _templateExerciseSource,
+        sourceId: templateExerciseId,
+      ),
+    );
+  }
 
-      final identityId = await _createExerciseIdentity();
-      await into(exerciseIdentityBindings).insert(
-        ExerciseIdentityBindingsCompanion.insert(
-          clientId: Value(clientId),
-          sourceType: sourceType,
-          sourceId: sourceId,
-          identityId: identityId,
-        ),
-      );
-      final identity = await (select(
-        exerciseIdentities,
-      )..where((t) => t.id.equals(identityId))).getSingle();
-      return identity.externalId;
-    });
+  Future<String> _replaceExerciseIdentityBinding({
+    required String sourceType,
+    required int sourceId,
+    String? clientId,
+  }) async {
+    final now = DateTime.now();
+    final clientPredicate = clientId == null
+        ? 'client_id IS NULL'
+        : 'client_id = ?';
+    final variables = <Variable<Object>>[
+      Variable<DateTime>(now),
+      if (clientId != null) Variable.withString(clientId),
+      Variable.withString(sourceType),
+      Variable.withInt(sourceId),
+    ];
+
+    await customUpdate(
+      '''
+      UPDATE exercise_identity_bindings
+      SET is_current = 0, retired_at = ?
+      WHERE $clientPredicate
+        AND source_type = ?
+        AND source_id = ?
+        AND is_current = 1
+      ''',
+      variables: variables,
+      updates: {exerciseIdentityBindings},
+    );
+
+    final identityId = await _createExerciseIdentity();
+    await into(exerciseIdentityBindings).insert(
+      ExerciseIdentityBindingsCompanion.insert(
+        clientId: Value(clientId),
+        sourceType: sourceType,
+        sourceId: sourceId,
+        identityId: identityId,
+      ),
+    );
+    final identity = await (select(
+      exerciseIdentities,
+    )..where((t) => t.id.equals(identityId))).getSingle();
+    return identity.externalId;
   }
 
   Future<void> _backfillExternalIdentities() async {
@@ -1544,7 +1571,24 @@ class AppDb extends _$AppDb {
 
   // --- Clients ---
   Future<List<Client>> getAllClients() =>
-      (select(clients)..orderBy([(t) => OrderingTerm.asc(t.name)])).get();
+      getClientsByStatus(activeClientStatus);
+
+  Future<List<Client>> getArchivedClients() =>
+      getClientsByStatus(archivedClientStatus);
+
+  Future<List<Client>> getClientsByStatus(String status) {
+    if (status != activeClientStatus && status != archivedClientStatus) {
+      throw ArgumentError.value(
+        status,
+        'status',
+        'Недопустимый статус клиента',
+      );
+    }
+    return (select(clients)
+          ..where((t) => t.status.equals(status))
+          ..orderBy([(t) => OrderingTerm.asc(t.name)]))
+        .get();
+  }
 
   Future<Client?> getClientById(String id) =>
       (select(clients)..where((t) => t.id.equals(id))).getSingleOrNull();
@@ -1588,6 +1632,18 @@ class AppDb extends _$AppDb {
 
   Future<int> deleteClientById(String id) =>
       (delete(clients)..where((t) => t.id.equals(id))).go();
+
+  Future<void> archiveClient(String id) =>
+      _setClientStatus(id, archivedClientStatus);
+
+  Future<void> restoreClient(String id) =>
+      _setClientStatus(id, activeClientStatus);
+
+  Future<void> _setClientStatus(String id, String status) async {
+    await (update(clients)..where((t) => t.id.equals(id))).write(
+      ClientsCompanion(status: Value(status)),
+    );
+  }
 
   Future<void> initializeSupersetsForNewClient(String clientId) async {
     await transaction(() async {
@@ -1968,6 +2024,7 @@ class AppDb extends _$AppDb {
       'LEFT JOIN client_plan_end_alert_overrides o '
       'ON o.client_id = c.${clients.id.name} '
       'WHERE c.${clients.planEnd.name} IS NOT NULL '
+      "AND c.${clients.status.name} = 'ACTIVE' "
       'AND COALESCE(o.alert_on, c.${clients.planEnd.name}) >= ? '
       'AND COALESCE(o.alert_on, c.${clients.planEnd.name}) < ? '
       "AND COALESCE(c.${clients.plan.name}, '') != 'Пробный' "
@@ -1995,9 +2052,12 @@ class AppDb extends _$AppDb {
     await _ensureClientPaymentRemindersTable();
 
     final q = customSelect(
-      "SELECT date(datetime(CASE WHEN remind_on > 20000000000 THEN remind_on / 1000 ELSE remind_on END, 'unixepoch', 'localtime')) AS d, COUNT(*) AS c "
-      'FROM client_payment_reminders '
-      'WHERE remind_on >= ? AND remind_on < ? '
+      "SELECT date(datetime(CASE WHEN r.remind_on > 20000000000 THEN r.remind_on / 1000 ELSE r.remind_on END, 'unixepoch', 'localtime')) AS d, COUNT(*) AS c "
+      'FROM client_payment_reminders r '
+      'INNER JOIN ${clients.actualTableName} c '
+      'ON c.${clients.id.name} = r.client_id '
+      'WHERE r.remind_on >= ? AND r.remind_on < ? '
+      "AND c.${clients.status.name} = 'ACTIVE' "
       'GROUP BY d',
       variables: [Variable<DateTime>(from), Variable<DateTime>(to)],
       readsFrom: {clients},
@@ -2029,6 +2089,7 @@ class AppDb extends _$AppDb {
       'INNER JOIN ${clients.actualTableName} c '
       'ON c.${clients.id.name} = r.client_id '
       'WHERE r.remind_on >= ? AND r.remind_on < ? '
+      "AND c.${clients.status.name} = 'ACTIVE' "
       'ORDER BY c.${clients.name.name} ASC',
       variables: [Variable<DateTime>(dayStart), Variable<DateTime>(dayEnd)],
       readsFrom: {clients},
@@ -2102,6 +2163,7 @@ class AppDb extends _$AppDb {
     final q = (select(clients)
       ..where(
         (t) =>
+            t.status.equals(activeClientStatus) &
             t.planEnd.isNotNull() &
             t.planEnd.isBiggerOrEqualValue(dayStart) &
             t.planEnd.isSmallerThanValue(dayEnd) &
@@ -2125,6 +2187,7 @@ class AppDb extends _$AppDb {
       'LEFT JOIN client_plan_end_alert_overrides o '
       'ON o.client_id = c.${clients.id.name} '
       'WHERE c.${clients.planEnd.name} IS NOT NULL '
+      "AND c.${clients.status.name} = 'ACTIVE' "
       "AND COALESCE(c.${clients.plan.name}, '') != 'Пробный' "
       'AND COALESCE(o.alert_on, c.${clients.planEnd.name}) >= ? '
       'AND COALESCE(o.alert_on, c.${clients.planEnd.name}) < ? '
@@ -4212,6 +4275,38 @@ class AppDb extends _$AppDb {
       ],
       updates: {workoutTemplateExercises, workoutTemplates},
     );
+  }
+
+  Future<int> replaceTemplateExerciseIdentitiesByGenderName({
+    required String gender,
+    required String exerciseName,
+  }) async {
+    final normalized = exerciseName.trim();
+    if (normalized.isEmpty) return 0;
+
+    return transaction(() async {
+      final rows = await customSelect(
+        'SELECT e.${workoutTemplateExercises.id.name} AS exercise_id '
+        'FROM ${workoutTemplateExercises.actualTableName} e '
+        'INNER JOIN ${workoutTemplates.actualTableName} t '
+        'ON t.${workoutTemplates.id.name} = e.${workoutTemplateExercises.templateId.name} '
+        'WHERE e.${workoutTemplateExercises.name.name} = ? '
+        'AND t.${workoutTemplates.gender.name} = ?',
+        variables: [
+          Variable.withString(normalized),
+          Variable.withString(gender),
+        ],
+        readsFrom: {workoutTemplateExercises, workoutTemplates},
+      ).get();
+
+      for (final row in rows) {
+        await _replaceExerciseIdentityBinding(
+          sourceType: _templateExerciseSource,
+          sourceId: row.read<int>('exercise_id'),
+        );
+      }
+      return rows.length;
+    });
   }
 
   Future<void> renameWorkoutTemplateExercise({

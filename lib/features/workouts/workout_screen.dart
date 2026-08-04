@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 
 import '../../app/app_db_scope.dart';
 import '../../db/app_db.dart';
+import 'exercise_change_flow.dart';
 
 class WorkoutScreen extends StatefulWidget {
   final String clientId;
@@ -45,7 +46,6 @@ class _WorkoutScreenState extends State<WorkoutScreen> {
   final Map<int, TextEditingController> _repsCtrls = {};
   final Map<int, TextEditingController> _nameCtrls = {};
   final Map<int, FocusNode> _nameFocusNodes = {};
-  final Map<int, Timer> _nameSaveDebounces = {};
   final Map<int, String> _persistedExerciseNames = {};
   final Set<int> _nameSaveInFlight = <int>{};
 
@@ -78,9 +78,6 @@ class _WorkoutScreenState extends State<WorkoutScreen> {
     }
     for (final f in _nameFocusNodes.values) {
       f.dispose();
-    }
-    for (final t in _nameSaveDebounces.values) {
-      t.cancel();
     }
     _draftAutosaveDebounce?.cancel();
     super.dispose();
@@ -176,16 +173,14 @@ class _WorkoutScreenState extends State<WorkoutScreen> {
     _persistedExerciseNames.putIfAbsent(id, () => e.name);
 
     final controller = _nameCtrls.putIfAbsent(id, () {
-      final c = TextEditingController(text: e.name);
-      c.addListener(() => _scheduleExerciseNameSave(id));
-      return c;
+      return TextEditingController(text: e.name);
     });
 
     final focusNode = _nameFocusNodes.putIfAbsent(id, () {
       final f = FocusNode();
       f.addListener(() {
         if (f.hasFocus) return;
-        _scheduleExerciseNameSave(id, immediate: true);
+        unawaited(_saveExerciseName(id));
 
         final trimmed = controller.text.trim();
         if (trimmed.isNotEmpty) return;
@@ -215,23 +210,6 @@ class _WorkoutScreenState extends State<WorkoutScreen> {
     return _nameFocusNodes.putIfAbsent(templateExerciseId, FocusNode.new);
   }
 
-  void _scheduleExerciseNameSave(
-    int templateExerciseId, {
-    bool immediate = false,
-  }) {
-    _nameSaveDebounces[templateExerciseId]?.cancel();
-
-    if (immediate) {
-      _saveExerciseName(templateExerciseId);
-      return;
-    }
-
-    _nameSaveDebounces[templateExerciseId] = Timer(
-      const Duration(milliseconds: 550),
-      () => _saveExerciseName(templateExerciseId),
-    );
-  }
-
   Future<void> _saveExerciseName(int templateExerciseId) async {
     if (!mounted) return;
     final controller = _nameCtrls[templateExerciseId];
@@ -241,27 +219,39 @@ class _WorkoutScreenState extends State<WorkoutScreen> {
     if (nextName.isEmpty) return;
 
     final savedName = _persistedExerciseNames[templateExerciseId];
-    if (nextName == savedName) return;
+    if (nextName == savedName?.trim()) return;
 
     if (_nameSaveInFlight.contains(templateExerciseId)) return;
 
     _nameSaveInFlight.add(templateExerciseId);
     try {
-      await db.renameWorkoutExerciseForClient(
+      final kind = await showExerciseChangeDialog(context);
+      if (!mounted) return;
+      if (kind == null) {
+        _restoreExerciseName(templateExerciseId, savedName);
+        return;
+      }
+      await applyClientExerciseNameChange(
+        db: db,
         clientId: widget.clientId,
         templateExerciseId: templateExerciseId,
         newName: nextName,
+        kind: kind,
       );
       _persistedExerciseNames[templateExerciseId] = nextName;
       _scheduleDraftAutosave();
     } finally {
       _nameSaveInFlight.remove(templateExerciseId);
-      final current = controller.text.trim();
-      if (current.isNotEmpty &&
-          current != _persistedExerciseNames[templateExerciseId]) {
-        _scheduleExerciseNameSave(templateExerciseId);
-      }
     }
+  }
+
+  void _restoreExerciseName(int templateExerciseId, String? savedName) {
+    final controller = _nameCtrls[templateExerciseId];
+    if (controller == null || savedName == null) return;
+    controller.value = TextEditingValue(
+      text: savedName,
+      selection: TextSelection.collapsed(offset: savedName.length),
+    );
   }
 
   Future<void> _toggleSupersetForExercise(WorkoutExerciseVm e) async {

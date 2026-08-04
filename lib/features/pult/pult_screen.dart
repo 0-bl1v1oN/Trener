@@ -14,6 +14,7 @@ import 'package:video_thumbnail/video_thumbnail.dart';
 
 import '../../app/app_db_scope.dart';
 import '../../db/app_db.dart';
+import '../workouts/exercise_change_flow.dart';
 import 'pult_store.dart';
 
 class _PultHeaderVideoWarmup {
@@ -317,7 +318,14 @@ class _PultScreenState extends State<PultScreen> {
   }
 
   Future<void> _reloadTabs() async {
-    final tabs = await PultStore.loadTabs();
+    if (!_dbInited) return;
+    final storedTabs = await PultStore.loadTabs();
+    final activeClientIds = (await db.getAllClients())
+        .map((client) => client.id)
+        .toSet();
+    final tabs = storedTabs
+        .where((tab) => activeClientIds.contains(tab.clientId))
+        .toList(growable: false);
     if (!mounted) return;
     setState(() {
       _tabs = tabs;
@@ -547,7 +555,6 @@ class _PultWorkoutPageState extends State<_PultWorkoutPage>
   final Map<int, FocusNode> _kgFocusNodes = <int, FocusNode>{};
   final Map<int, FocusNode> _repsFocusNodes = <int, FocusNode>{};
   final Map<int, FocusNode> _nameFocusNodes = <int, FocusNode>{};
-  final Map<int, Timer> _nameSaveDebounces = <int, Timer>{};
   final Set<int> _nameSaveInFlight = <int>{};
   final Map<int, String> _persistedExerciseNames = <int, String>{};
   final Map<int, GlobalKey> _exerciseKeys = <int, GlobalKey>{};
@@ -1083,10 +1090,15 @@ class _PultWorkoutPageState extends State<_PultWorkoutPage>
     for (final controller in [
       ..._kgControllers.values,
       ..._repsControllers.values,
+      ..._nameControllers.values,
     ]) {
       controller.dispose();
     }
-    for (final node in [..._kgFocusNodes.values, ..._repsFocusNodes.values]) {
+    for (final node in [
+      ..._kgFocusNodes.values,
+      ..._repsFocusNodes.values,
+      ..._nameFocusNodes.values,
+    ]) {
       node.dispose();
     }
     _headerVideoController?.dispose();
@@ -1134,10 +1146,9 @@ class _PultWorkoutPageState extends State<_PultWorkoutPage>
         _repsControllers[e.templateExerciseId] = TextEditingController(
           text: e.lastReps?.toString() ?? '',
         )..addListener(_handleInputChanged);
-        _nameControllers[e.templateExerciseId] =
-            TextEditingController(text: e.name)..addListener(() {
-              _scheduleExerciseNameSave(e.templateExerciseId);
-            });
+        _nameControllers[e.templateExerciseId] = TextEditingController(
+          text: e.name,
+        );
         _persistedExerciseNames[e.templateExerciseId] = e.name;
 
         _kgFocusNodes[e.templateExerciseId] = FocusNode()
@@ -1166,7 +1177,7 @@ class _PultWorkoutPageState extends State<_PultWorkoutPage>
               _scheduleSelectAll(controller);
               _scheduleBringIntoView(e.templateExerciseId);
             } else {
-              _scheduleExerciseNameSave(e.templateExerciseId, immediate: true);
+              unawaited(_saveExerciseName(e.templateExerciseId));
             }
           });
       }
@@ -1206,15 +1217,11 @@ class _PultWorkoutPageState extends State<_PultWorkoutPage>
       node.dispose();
     }
 
-    for (final timer in _nameSaveDebounces.values) {
-      timer.cancel();
-    }
     _kgControllers.clear();
     _repsControllers.clear();
     _kgFocusNodes.clear();
     _repsFocusNodes.clear();
     _nameFocusNodes.clear();
-    _nameSaveDebounces.clear();
     _nameSaveInFlight.clear();
     _persistedExerciseNames.clear();
     _exerciseKeys.clear();
@@ -1463,21 +1470,6 @@ class _PultWorkoutPageState extends State<_PultWorkoutPage>
     }
   }
 
-  void _scheduleExerciseNameSave(
-    int templateExerciseId, {
-    bool immediate = false,
-  }) {
-    _nameSaveDebounces[templateExerciseId]?.cancel();
-    if (immediate) {
-      unawaited(_saveExerciseName(templateExerciseId));
-      return;
-    }
-    _nameSaveDebounces[templateExerciseId] = Timer(
-      const Duration(milliseconds: 450),
-      () => unawaited(_saveExerciseName(templateExerciseId)),
-    );
-  }
-
   Future<void> _saveExerciseName(int templateExerciseId) async {
     if (_nameSaveInFlight.contains(templateExerciseId)) return;
     final controller = _nameControllers[templateExerciseId];
@@ -1487,24 +1479,36 @@ class _PultWorkoutPageState extends State<_PultWorkoutPage>
     if (nextName.isEmpty) return;
 
     final persisted = _persistedExerciseNames[templateExerciseId];
-    if (persisted == nextName) return;
+    if (persisted?.trim() == nextName) return;
 
     _nameSaveInFlight.add(templateExerciseId);
     try {
-      await widget.db.renameWorkoutExerciseForClient(
+      final kind = await showExerciseChangeDialog(context);
+      if (!mounted) return;
+      if (kind == null) {
+        _restoreExerciseName(templateExerciseId, persisted);
+        return;
+      }
+      await applyClientExerciseNameChange(
+        db: widget.db,
         clientId: widget.tab.clientId,
         templateExerciseId: templateExerciseId,
         newName: nextName,
+        kind: kind,
       );
       _persistedExerciseNames[templateExerciseId] = nextName;
     } finally {
       _nameSaveInFlight.remove(templateExerciseId);
-      final current = controller.text.trim();
-      if (current.isNotEmpty &&
-          current != _persistedExerciseNames[templateExerciseId]) {
-        _scheduleExerciseNameSave(templateExerciseId);
-      }
     }
+  }
+
+  void _restoreExerciseName(int templateExerciseId, String? persisted) {
+    final controller = _nameControllers[templateExerciseId];
+    if (controller == null || persisted == null) return;
+    controller.value = TextEditingValue(
+      text: persisted,
+      selection: TextSelection.collapsed(offset: persisted.length),
+    );
   }
 
   void _scheduleSelectAll(TextEditingController controller) {

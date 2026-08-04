@@ -5,6 +5,7 @@ import 'package:intl/intl.dart';
 
 import '../../app/app_db_scope.dart';
 import '../../db/app_db.dart';
+import '../pult/pult_store.dart';
 
 class ClientsScreen extends StatefulWidget {
   const ClientsScreen({super.key});
@@ -237,12 +238,14 @@ class _ClientsScreenState extends State<ClientsScreen> {
     });
   }
 
-  Future<void> _deleteClient(String id) async {
+  Future<void> _archiveClient(String id) async {
     final ok = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('Удалить клиента?'),
-        content: const Text('Действие нельзя отменить.'),
+        title: const Text('Архивировать клиента?'),
+        content: const Text(
+          'Клиент исчезнет из активного списка, но вся история тренировок и данные сохранятся.',
+        ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context, false),
@@ -250,7 +253,7 @@ class _ClientsScreenState extends State<ClientsScreen> {
           ),
           FilledButton(
             onPressed: () => Navigator.pop(context, true),
-            child: const Text('Удалить'),
+            child: const Text('Архивировать'),
           ),
         ],
       ),
@@ -258,7 +261,24 @@ class _ClientsScreenState extends State<ClientsScreen> {
 
     if (ok != true) return;
 
-    await db.deleteClientById(id);
+    await db.archiveClient(id);
+    await PultStore.removeTab(id);
+    if (!mounted) return;
+    setState(() {
+      _clientsFuture = db.getAllClients();
+    });
+  }
+
+  Future<void> _showArchivedClients() async {
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      useSafeArea: true,
+      builder: (context) => FractionallySizedBox(
+        heightFactor: 0.86,
+        child: _ArchivedClientsSheet(db: db),
+      ),
+    );
     if (!mounted) return;
     setState(() {
       _clientsFuture = db.getAllClients();
@@ -274,6 +294,11 @@ class _ClientsScreenState extends State<ClientsScreen> {
         appBar: AppBar(
           title: const Text('Клиенты'),
           actions: [
+            IconButton(
+              onPressed: _showArchivedClients,
+              icon: const Icon(Icons.archive_outlined),
+              tooltip: 'Архив клиентов',
+            ),
             IconButton(
               onPressed: _addClient,
               icon: const Icon(Icons.add),
@@ -369,7 +394,7 @@ class _ClientsScreenState extends State<ClientsScreen> {
                               _clientsFuture = db.getAllClients();
                             });
                           },
-                          onDelete: () => _deleteClient(c.id),
+                          onArchive: () => _archiveClient(c.id),
                         ),
                       );
                     }),
@@ -380,6 +405,123 @@ class _ClientsScreenState extends State<ClientsScreen> {
           },
         ),
       ),
+    );
+  }
+}
+
+class _ArchivedClientsSheet extends StatefulWidget {
+  const _ArchivedClientsSheet({required this.db});
+
+  final AppDb db;
+
+  @override
+  State<_ArchivedClientsSheet> createState() => _ArchivedClientsSheetState();
+}
+
+class _ArchivedClientsSheetState extends State<_ArchivedClientsSheet> {
+  late Future<List<Client>> _future = widget.db.getArchivedClients();
+
+  Future<void> _restore(Client client) async {
+    await widget.db.restoreClient(client.id);
+    if (!mounted) return;
+    setState(() {
+      _future = widget.db.getArchivedClients();
+    });
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('${client.name} восстановлен в активный список')),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    return Column(
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(20, 10, 8, 8),
+          child: Row(
+            children: [
+              Icon(Icons.archive_outlined, color: colors.primary),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  'Архив клиентов',
+                  style: Theme.of(
+                    context,
+                  ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w700),
+                ),
+              ),
+              IconButton(
+                onPressed: () => Navigator.pop(context),
+                icon: const Icon(Icons.close),
+                tooltip: 'Закрыть',
+              ),
+            ],
+          ),
+        ),
+        const Divider(height: 1),
+        Expanded(
+          child: FutureBuilder<List<Client>>(
+            future: _future,
+            builder: (context, snapshot) {
+              if (snapshot.connectionState != ConnectionState.done) {
+                return const Center(child: CircularProgressIndicator());
+              }
+              if (snapshot.hasError) {
+                return Center(child: Text('Ошибка: ${snapshot.error}'));
+              }
+
+              final clients = snapshot.data ?? const <Client>[];
+              if (clients.isEmpty) {
+                return Center(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(
+                        Icons.inventory_2_outlined,
+                        size: 48,
+                        color: colors.onSurfaceVariant,
+                      ),
+                      const SizedBox(height: 10),
+                      const Text('Архив пуст'),
+                    ],
+                  ),
+                );
+              }
+
+              return ListView.separated(
+                padding: const EdgeInsets.all(12),
+                itemCount: clients.length,
+                separatorBuilder: (_, __) => const SizedBox(height: 8),
+                itemBuilder: (context, index) {
+                  final client = clients[index];
+                  final details = [
+                    if (client.gender?.trim().isNotEmpty == true)
+                      'Пол: ${client.gender}',
+                    if (client.plan?.trim().isNotEmpty == true)
+                      'Абонемент: ${client.plan}',
+                  ].join(' · ');
+                  return Card(
+                    margin: EdgeInsets.zero,
+                    child: ListTile(
+                      leading: const CircleAvatar(
+                        child: Icon(Icons.person_outline),
+                      ),
+                      title: Text(client.name),
+                      subtitle: details.isEmpty ? null : Text(details),
+                      trailing: FilledButton.tonalIcon(
+                        onPressed: () => _restore(client),
+                        icon: const Icon(Icons.restore, size: 18),
+                        label: const Text('Восстановить'),
+                      ),
+                    ),
+                  );
+                },
+              );
+            },
+          ),
+        ),
+      ],
     );
   }
 }
@@ -573,13 +715,13 @@ class _ClientCard extends StatelessWidget {
   const _ClientCard({
     required this.client,
     required this.onTap,
-    required this.onDelete,
+    required this.onArchive,
     this.dateText,
   });
 
   final Client client;
   final VoidCallback onTap;
-  final VoidCallback onDelete;
+  final VoidCallback onArchive;
   final String? dateText;
 
   @override
@@ -688,17 +830,10 @@ class _ClientCard extends StatelessWidget {
                   ),
                 ),
                 IconButton(
-                  icon: Image.asset(
-                    'assets/clients/client_delete.png',
-                    width: 22,
-                    height: 22,
-                    fit: BoxFit.contain,
-                    errorBuilder: (_, __, ___) =>
-                        const Icon(Icons.delete_outline),
-                  ),
-                  tooltip: 'Удалить',
-                  color: colors.error,
-                  onPressed: onDelete,
+                  icon: const Icon(Icons.archive_outlined),
+                  tooltip: 'Архивировать',
+                  color: colors.onSurfaceVariant,
+                  onPressed: onArchive,
                 ),
               ],
             ),
