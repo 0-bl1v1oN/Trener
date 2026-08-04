@@ -6,6 +6,7 @@ import 'package:intl/intl.dart';
 import '../../app/app_db_scope.dart';
 import '../../db/app_db.dart';
 import '../pult/pult_store.dart';
+import 'client_subscription_status.dart';
 
 class ClientsScreen extends StatefulWidget {
   const ClientsScreen({super.key});
@@ -343,6 +344,20 @@ class _ClientsScreenState extends State<ClientsScreen> {
 
             final maleCount = clients.where((c) => c.gender == 'М').length;
             final femaleCount = clients.where((c) => c.gender == 'Ж').length;
+            final subscriptionNow = DateTime.now();
+            final subscriptionStatuses = <String, ClientSubscriptionStatus>{
+              for (final client in clients)
+                client.id: resolveClientSubscriptionStatus(
+                  client.planEnd,
+                  now: subscriptionNow,
+                ),
+            };
+            final activeSubscriptionCount = subscriptionStatuses.values
+                .where((status) => status == ClientSubscriptionStatus.active)
+                .length;
+            final expiredSubscriptionCount = subscriptionStatuses.values
+                .where((status) => status == ClientSubscriptionStatus.expired)
+                .length;
 
             return ValueListenableBuilder<String>(
               valueListenable: _searchQueryNotifier,
@@ -364,6 +379,8 @@ class _ClientsScreenState extends State<ClientsScreen> {
                       total: clients.length,
                       male: maleCount,
                       female: femaleCount,
+                      activeSubscriptions: activeSubscriptionCount,
+                      expiredSubscriptions: expiredSubscriptionCount,
                     ),
                     const SizedBox(height: 12),
                     _ClientsSearchField(
@@ -386,6 +403,7 @@ class _ClientsScreenState extends State<ClientsScreen> {
                         padding: const EdgeInsets.only(bottom: 10),
                         child: _ClientCard(
                           client: c,
+                          subscriptionStatus: subscriptionStatuses[c.id]!,
                           dateText: dateText,
                           onTap: () async {
                             await context.push('/clients/${c.id}');
@@ -612,11 +630,15 @@ class _ClientsSummaryCard extends StatelessWidget {
     required this.total,
     required this.male,
     required this.female,
+    required this.activeSubscriptions,
+    required this.expiredSubscriptions,
   });
 
   final int total;
   final int male;
   final int female;
+  final int activeSubscriptions;
+  final int expiredSubscriptions;
 
   @override
   Widget build(BuildContext context) {
@@ -662,6 +684,23 @@ class _ClientsSummaryCard extends StatelessWidget {
                 assetPath: 'assets/clients/summary_female.png',
                 fallbackIcon: Icons.female,
                 label: 'Ж: $female',
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              _SummaryChip(
+                assetPath: 'assets/clients/meta_active.png',
+                fallbackIcon: Icons.check_circle_outline,
+                label: 'Активные: $activeSubscriptions',
+              ),
+              _SummaryChip(
+                assetPath: 'assets/clients/meta_inactive.png',
+                fallbackIcon: Icons.event_busy_outlined,
+                label: 'Истёкшие: $expiredSubscriptions',
               ),
             ],
           ),
@@ -714,12 +753,14 @@ class _SummaryChip extends StatelessWidget {
 class _ClientCard extends StatelessWidget {
   const _ClientCard({
     required this.client,
+    required this.subscriptionStatus,
     required this.onTap,
     required this.onArchive,
     this.dateText,
   });
 
   final Client client;
+  final ClientSubscriptionStatus subscriptionStatus;
   final VoidCallback onTap;
   final VoidCallback onArchive;
   final String? dateText;
@@ -727,34 +768,9 @@ class _ClientCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final colors = Theme.of(context).colorScheme;
-    final now = DateTime.now();
-
-    final subtitleParts = <String>[];
 
     final gender = client.gender ?? '—';
     final plan = client.plan ?? '—';
-
-    int? daysLeft;
-    if (client.planEnd != null) {
-      final end = DateTime(
-        client.planEnd!.year,
-        client.planEnd!.month,
-        client.planEnd!.day,
-      );
-      final today = DateTime(now.year, now.month, now.day);
-      daysLeft = end.difference(today).inDays;
-    }
-
-    String statusText = 'Без даты';
-    if (daysLeft != null) {
-      if (daysLeft < 0) {
-        statusText = 'Истёк';
-      } else if (daysLeft <= 3) {
-        statusText = 'Скоро конец';
-      } else {
-        statusText = 'Активен';
-      }
-    }
 
     return Material(
       color: Colors.transparent,
@@ -806,10 +822,12 @@ class _ClientCard extends StatelessWidget {
                             label: 'Абонемент: $plan',
                           ),
                           _MetaChip(
-                            assetIcon: statusText == 'Активен'
+                            assetIcon:
+                                subscriptionStatus ==
+                                    ClientSubscriptionStatus.active
                                 ? 'assets/clients/meta_active.png'
                                 : 'assets/clients/meta_inactive.png',
-                            label: statusText,
+                            label: subscriptionStatus.label,
                           ),
                         ],
                       ),
