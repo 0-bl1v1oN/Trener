@@ -2,12 +2,15 @@ import 'dart:convert';
 import 'dart:io';
 import 'package:drift/drift.dart';
 import 'package:drift_flutter/drift_flutter.dart';
+import 'package:uuid/uuid.dart';
 
 part 'app_db.g.dart';
 
 class Clients extends Table {
   TextColumn get id => text()();
+  TextColumn get externalId => text().nullable()();
   TextColumn get name => text()();
+  TextColumn get status => text().withDefault(const Constant('ACTIVE'))();
 
   TextColumn get gender => text().nullable()(); // 'М', 'Ж', 'Не указано'
   TextColumn get plan => text().nullable()(); // 'Пробный', '4', '8', '12'
@@ -89,6 +92,7 @@ class ClientTemplateExerciseOverrides extends Table {
 
 class WorkoutSessions extends Table {
   IntColumn get id => integer().autoIncrement()();
+  TextColumn get externalId => text().nullable()();
 
   TextColumn get clientId => text()();
   DateTimeColumn get performedAt => dateTime()();
@@ -123,6 +127,8 @@ class WorkoutExerciseResults extends Table {
   IntColumn get sessionId => integer()(); // -> WorkoutSessions.id
   IntColumn get templateExerciseId =>
       integer()(); // -> WorkoutTemplateExercises.id
+  IntColumn get exerciseIdentityId => integer().nullable()();
+  TextColumn get exerciseNameSnapshot => text().nullable()();
 
   RealColumn get lastWeightKg => real().nullable()();
   IntColumn get lastReps => integer().nullable()();
@@ -131,6 +137,28 @@ class WorkoutExerciseResults extends Table {
   List<Set<Column>> get uniqueKeys => [
     {sessionId, templateExerciseId},
   ];
+}
+
+class ExerciseIdentities extends Table {
+  IntColumn get id => integer().autoIncrement()();
+  TextColumn get externalId => text()();
+  DateTimeColumn get createdAt => dateTime().withDefault(currentDateAndTime)();
+}
+
+class ExerciseIdentityBindings extends Table {
+  IntColumn get id => integer().autoIncrement()();
+
+  // null = общая привязка базового template exercise.
+  // Для CLIENT_ADDED и будущей клиентской замены template exercise хранится id клиента.
+  TextColumn get clientId => text().nullable()();
+  TextColumn get sourceType => text()(); // TEMPLATE / CLIENT_ADDED
+  IntColumn get sourceId =>
+      integer()(); // всегда положительный локальный id источника
+  IntColumn get identityId => integer()(); // -> ExerciseIdentities.id
+
+  BoolColumn get isCurrent => boolean().withDefault(const Constant(true))();
+  DateTimeColumn get createdAt => dateTime().withDefault(currentDateAndTime)();
+  DateTimeColumn get retiredAt => dateTime().nullable()();
 }
 
 class WorkoutDrafts extends Table {
@@ -407,10 +435,19 @@ class ProgressSnapshotClientVm {
     WorkoutExerciseResults,
     WorkoutDrafts,
     ClientTemplateExerciseOverrides,
+    ExerciseIdentities,
+    ExerciseIdentityBindings,
   ],
 )
 class AppDb extends _$AppDb {
   AppDb() : super(driftDatabase(name: 'myfitness'));
+  AppDb.forTesting(super.e);
+
+  static const Uuid _uuid = Uuid();
+  static const String activeClientStatus = 'ACTIVE';
+  static const String archivedClientStatus = 'ARCHIVED';
+  static const String _templateExerciseSource = 'TEMPLATE';
+  static const String _clientAddedExerciseSource = 'CLIENT_ADDED';
 
   bool _maleDefaultsPatched = false;
   bool _femaleDefaultsPatched = false;
@@ -418,7 +455,7 @@ class AppDb extends _$AppDb {
   Future<void>? _templateDefaultsPatchFuture;
 
   @override
-  int get schemaVersion => 7;
+  int get schemaVersion => 8;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -433,12 +470,30 @@ class AppDb extends _$AppDb {
       await _ensureClientHiddenExercisesTable();
       await _ensureClientAddedExercisesTable();
       await ensureProgressTables();
+      await _ensureExternalIdentityIndexes();
       await _seedWorkoutTemplates();
       await _seedWorkoutTemplateExercises();
+      await _backfillExternalIdentities();
     },
 
     onUpgrade: (m, from, to) async {
       // Продовая миграция: без удаления существующих данных клиентов.
+      if (from < 8) {
+        await m.addColumn(clients, clients.externalId);
+        await m.addColumn(clients, clients.status);
+        await m.addColumn(workoutSessions, workoutSessions.externalId);
+        await m.addColumn(
+          workoutExerciseResults,
+          workoutExerciseResults.exerciseIdentityId,
+        );
+        await m.addColumn(
+          workoutExerciseResults,
+          workoutExerciseResults.exerciseNameSnapshot,
+        );
+        await m.createTable(exerciseIdentities);
+        await m.createTable(exerciseIdentityBindings);
+      }
+
       await _ensureProgramDayOverridesTable();
       await ensureIncomeTables();
       await ensureContestTables();
@@ -448,9 +503,11 @@ class AppDb extends _$AppDb {
       await _ensureClientHiddenExercisesTable();
       await _ensureClientAddedExercisesTable();
       await ensureProgressTables();
+      await _ensureExternalIdentityIndexes();
 
       await _seedWorkoutTemplates();
       await _seedWorkoutTemplateExercises();
+      await _backfillExternalIdentities();
     },
 
     beforeOpen: (details) async {
@@ -463,8 +520,417 @@ class AppDb extends _$AppDb {
       await _ensureClientHiddenExercisesTable();
       await _ensureClientAddedExercisesTable();
       await ensureProgressTables();
+      await _ensureExternalIdentityIndexes();
+      await _backfillExternalIdentities();
     },
   );
+
+  String _newUuid() => _uuid.v4();
+
+  Future<void> _ensureExternalIdentityIndexes() async {
+    await customStatement('''
+      CREATE UNIQUE INDEX IF NOT EXISTS clients_external_id_unique
+      ON clients (external_id)
+      WHERE external_id IS NOT NULL AND TRIM(external_id) != ''
+    ''');
+    await customStatement('''
+      CREATE UNIQUE INDEX IF NOT EXISTS workout_sessions_external_id_unique
+      ON workout_sessions (external_id)
+      WHERE external_id IS NOT NULL AND TRIM(external_id) != ''
+    ''');
+    await customStatement('''
+      CREATE UNIQUE INDEX IF NOT EXISTS exercise_identities_external_id_unique
+      ON exercise_identities (external_id)
+    ''');
+    await customStatement('''
+      CREATE UNIQUE INDEX IF NOT EXISTS exercise_identity_bindings_global_current_unique
+      ON exercise_identity_bindings (source_type, source_id)
+      WHERE client_id IS NULL AND is_current = 1
+    ''');
+    await customStatement('''
+      CREATE UNIQUE INDEX IF NOT EXISTS exercise_identity_bindings_client_current_unique
+      ON exercise_identity_bindings (client_id, source_type, source_id)
+      WHERE client_id IS NOT NULL AND is_current = 1
+    ''');
+  }
+
+  Future<String> _newUniqueUuidForTable(String tableName) async {
+    const allowedTables = {
+      'clients',
+      'workout_sessions',
+      'exercise_identities',
+    };
+    if (!allowedTables.contains(tableName)) {
+      throw ArgumentError.value(tableName, 'tableName');
+    }
+
+    for (var attempt = 0; attempt < 20; attempt++) {
+      final candidate = _newUuid();
+      final existing = await customSelect(
+        'SELECT 1 FROM $tableName WHERE external_id = ? LIMIT 1',
+        variables: [Variable.withString(candidate)],
+      ).getSingleOrNull();
+      if (existing == null) return candidate;
+    }
+    throw StateError('Не удалось создать уникальный UUID для $tableName');
+  }
+
+  Future<int> _createExerciseIdentity() async {
+    final externalId = await _newUniqueUuidForTable('exercise_identities');
+    return into(
+      exerciseIdentities,
+    ).insert(ExerciseIdentitiesCompanion.insert(externalId: externalId));
+  }
+
+  Future<int?> _findCurrentExerciseBinding({
+    required String sourceType,
+    required int sourceId,
+    String? clientId,
+  }) async {
+    final row = await customSelect(
+      clientId == null
+          ? '''
+            SELECT identity_id
+            FROM exercise_identity_bindings
+            WHERE client_id IS NULL
+              AND source_type = ?
+              AND source_id = ?
+              AND is_current = 1
+            LIMIT 1
+          '''
+          : '''
+            SELECT identity_id
+            FROM exercise_identity_bindings
+            WHERE client_id = ?
+              AND source_type = ?
+              AND source_id = ?
+              AND is_current = 1
+            LIMIT 1
+          ''',
+      variables: clientId == null
+          ? [Variable.withString(sourceType), Variable.withInt(sourceId)]
+          : [
+              Variable.withString(clientId),
+              Variable.withString(sourceType),
+              Variable.withInt(sourceId),
+            ],
+    ).getSingleOrNull();
+    return row?.read<int>('identity_id');
+  }
+
+  Future<int> _ensureExerciseBinding({
+    required String sourceType,
+    required int sourceId,
+    String? clientId,
+  }) async {
+    final existing = await _findCurrentExerciseBinding(
+      sourceType: sourceType,
+      sourceId: sourceId,
+      clientId: clientId,
+    );
+    if (existing != null) return existing;
+
+    final identityId = await _createExerciseIdentity();
+    await into(exerciseIdentityBindings).insert(
+      ExerciseIdentityBindingsCompanion.insert(
+        clientId: Value(clientId),
+        sourceType: sourceType,
+        sourceId: sourceId,
+        identityId: identityId,
+      ),
+    );
+    return identityId;
+  }
+
+  Future<int> _resolveExerciseIdentity({
+    required String clientId,
+    required int templateExerciseId,
+  }) async {
+    if (templateExerciseId < 0) {
+      return _ensureExerciseBinding(
+        clientId: clientId,
+        sourceType: _clientAddedExerciseSource,
+        sourceId: -templateExerciseId,
+      );
+    }
+
+    // Будущий UI замены сможет создать клиентскую TEMPLATE-привязку.
+    // Она имеет приоритет над общей identity базового упражнения.
+    final clientSpecific = await _findCurrentExerciseBinding(
+      clientId: clientId,
+      sourceType: _templateExerciseSource,
+      sourceId: templateExerciseId,
+    );
+    if (clientSpecific != null) return clientSpecific;
+
+    return _ensureExerciseBinding(
+      sourceType: _templateExerciseSource,
+      sourceId: templateExerciseId,
+    );
+  }
+
+  Future<String?> _resolveExerciseDisplayName({
+    required String clientId,
+    required int templateExerciseId,
+  }) async {
+    if (templateExerciseId < 0) {
+      final row = await customSelect(
+        '''
+        SELECT name FROM client_added_exercises
+        WHERE id = ? AND client_id = ?
+        LIMIT 1
+        ''',
+        variables: [
+          Variable.withInt(-templateExerciseId),
+          Variable.withString(clientId),
+        ],
+      ).getSingleOrNull();
+      return row?.readNullable<String>('name');
+    }
+
+    final row = await customSelect(
+      '''
+      SELECT COALESCE(o.custom_name, e.name) AS effective_name
+      FROM workout_template_exercises e
+      LEFT JOIN client_exercise_name_overrides o
+        ON o.client_id = ? AND o.template_exercise_id = e.id
+      WHERE e.id = ?
+      LIMIT 1
+      ''',
+      variables: [
+        Variable.withString(clientId),
+        Variable.withInt(templateExerciseId),
+      ],
+    ).getSingleOrNull();
+    return row?.readNullable<String>('effective_name');
+  }
+
+  Future<String> getExerciseExternalId({
+    required String clientId,
+    required int templateExerciseId,
+  }) async {
+    final identityId = await _resolveExerciseIdentity(
+      clientId: clientId,
+      templateExerciseId: templateExerciseId,
+    );
+    final row = await (select(
+      exerciseIdentities,
+    )..where((t) => t.id.equals(identityId))).getSingle();
+    return row.externalId;
+  }
+
+  /// Создаёт новую логическую identity для существующего программного места.
+  /// UI следующего этапа вызовет этот метод только для варианта
+  /// «Новое упражнение». Обычное переименование его не вызывает.
+  Future<String> replaceExerciseIdentityForClient({
+    required String clientId,
+    required int templateExerciseId,
+  }) async {
+    return transaction(() async {
+      final sourceType = templateExerciseId < 0
+          ? _clientAddedExerciseSource
+          : _templateExerciseSource;
+      final sourceId = templateExerciseId.abs();
+      final now = DateTime.now();
+
+      await customUpdate(
+        '''
+        UPDATE exercise_identity_bindings
+        SET is_current = 0, retired_at = ?
+        WHERE client_id = ?
+          AND source_type = ?
+          AND source_id = ?
+          AND is_current = 1
+        ''',
+        variables: [
+          Variable<DateTime>(now),
+          Variable.withString(clientId),
+          Variable.withString(sourceType),
+          Variable.withInt(sourceId),
+        ],
+        updates: {exerciseIdentityBindings},
+      );
+
+      final identityId = await _createExerciseIdentity();
+      await into(exerciseIdentityBindings).insert(
+        ExerciseIdentityBindingsCompanion.insert(
+          clientId: Value(clientId),
+          sourceType: sourceType,
+          sourceId: sourceId,
+          identityId: identityId,
+        ),
+      );
+      final identity = await (select(
+        exerciseIdentities,
+      )..where((t) => t.id.equals(identityId))).getSingle();
+      return identity.externalId;
+    });
+  }
+
+  Future<void> _backfillExternalIdentities() async {
+    await transaction(() async {
+      await customStatement(
+        "UPDATE clients SET status = 'ACTIVE' "
+        "WHERE status IS NULL OR TRIM(status) = ''",
+      );
+
+      final clientsWithoutUuid = await customSelect(
+        "SELECT id FROM clients WHERE external_id IS NULL OR TRIM(external_id) = ''",
+      ).get();
+      for (final row in clientsWithoutUuid) {
+        await customStatement(
+          'UPDATE clients SET external_id = ? WHERE id = ?',
+          [await _newUniqueUuidForTable('clients'), row.read<String>('id')],
+        );
+      }
+
+      final sessionsWithoutUuid = await customSelect(
+        "SELECT id FROM workout_sessions WHERE external_id IS NULL OR TRIM(external_id) = ''",
+      ).get();
+      for (final row in sessionsWithoutUuid) {
+        await customStatement(
+          'UPDATE workout_sessions SET external_id = ? WHERE id = ?',
+          [
+            await _newUniqueUuidForTable('workout_sessions'),
+            row.read<int>('id'),
+          ],
+        );
+      }
+
+      final templateRows = await customSelect(
+        'SELECT id FROM workout_template_exercises ORDER BY id',
+      ).get();
+      for (final row in templateRows) {
+        await _ensureExerciseBinding(
+          sourceType: _templateExerciseSource,
+          sourceId: row.read<int>('id'),
+        );
+      }
+
+      await _ensureClientAddedExercisesTable();
+      final addedRows = await customSelect(
+        'SELECT id, client_id FROM client_added_exercises ORDER BY id',
+      ).get();
+      for (final row in addedRows) {
+        await _ensureExerciseBinding(
+          clientId: row.read<String>('client_id'),
+          sourceType: _clientAddedExerciseSource,
+          sourceId: row.read<int>('id'),
+        );
+      }
+
+      final resultRows = await customSelect('''
+        SELECT r.id AS result_id,
+               r.template_exercise_id AS template_exercise_id,
+               r.exercise_identity_id AS exercise_identity_id,
+               r.exercise_name_snapshot AS exercise_name_snapshot,
+               s.client_id AS client_id
+        FROM workout_exercise_results r
+        LEFT JOIN workout_sessions s ON s.id = r.session_id
+        WHERE r.exercise_identity_id IS NULL
+           OR r.exercise_name_snapshot IS NULL
+        ORDER BY r.id
+      ''').get();
+
+      for (final row in resultRows) {
+        final resultId = row.read<int>('result_id');
+        final sourceId = row.read<int>('template_exercise_id');
+        final clientId = row.readNullable<String>('client_id');
+        final existingIdentityId = row.readNullable<int>(
+          'exercise_identity_id',
+        );
+        final existingName = row.readNullable<String>('exercise_name_snapshot');
+
+        final identityId =
+            existingIdentityId ??
+            (clientId == null
+                ? await _createExerciseIdentity()
+                : await _resolveExerciseIdentity(
+                    clientId: clientId,
+                    templateExerciseId: sourceId,
+                  ));
+        final exerciseName =
+            existingName ??
+            (clientId == null
+                ? null
+                : await _resolveExerciseDisplayName(
+                    clientId: clientId,
+                    templateExerciseId: sourceId,
+                  ));
+        await customStatement(
+          'UPDATE workout_exercise_results '
+          'SET exercise_identity_id = ?, exercise_name_snapshot = ? '
+          'WHERE id = ?',
+          [identityId, exerciseName, resultId],
+        );
+      }
+
+      await _validateExternalIdentityState();
+    });
+  }
+
+  Future<void> _validateExternalIdentityState() async {
+    Future<int> scalarCount(String sql) async {
+      final row = await customSelect(sql).getSingle();
+      return row.read<int>('c');
+    }
+
+    final missingClients = await scalarCount(
+      "SELECT COUNT(*) AS c FROM clients WHERE external_id IS NULL OR TRIM(external_id) = ''",
+    );
+    final duplicateClients = await scalarCount('''
+      SELECT COUNT(*) AS c FROM (
+        SELECT external_id FROM clients GROUP BY external_id HAVING COUNT(*) > 1
+      )
+    ''');
+    final invalidStatuses = await scalarCount('''
+      SELECT COUNT(*) AS c FROM clients
+      WHERE status NOT IN ('ACTIVE', 'ARCHIVED')
+    ''');
+    final missingSessions = await scalarCount(
+      "SELECT COUNT(*) AS c FROM workout_sessions WHERE external_id IS NULL OR TRIM(external_id) = ''",
+    );
+    final duplicateSessions = await scalarCount('''
+      SELECT COUNT(*) AS c FROM (
+        SELECT external_id FROM workout_sessions GROUP BY external_id HAVING COUNT(*) > 1
+      )
+    ''');
+    final missingResultIdentities = await scalarCount('''
+      SELECT COUNT(*) AS c FROM workout_exercise_results
+      WHERE exercise_identity_id IS NULL
+    ''');
+    final danglingResultIdentities = await scalarCount('''
+      SELECT COUNT(*) AS c
+      FROM workout_exercise_results r
+      LEFT JOIN exercise_identities i ON i.id = r.exercise_identity_id
+      WHERE r.exercise_identity_id IS NOT NULL AND i.id IS NULL
+    ''');
+    final danglingBindings = await scalarCount('''
+      SELECT COUNT(*) AS c
+      FROM exercise_identity_bindings b
+      LEFT JOIN exercise_identities i ON i.id = b.identity_id
+      WHERE i.id IS NULL
+    ''');
+
+    if (missingClients != 0 ||
+        duplicateClients != 0 ||
+        invalidStatuses != 0 ||
+        missingSessions != 0 ||
+        duplicateSessions != 0 ||
+        missingResultIdentities != 0 ||
+        danglingResultIdentities != 0 ||
+        danglingBindings != 0) {
+      throw StateError(
+        'Проверка внешних идентификаторов не пройдена: '
+        'clientsMissing=$missingClients, clientsDuplicate=$duplicateClients, '
+        'invalidStatuses=$invalidStatuses, sessionsMissing=$missingSessions, '
+        'sessionsDuplicate=$duplicateSessions, '
+        'resultIdentitiesMissing=$missingResultIdentities, '
+        'resultIdentitiesDangling=$danglingResultIdentities, '
+        'bindingsDangling=$danglingBindings',
+      );
+    }
+  }
 
   Future<void> _ensureProgramDayOverridesTable() async {
     await customStatement('''
@@ -1083,8 +1549,42 @@ class AppDb extends _$AppDb {
   Future<Client?> getClientById(String id) =>
       (select(clients)..where((t) => t.id.equals(id))).getSingleOrNull();
 
-  Future<void> upsertClient(ClientsCompanion data) =>
-      into(clients).insertOnConflictUpdate(data);
+  Future<void> upsertClient(ClientsCompanion data) async {
+    if (!data.id.present) {
+      throw ArgumentError('Для сохранения клиента обязателен локальный id');
+    }
+
+    final localId = data.id.value;
+    final existing = await getClientById(localId);
+    final requestedExternalId = data.externalId.present
+        ? data.externalId.value?.trim()
+        : null;
+    if (existing?.externalId != null &&
+        requestedExternalId != null &&
+        requestedExternalId.isNotEmpty &&
+        requestedExternalId != existing!.externalId) {
+      throw StateError('UUID существующего клиента нельзя изменять');
+    }
+    final externalId =
+        existing?.externalId ??
+        ((requestedExternalId?.isNotEmpty ?? false)
+            ? requestedExternalId!
+            : await _newUniqueUuidForTable('clients'));
+
+    final requestedStatus = data.status.present ? data.status.value : null;
+    final status = requestedStatus ?? existing?.status ?? activeClientStatus;
+    if (status != activeClientStatus && status != archivedClientStatus) {
+      throw ArgumentError.value(
+        status,
+        'status',
+        'Недопустимый статус клиента',
+      );
+    }
+
+    await into(clients).insertOnConflictUpdate(
+      data.copyWith(externalId: Value(externalId), status: Value(status)),
+    );
+  }
 
   Future<int> deleteClientById(String id) =>
       (delete(clients)..where((t) => t.id.equals(id))).go();
@@ -2645,6 +3145,7 @@ class AppDb extends _$AppDb {
 
     await into(workoutSessions).insert(
       WorkoutSessionsCompanion.insert(
+        externalId: Value(await _newUniqueUuidForTable('workout_sessions')),
         clientId: clientId,
         performedAt: when,
         planInstance: st.planInstance,
@@ -2693,6 +3194,7 @@ class AppDb extends _$AppDb {
 
     await into(workoutSessions).insert(
       WorkoutSessionsCompanion.insert(
+        externalId: Value(await _newUniqueUuidForTable('workout_sessions')),
         clientId: clientId,
         performedAt: when,
         planInstance: st.planInstance,
@@ -3486,19 +3988,36 @@ class AppDb extends _$AppDb {
                 .getSingleOrNull();
 
         if (existing == null) {
+          final identityId = await _resolveExerciseIdentity(
+            clientId: clientId,
+            templateExerciseId: exId,
+          );
+          final exerciseName = await _resolveExerciseDisplayName(
+            clientId: clientId,
+            templateExerciseId: exId,
+          );
           await into(workoutExerciseResults).insert(
             WorkoutExerciseResultsCompanion.insert(
               sessionId: sess.id,
               templateExerciseId: exId,
+              exerciseIdentityId: Value(identityId),
+              exerciseNameSnapshot: Value(exerciseName),
               lastWeightKg: kg == null ? const Value.absent() : Value(kg),
               lastReps: reps == null ? const Value.absent() : Value(reps),
             ),
           );
         } else {
+          final identityId =
+              existing.exerciseIdentityId ??
+              await _resolveExerciseIdentity(
+                clientId: clientId,
+                templateExerciseId: exId,
+              );
           await (update(
             workoutExerciseResults,
           )..where((r) => r.id.equals(existing.id))).write(
             WorkoutExerciseResultsCompanion(
+              exerciseIdentityId: Value(identityId),
               lastWeightKg: Value(kg),
               lastReps: Value(reps),
             ),
@@ -3776,9 +4295,19 @@ class AppDb extends _$AppDb {
         [clientId, templateId, insertOrder],
       );
 
-      await customStatement(
+      final addedId = await customInsert(
         'INSERT INTO client_added_exercises (client_id, template_id, order_index, name) VALUES (?, ?, ?, ?)',
-        [clientId, templateId, insertOrder, normalized],
+        variables: [
+          Variable.withString(clientId),
+          Variable.withInt(templateId),
+          Variable.withInt(insertOrder),
+          Variable.withString(normalized),
+        ],
+      );
+      await _ensureExerciseBinding(
+        clientId: clientId,
+        sourceType: _clientAddedExerciseSource,
+        sourceId: addedId,
       );
       return;
     }
@@ -3799,9 +4328,19 @@ class AppDb extends _$AppDb {
       (addedMax.data['m'] as int?) ?? -1,
     ].reduce((a, b) => a > b ? a : b);
 
-    await customStatement(
+    final addedId = await customInsert(
       'INSERT INTO client_added_exercises (client_id, template_id, order_index, name) VALUES (?, ?, ?, ?)',
-      [clientId, templateId, maxOrder + 1, normalized],
+      variables: [
+        Variable.withString(clientId),
+        Variable.withInt(templateId),
+        Variable.withInt(maxOrder + 1),
+        Variable.withString(normalized),
+      ],
+    );
+    await _ensureExerciseBinding(
+      clientId: clientId,
+      sourceType: _clientAddedExerciseSource,
+      sourceId: addedId,
     );
   }
 
@@ -3890,12 +4429,16 @@ class AppDb extends _$AppDb {
 
     final nextOrder = (last?.orderIndex ?? -1) + 1;
 
-    await into(workoutTemplateExercises).insert(
+    final exerciseId = await into(workoutTemplateExercises).insert(
       WorkoutTemplateExercisesCompanion.insert(
         templateId: templateId,
         orderIndex: nextOrder,
         name: normalized,
       ),
+    );
+    await _ensureExerciseBinding(
+      sourceType: _templateExerciseSource,
+      sourceId: exerciseId,
     );
   }
 
@@ -4783,19 +5326,125 @@ class AppDb extends _$AppDb {
     return message.contains('no such table: $tableName'.toLowerCase());
   }
 
+  bool _isUuidV4(String value) {
+    return RegExp(
+      r'^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$',
+      caseSensitive: false,
+    ).hasMatch(value);
+  }
+
+  Map<String, dynamic> _normalizeBackupTables(Map<String, dynamic> rawTables) {
+    final normalized = <String, dynamic>{};
+    for (final entry in rawTables.entries) {
+      final rows = entry.value;
+      if (rows is! List) {
+        throw FormatException(
+          'Некорректный формат резервной копии: ${entry.key} не является массивом',
+        );
+      }
+      normalized[entry.key] = rows
+          .map((raw) {
+            if (raw is! Map) {
+              throw FormatException('Некорректная строка таблицы ${entry.key}');
+            }
+            return raw.map<String, dynamic>(
+              (key, value) => MapEntry(key.toString(), value),
+            );
+          })
+          .toList(growable: false);
+    }
+
+    void normalizeExternalIds(String tableName) {
+      final rows = normalized[tableName];
+      if (rows is! List<Map<String, dynamic>>) return;
+
+      final used = <String>{};
+      for (final row in rows) {
+        final raw = row['external_id'];
+        final value = raw is String ? raw.trim() : '';
+        if (value.isNotEmpty) {
+          if (!_isUuidV4(value)) {
+            throw FormatException('Некорректный UUID в $tableName.external_id');
+          }
+          final normalizedValue = value.toLowerCase();
+          if (!used.add(normalizedValue)) {
+            throw FormatException('Дублирующий UUID в $tableName.external_id');
+          }
+          row['external_id'] = value;
+          continue;
+        }
+
+        String generated;
+        do {
+          generated = _newUuid();
+        } while (!used.add(generated));
+        row['external_id'] = generated;
+      }
+    }
+
+    normalizeExternalIds('clients');
+    normalizeExternalIds('workout_sessions');
+    normalizeExternalIds('exercise_identities');
+
+    final clientRows = normalized['clients'];
+    if (clientRows is List<Map<String, dynamic>>) {
+      for (final row in clientRows) {
+        final rawStatus = row['status'];
+        final status = rawStatus is String && rawStatus.trim().isNotEmpty
+            ? rawStatus.trim()
+            : activeClientStatus;
+        if (status != activeClientStatus && status != archivedClientStatus) {
+          throw FormatException(
+            'Недопустимый status клиента в backup: $status',
+          );
+        }
+        row['status'] = status;
+      }
+    }
+
+    return normalized;
+  }
+
+  Future<void> _validateBackupColumnsBeforeImport(
+    Map<String, dynamic> tables,
+  ) async {
+    for (final entry in tables.entries) {
+      if (!await _tableExists(entry.key)) continue;
+      final info = await customSelect(
+        'PRAGMA table_info(${_quoteIdent(entry.key)})',
+      ).get();
+      final allowedColumns = info
+          .map((row) => row.data['name'])
+          .whereType<String>()
+          .toSet();
+      final rows = entry.value as List<Map<String, dynamic>>;
+      for (final row in rows) {
+        final unknown = row.keys.where((key) => !allowedColumns.contains(key));
+        if (unknown.isNotEmpty) {
+          throw FormatException(
+            'Backup содержит неизвестные поля таблицы ${entry.key}: '
+            '${unknown.join(', ')}',
+          );
+        }
+      }
+    }
+  }
+
   Future<void> importBackupPayload(Map<String, dynamic> payload) async {
     await ensureIncomeTables();
     await ensureContestTables();
 
-    final rawTables = payload['tables'];
-    if (rawTables is! Map<String, dynamic>) {
+    final rawTablesValue = payload['tables'];
+    if (rawTablesValue is! Map<String, dynamic>) {
       throw const FormatException(
         'Некорректный формат резервной копии: нет tables',
       );
     }
-    for (final tableName in rawTables.keys) {
+    for (final tableName in rawTablesValue.keys) {
       await _ensureAuxTableForBackup(tableName);
     }
+    final rawTables = _normalizeBackupTables(rawTablesValue);
+    await _validateBackupColumnsBeforeImport(rawTables);
 
     await transaction(() async {
       await customStatement('PRAGMA foreign_keys = OFF');
@@ -4843,6 +5492,11 @@ class AppDb extends _$AppDb {
             }
           }
         }
+
+        // Старый backup не содержит UUID/status/exercise identity. Backfill
+        // выполняется до commit той же транзакции, поэтому при любой ошибке
+        // удаление исходной базы также будет отменено.
+        await _backfillExternalIdentities();
       } finally {
         await customStatement('PRAGMA foreign_keys = ON');
       }

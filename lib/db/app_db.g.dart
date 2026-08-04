@@ -17,6 +17,17 @@ class $ClientsTable extends Clients with TableInfo<$ClientsTable, Client> {
     type: DriftSqlType.string,
     requiredDuringInsert: true,
   );
+  static const VerificationMeta _externalIdMeta = const VerificationMeta(
+    'externalId',
+  );
+  @override
+  late final GeneratedColumn<String> externalId = GeneratedColumn<String>(
+    'external_id',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
   static const VerificationMeta _nameMeta = const VerificationMeta('name');
   @override
   late final GeneratedColumn<String> name = GeneratedColumn<String>(
@@ -25,6 +36,16 @@ class $ClientsTable extends Clients with TableInfo<$ClientsTable, Client> {
     false,
     type: DriftSqlType.string,
     requiredDuringInsert: true,
+  );
+  static const VerificationMeta _statusMeta = const VerificationMeta('status');
+  @override
+  late final GeneratedColumn<String> status = GeneratedColumn<String>(
+    'status',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+    defaultValue: const Constant('ACTIVE'),
   );
   static const VerificationMeta _genderMeta = const VerificationMeta('gender');
   @override
@@ -81,7 +102,9 @@ class $ClientsTable extends Clients with TableInfo<$ClientsTable, Client> {
   @override
   List<GeneratedColumn> get $columns => [
     id,
+    externalId,
     name,
+    status,
     gender,
     plan,
     planStart,
@@ -105,6 +128,12 @@ class $ClientsTable extends Clients with TableInfo<$ClientsTable, Client> {
     } else if (isInserting) {
       context.missing(_idMeta);
     }
+    if (data.containsKey('external_id')) {
+      context.handle(
+        _externalIdMeta,
+        externalId.isAcceptableOrUnknown(data['external_id']!, _externalIdMeta),
+      );
+    }
     if (data.containsKey('name')) {
       context.handle(
         _nameMeta,
@@ -112,6 +141,12 @@ class $ClientsTable extends Clients with TableInfo<$ClientsTable, Client> {
       );
     } else if (isInserting) {
       context.missing(_nameMeta);
+    }
+    if (data.containsKey('status')) {
+      context.handle(
+        _statusMeta,
+        status.isAcceptableOrUnknown(data['status']!, _statusMeta),
+      );
     }
     if (data.containsKey('gender')) {
       context.handle(
@@ -156,9 +191,17 @@ class $ClientsTable extends Clients with TableInfo<$ClientsTable, Client> {
         DriftSqlType.string,
         data['${effectivePrefix}id'],
       )!,
+      externalId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}external_id'],
+      ),
       name: attachedDatabase.typeMapping.read(
         DriftSqlType.string,
         data['${effectivePrefix}name'],
+      )!,
+      status: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}status'],
       )!,
       gender: attachedDatabase.typeMapping.read(
         DriftSqlType.string,
@@ -191,7 +234,9 @@ class $ClientsTable extends Clients with TableInfo<$ClientsTable, Client> {
 
 class Client extends DataClass implements Insertable<Client> {
   final String id;
+  final String? externalId;
   final String name;
+  final String status;
   final String? gender;
   final String? plan;
   final DateTime? planStart;
@@ -199,7 +244,9 @@ class Client extends DataClass implements Insertable<Client> {
   final DateTime createdAt;
   const Client({
     required this.id,
+    this.externalId,
     required this.name,
+    required this.status,
     this.gender,
     this.plan,
     this.planStart,
@@ -210,7 +257,11 @@ class Client extends DataClass implements Insertable<Client> {
   Map<String, Expression> toColumns(bool nullToAbsent) {
     final map = <String, Expression>{};
     map['id'] = Variable<String>(id);
+    if (!nullToAbsent || externalId != null) {
+      map['external_id'] = Variable<String>(externalId);
+    }
     map['name'] = Variable<String>(name);
+    map['status'] = Variable<String>(status);
     if (!nullToAbsent || gender != null) {
       map['gender'] = Variable<String>(gender);
     }
@@ -230,7 +281,11 @@ class Client extends DataClass implements Insertable<Client> {
   ClientsCompanion toCompanion(bool nullToAbsent) {
     return ClientsCompanion(
       id: Value(id),
+      externalId: externalId == null && nullToAbsent
+          ? const Value.absent()
+          : Value(externalId),
       name: Value(name),
+      status: Value(status),
       gender: gender == null && nullToAbsent
           ? const Value.absent()
           : Value(gender),
@@ -252,7 +307,9 @@ class Client extends DataClass implements Insertable<Client> {
     serializer ??= driftRuntimeOptions.defaultSerializer;
     return Client(
       id: serializer.fromJson<String>(json['id']),
+      externalId: serializer.fromJson<String?>(json['externalId']),
       name: serializer.fromJson<String>(json['name']),
+      status: serializer.fromJson<String>(json['status']),
       gender: serializer.fromJson<String?>(json['gender']),
       plan: serializer.fromJson<String?>(json['plan']),
       planStart: serializer.fromJson<DateTime?>(json['planStart']),
@@ -265,7 +322,9 @@ class Client extends DataClass implements Insertable<Client> {
     serializer ??= driftRuntimeOptions.defaultSerializer;
     return <String, dynamic>{
       'id': serializer.toJson<String>(id),
+      'externalId': serializer.toJson<String?>(externalId),
       'name': serializer.toJson<String>(name),
+      'status': serializer.toJson<String>(status),
       'gender': serializer.toJson<String?>(gender),
       'plan': serializer.toJson<String?>(plan),
       'planStart': serializer.toJson<DateTime?>(planStart),
@@ -276,7 +335,9 @@ class Client extends DataClass implements Insertable<Client> {
 
   Client copyWith({
     String? id,
+    Value<String?> externalId = const Value.absent(),
     String? name,
+    String? status,
     Value<String?> gender = const Value.absent(),
     Value<String?> plan = const Value.absent(),
     Value<DateTime?> planStart = const Value.absent(),
@@ -284,7 +345,9 @@ class Client extends DataClass implements Insertable<Client> {
     DateTime? createdAt,
   }) => Client(
     id: id ?? this.id,
+    externalId: externalId.present ? externalId.value : this.externalId,
     name: name ?? this.name,
+    status: status ?? this.status,
     gender: gender.present ? gender.value : this.gender,
     plan: plan.present ? plan.value : this.plan,
     planStart: planStart.present ? planStart.value : this.planStart,
@@ -294,7 +357,11 @@ class Client extends DataClass implements Insertable<Client> {
   Client copyWithCompanion(ClientsCompanion data) {
     return Client(
       id: data.id.present ? data.id.value : this.id,
+      externalId: data.externalId.present
+          ? data.externalId.value
+          : this.externalId,
       name: data.name.present ? data.name.value : this.name,
+      status: data.status.present ? data.status.value : this.status,
       gender: data.gender.present ? data.gender.value : this.gender,
       plan: data.plan.present ? data.plan.value : this.plan,
       planStart: data.planStart.present ? data.planStart.value : this.planStart,
@@ -307,7 +374,9 @@ class Client extends DataClass implements Insertable<Client> {
   String toString() {
     return (StringBuffer('Client(')
           ..write('id: $id, ')
+          ..write('externalId: $externalId, ')
           ..write('name: $name, ')
+          ..write('status: $status, ')
           ..write('gender: $gender, ')
           ..write('plan: $plan, ')
           ..write('planStart: $planStart, ')
@@ -318,14 +387,25 @@ class Client extends DataClass implements Insertable<Client> {
   }
 
   @override
-  int get hashCode =>
-      Object.hash(id, name, gender, plan, planStart, planEnd, createdAt);
+  int get hashCode => Object.hash(
+    id,
+    externalId,
+    name,
+    status,
+    gender,
+    plan,
+    planStart,
+    planEnd,
+    createdAt,
+  );
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
       (other is Client &&
           other.id == this.id &&
+          other.externalId == this.externalId &&
           other.name == this.name &&
+          other.status == this.status &&
           other.gender == this.gender &&
           other.plan == this.plan &&
           other.planStart == this.planStart &&
@@ -335,7 +415,9 @@ class Client extends DataClass implements Insertable<Client> {
 
 class ClientsCompanion extends UpdateCompanion<Client> {
   final Value<String> id;
+  final Value<String?> externalId;
   final Value<String> name;
+  final Value<String> status;
   final Value<String?> gender;
   final Value<String?> plan;
   final Value<DateTime?> planStart;
@@ -344,7 +426,9 @@ class ClientsCompanion extends UpdateCompanion<Client> {
   final Value<int> rowid;
   const ClientsCompanion({
     this.id = const Value.absent(),
+    this.externalId = const Value.absent(),
     this.name = const Value.absent(),
+    this.status = const Value.absent(),
     this.gender = const Value.absent(),
     this.plan = const Value.absent(),
     this.planStart = const Value.absent(),
@@ -354,7 +438,9 @@ class ClientsCompanion extends UpdateCompanion<Client> {
   });
   ClientsCompanion.insert({
     required String id,
+    this.externalId = const Value.absent(),
     required String name,
+    this.status = const Value.absent(),
     this.gender = const Value.absent(),
     this.plan = const Value.absent(),
     this.planStart = const Value.absent(),
@@ -365,7 +451,9 @@ class ClientsCompanion extends UpdateCompanion<Client> {
        name = Value(name);
   static Insertable<Client> custom({
     Expression<String>? id,
+    Expression<String>? externalId,
     Expression<String>? name,
+    Expression<String>? status,
     Expression<String>? gender,
     Expression<String>? plan,
     Expression<DateTime>? planStart,
@@ -375,7 +463,9 @@ class ClientsCompanion extends UpdateCompanion<Client> {
   }) {
     return RawValuesInsertable({
       if (id != null) 'id': id,
+      if (externalId != null) 'external_id': externalId,
       if (name != null) 'name': name,
+      if (status != null) 'status': status,
       if (gender != null) 'gender': gender,
       if (plan != null) 'plan': plan,
       if (planStart != null) 'plan_start': planStart,
@@ -387,7 +477,9 @@ class ClientsCompanion extends UpdateCompanion<Client> {
 
   ClientsCompanion copyWith({
     Value<String>? id,
+    Value<String?>? externalId,
     Value<String>? name,
+    Value<String>? status,
     Value<String?>? gender,
     Value<String?>? plan,
     Value<DateTime?>? planStart,
@@ -397,7 +489,9 @@ class ClientsCompanion extends UpdateCompanion<Client> {
   }) {
     return ClientsCompanion(
       id: id ?? this.id,
+      externalId: externalId ?? this.externalId,
       name: name ?? this.name,
+      status: status ?? this.status,
       gender: gender ?? this.gender,
       plan: plan ?? this.plan,
       planStart: planStart ?? this.planStart,
@@ -413,8 +507,14 @@ class ClientsCompanion extends UpdateCompanion<Client> {
     if (id.present) {
       map['id'] = Variable<String>(id.value);
     }
+    if (externalId.present) {
+      map['external_id'] = Variable<String>(externalId.value);
+    }
     if (name.present) {
       map['name'] = Variable<String>(name.value);
+    }
+    if (status.present) {
+      map['status'] = Variable<String>(status.value);
     }
     if (gender.present) {
       map['gender'] = Variable<String>(gender.value);
@@ -441,7 +541,9 @@ class ClientsCompanion extends UpdateCompanion<Client> {
   String toString() {
     return (StringBuffer('ClientsCompanion(')
           ..write('id: $id, ')
+          ..write('externalId: $externalId, ')
           ..write('name: $name, ')
+          ..write('status: $status, ')
           ..write('gender: $gender, ')
           ..write('plan: $plan, ')
           ..write('planStart: $planStart, ')
@@ -1810,6 +1912,17 @@ class $WorkoutSessionsTable extends WorkoutSessions
       'PRIMARY KEY AUTOINCREMENT',
     ),
   );
+  static const VerificationMeta _externalIdMeta = const VerificationMeta(
+    'externalId',
+  );
+  @override
+  late final GeneratedColumn<String> externalId = GeneratedColumn<String>(
+    'external_id',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
   static const VerificationMeta _clientIdMeta = const VerificationMeta(
     'clientId',
   );
@@ -1866,6 +1979,7 @@ class $WorkoutSessionsTable extends WorkoutSessions
   @override
   List<GeneratedColumn> get $columns => [
     id,
+    externalId,
     clientId,
     performedAt,
     planInstance,
@@ -1886,6 +2000,12 @@ class $WorkoutSessionsTable extends WorkoutSessions
     final data = instance.toColumns(true);
     if (data.containsKey('id')) {
       context.handle(_idMeta, id.isAcceptableOrUnknown(data['id']!, _idMeta));
+    }
+    if (data.containsKey('external_id')) {
+      context.handle(
+        _externalIdMeta,
+        externalId.isAcceptableOrUnknown(data['external_id']!, _externalIdMeta),
+      );
     }
     if (data.containsKey('client_id')) {
       context.handle(
@@ -1949,6 +2069,10 @@ class $WorkoutSessionsTable extends WorkoutSessions
         DriftSqlType.int,
         data['${effectivePrefix}id'],
       )!,
+      externalId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}external_id'],
+      ),
       clientId: attachedDatabase.typeMapping.read(
         DriftSqlType.string,
         data['${effectivePrefix}client_id'],
@@ -1980,6 +2104,7 @@ class $WorkoutSessionsTable extends WorkoutSessions
 
 class WorkoutSession extends DataClass implements Insertable<WorkoutSession> {
   final int id;
+  final String? externalId;
   final String clientId;
   final DateTime performedAt;
   final int planInstance;
@@ -1987,6 +2112,7 @@ class WorkoutSession extends DataClass implements Insertable<WorkoutSession> {
   final int templateIdx;
   const WorkoutSession({
     required this.id,
+    this.externalId,
     required this.clientId,
     required this.performedAt,
     required this.planInstance,
@@ -1997,6 +2123,9 @@ class WorkoutSession extends DataClass implements Insertable<WorkoutSession> {
   Map<String, Expression> toColumns(bool nullToAbsent) {
     final map = <String, Expression>{};
     map['id'] = Variable<int>(id);
+    if (!nullToAbsent || externalId != null) {
+      map['external_id'] = Variable<String>(externalId);
+    }
     map['client_id'] = Variable<String>(clientId);
     map['performed_at'] = Variable<DateTime>(performedAt);
     map['plan_instance'] = Variable<int>(planInstance);
@@ -2008,6 +2137,9 @@ class WorkoutSession extends DataClass implements Insertable<WorkoutSession> {
   WorkoutSessionsCompanion toCompanion(bool nullToAbsent) {
     return WorkoutSessionsCompanion(
       id: Value(id),
+      externalId: externalId == null && nullToAbsent
+          ? const Value.absent()
+          : Value(externalId),
       clientId: Value(clientId),
       performedAt: Value(performedAt),
       planInstance: Value(planInstance),
@@ -2023,6 +2155,7 @@ class WorkoutSession extends DataClass implements Insertable<WorkoutSession> {
     serializer ??= driftRuntimeOptions.defaultSerializer;
     return WorkoutSession(
       id: serializer.fromJson<int>(json['id']),
+      externalId: serializer.fromJson<String?>(json['externalId']),
       clientId: serializer.fromJson<String>(json['clientId']),
       performedAt: serializer.fromJson<DateTime>(json['performedAt']),
       planInstance: serializer.fromJson<int>(json['planInstance']),
@@ -2035,6 +2168,7 @@ class WorkoutSession extends DataClass implements Insertable<WorkoutSession> {
     serializer ??= driftRuntimeOptions.defaultSerializer;
     return <String, dynamic>{
       'id': serializer.toJson<int>(id),
+      'externalId': serializer.toJson<String?>(externalId),
       'clientId': serializer.toJson<String>(clientId),
       'performedAt': serializer.toJson<DateTime>(performedAt),
       'planInstance': serializer.toJson<int>(planInstance),
@@ -2045,6 +2179,7 @@ class WorkoutSession extends DataClass implements Insertable<WorkoutSession> {
 
   WorkoutSession copyWith({
     int? id,
+    Value<String?> externalId = const Value.absent(),
     String? clientId,
     DateTime? performedAt,
     int? planInstance,
@@ -2052,6 +2187,7 @@ class WorkoutSession extends DataClass implements Insertable<WorkoutSession> {
     int? templateIdx,
   }) => WorkoutSession(
     id: id ?? this.id,
+    externalId: externalId.present ? externalId.value : this.externalId,
     clientId: clientId ?? this.clientId,
     performedAt: performedAt ?? this.performedAt,
     planInstance: planInstance ?? this.planInstance,
@@ -2061,6 +2197,9 @@ class WorkoutSession extends DataClass implements Insertable<WorkoutSession> {
   WorkoutSession copyWithCompanion(WorkoutSessionsCompanion data) {
     return WorkoutSession(
       id: data.id.present ? data.id.value : this.id,
+      externalId: data.externalId.present
+          ? data.externalId.value
+          : this.externalId,
       clientId: data.clientId.present ? data.clientId.value : this.clientId,
       performedAt: data.performedAt.present
           ? data.performedAt.value
@@ -2079,6 +2218,7 @@ class WorkoutSession extends DataClass implements Insertable<WorkoutSession> {
   String toString() {
     return (StringBuffer('WorkoutSession(')
           ..write('id: $id, ')
+          ..write('externalId: $externalId, ')
           ..write('clientId: $clientId, ')
           ..write('performedAt: $performedAt, ')
           ..write('planInstance: $planInstance, ')
@@ -2089,13 +2229,21 @@ class WorkoutSession extends DataClass implements Insertable<WorkoutSession> {
   }
 
   @override
-  int get hashCode =>
-      Object.hash(id, clientId, performedAt, planInstance, gender, templateIdx);
+  int get hashCode => Object.hash(
+    id,
+    externalId,
+    clientId,
+    performedAt,
+    planInstance,
+    gender,
+    templateIdx,
+  );
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
       (other is WorkoutSession &&
           other.id == this.id &&
+          other.externalId == this.externalId &&
           other.clientId == this.clientId &&
           other.performedAt == this.performedAt &&
           other.planInstance == this.planInstance &&
@@ -2105,6 +2253,7 @@ class WorkoutSession extends DataClass implements Insertable<WorkoutSession> {
 
 class WorkoutSessionsCompanion extends UpdateCompanion<WorkoutSession> {
   final Value<int> id;
+  final Value<String?> externalId;
   final Value<String> clientId;
   final Value<DateTime> performedAt;
   final Value<int> planInstance;
@@ -2112,6 +2261,7 @@ class WorkoutSessionsCompanion extends UpdateCompanion<WorkoutSession> {
   final Value<int> templateIdx;
   const WorkoutSessionsCompanion({
     this.id = const Value.absent(),
+    this.externalId = const Value.absent(),
     this.clientId = const Value.absent(),
     this.performedAt = const Value.absent(),
     this.planInstance = const Value.absent(),
@@ -2120,6 +2270,7 @@ class WorkoutSessionsCompanion extends UpdateCompanion<WorkoutSession> {
   });
   WorkoutSessionsCompanion.insert({
     this.id = const Value.absent(),
+    this.externalId = const Value.absent(),
     required String clientId,
     required DateTime performedAt,
     required int planInstance,
@@ -2132,6 +2283,7 @@ class WorkoutSessionsCompanion extends UpdateCompanion<WorkoutSession> {
        templateIdx = Value(templateIdx);
   static Insertable<WorkoutSession> custom({
     Expression<int>? id,
+    Expression<String>? externalId,
     Expression<String>? clientId,
     Expression<DateTime>? performedAt,
     Expression<int>? planInstance,
@@ -2140,6 +2292,7 @@ class WorkoutSessionsCompanion extends UpdateCompanion<WorkoutSession> {
   }) {
     return RawValuesInsertable({
       if (id != null) 'id': id,
+      if (externalId != null) 'external_id': externalId,
       if (clientId != null) 'client_id': clientId,
       if (performedAt != null) 'performed_at': performedAt,
       if (planInstance != null) 'plan_instance': planInstance,
@@ -2150,6 +2303,7 @@ class WorkoutSessionsCompanion extends UpdateCompanion<WorkoutSession> {
 
   WorkoutSessionsCompanion copyWith({
     Value<int>? id,
+    Value<String?>? externalId,
     Value<String>? clientId,
     Value<DateTime>? performedAt,
     Value<int>? planInstance,
@@ -2158,6 +2312,7 @@ class WorkoutSessionsCompanion extends UpdateCompanion<WorkoutSession> {
   }) {
     return WorkoutSessionsCompanion(
       id: id ?? this.id,
+      externalId: externalId ?? this.externalId,
       clientId: clientId ?? this.clientId,
       performedAt: performedAt ?? this.performedAt,
       planInstance: planInstance ?? this.planInstance,
@@ -2171,6 +2326,9 @@ class WorkoutSessionsCompanion extends UpdateCompanion<WorkoutSession> {
     final map = <String, Expression>{};
     if (id.present) {
       map['id'] = Variable<int>(id.value);
+    }
+    if (externalId.present) {
+      map['external_id'] = Variable<String>(externalId.value);
     }
     if (clientId.present) {
       map['client_id'] = Variable<String>(clientId.value);
@@ -2194,6 +2352,7 @@ class WorkoutSessionsCompanion extends UpdateCompanion<WorkoutSession> {
   String toString() {
     return (StringBuffer('WorkoutSessionsCompanion(')
           ..write('id: $id, ')
+          ..write('externalId: $externalId, ')
           ..write('clientId: $clientId, ')
           ..write('performedAt: $performedAt, ')
           ..write('planInstance: $planInstance, ')
@@ -2610,6 +2769,27 @@ class $WorkoutExerciseResultsTable extends WorkoutExerciseResults
     type: DriftSqlType.int,
     requiredDuringInsert: true,
   );
+  static const VerificationMeta _exerciseIdentityIdMeta =
+      const VerificationMeta('exerciseIdentityId');
+  @override
+  late final GeneratedColumn<int> exerciseIdentityId = GeneratedColumn<int>(
+    'exercise_identity_id',
+    aliasedName,
+    true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _exerciseNameSnapshotMeta =
+      const VerificationMeta('exerciseNameSnapshot');
+  @override
+  late final GeneratedColumn<String> exerciseNameSnapshot =
+      GeneratedColumn<String>(
+        'exercise_name_snapshot',
+        aliasedName,
+        true,
+        type: DriftSqlType.string,
+        requiredDuringInsert: false,
+      );
   static const VerificationMeta _lastWeightKgMeta = const VerificationMeta(
     'lastWeightKg',
   );
@@ -2637,6 +2817,8 @@ class $WorkoutExerciseResultsTable extends WorkoutExerciseResults
     id,
     sessionId,
     templateExerciseId,
+    exerciseIdentityId,
+    exerciseNameSnapshot,
     lastWeightKg,
     lastReps,
   ];
@@ -2673,6 +2855,24 @@ class $WorkoutExerciseResultsTable extends WorkoutExerciseResults
       );
     } else if (isInserting) {
       context.missing(_templateExerciseIdMeta);
+    }
+    if (data.containsKey('exercise_identity_id')) {
+      context.handle(
+        _exerciseIdentityIdMeta,
+        exerciseIdentityId.isAcceptableOrUnknown(
+          data['exercise_identity_id']!,
+          _exerciseIdentityIdMeta,
+        ),
+      );
+    }
+    if (data.containsKey('exercise_name_snapshot')) {
+      context.handle(
+        _exerciseNameSnapshotMeta,
+        exerciseNameSnapshot.isAcceptableOrUnknown(
+          data['exercise_name_snapshot']!,
+          _exerciseNameSnapshotMeta,
+        ),
+      );
     }
     if (data.containsKey('last_weight_kg')) {
       context.handle(
@@ -2714,6 +2914,14 @@ class $WorkoutExerciseResultsTable extends WorkoutExerciseResults
         DriftSqlType.int,
         data['${effectivePrefix}template_exercise_id'],
       )!,
+      exerciseIdentityId: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}exercise_identity_id'],
+      ),
+      exerciseNameSnapshot: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}exercise_name_snapshot'],
+      ),
       lastWeightKg: attachedDatabase.typeMapping.read(
         DriftSqlType.double,
         data['${effectivePrefix}last_weight_kg'],
@@ -2736,12 +2944,16 @@ class WorkoutExerciseResult extends DataClass
   final int id;
   final int sessionId;
   final int templateExerciseId;
+  final int? exerciseIdentityId;
+  final String? exerciseNameSnapshot;
   final double? lastWeightKg;
   final int? lastReps;
   const WorkoutExerciseResult({
     required this.id,
     required this.sessionId,
     required this.templateExerciseId,
+    this.exerciseIdentityId,
+    this.exerciseNameSnapshot,
     this.lastWeightKg,
     this.lastReps,
   });
@@ -2751,6 +2963,12 @@ class WorkoutExerciseResult extends DataClass
     map['id'] = Variable<int>(id);
     map['session_id'] = Variable<int>(sessionId);
     map['template_exercise_id'] = Variable<int>(templateExerciseId);
+    if (!nullToAbsent || exerciseIdentityId != null) {
+      map['exercise_identity_id'] = Variable<int>(exerciseIdentityId);
+    }
+    if (!nullToAbsent || exerciseNameSnapshot != null) {
+      map['exercise_name_snapshot'] = Variable<String>(exerciseNameSnapshot);
+    }
     if (!nullToAbsent || lastWeightKg != null) {
       map['last_weight_kg'] = Variable<double>(lastWeightKg);
     }
@@ -2765,6 +2983,12 @@ class WorkoutExerciseResult extends DataClass
       id: Value(id),
       sessionId: Value(sessionId),
       templateExerciseId: Value(templateExerciseId),
+      exerciseIdentityId: exerciseIdentityId == null && nullToAbsent
+          ? const Value.absent()
+          : Value(exerciseIdentityId),
+      exerciseNameSnapshot: exerciseNameSnapshot == null && nullToAbsent
+          ? const Value.absent()
+          : Value(exerciseNameSnapshot),
       lastWeightKg: lastWeightKg == null && nullToAbsent
           ? const Value.absent()
           : Value(lastWeightKg),
@@ -2783,6 +3007,10 @@ class WorkoutExerciseResult extends DataClass
       id: serializer.fromJson<int>(json['id']),
       sessionId: serializer.fromJson<int>(json['sessionId']),
       templateExerciseId: serializer.fromJson<int>(json['templateExerciseId']),
+      exerciseIdentityId: serializer.fromJson<int?>(json['exerciseIdentityId']),
+      exerciseNameSnapshot: serializer.fromJson<String?>(
+        json['exerciseNameSnapshot'],
+      ),
       lastWeightKg: serializer.fromJson<double?>(json['lastWeightKg']),
       lastReps: serializer.fromJson<int?>(json['lastReps']),
     );
@@ -2794,6 +3022,8 @@ class WorkoutExerciseResult extends DataClass
       'id': serializer.toJson<int>(id),
       'sessionId': serializer.toJson<int>(sessionId),
       'templateExerciseId': serializer.toJson<int>(templateExerciseId),
+      'exerciseIdentityId': serializer.toJson<int?>(exerciseIdentityId),
+      'exerciseNameSnapshot': serializer.toJson<String?>(exerciseNameSnapshot),
       'lastWeightKg': serializer.toJson<double?>(lastWeightKg),
       'lastReps': serializer.toJson<int?>(lastReps),
     };
@@ -2803,12 +3033,20 @@ class WorkoutExerciseResult extends DataClass
     int? id,
     int? sessionId,
     int? templateExerciseId,
+    Value<int?> exerciseIdentityId = const Value.absent(),
+    Value<String?> exerciseNameSnapshot = const Value.absent(),
     Value<double?> lastWeightKg = const Value.absent(),
     Value<int?> lastReps = const Value.absent(),
   }) => WorkoutExerciseResult(
     id: id ?? this.id,
     sessionId: sessionId ?? this.sessionId,
     templateExerciseId: templateExerciseId ?? this.templateExerciseId,
+    exerciseIdentityId: exerciseIdentityId.present
+        ? exerciseIdentityId.value
+        : this.exerciseIdentityId,
+    exerciseNameSnapshot: exerciseNameSnapshot.present
+        ? exerciseNameSnapshot.value
+        : this.exerciseNameSnapshot,
     lastWeightKg: lastWeightKg.present ? lastWeightKg.value : this.lastWeightKg,
     lastReps: lastReps.present ? lastReps.value : this.lastReps,
   );
@@ -2821,6 +3059,12 @@ class WorkoutExerciseResult extends DataClass
       templateExerciseId: data.templateExerciseId.present
           ? data.templateExerciseId.value
           : this.templateExerciseId,
+      exerciseIdentityId: data.exerciseIdentityId.present
+          ? data.exerciseIdentityId.value
+          : this.exerciseIdentityId,
+      exerciseNameSnapshot: data.exerciseNameSnapshot.present
+          ? data.exerciseNameSnapshot.value
+          : this.exerciseNameSnapshot,
       lastWeightKg: data.lastWeightKg.present
           ? data.lastWeightKg.value
           : this.lastWeightKg,
@@ -2834,6 +3078,8 @@ class WorkoutExerciseResult extends DataClass
           ..write('id: $id, ')
           ..write('sessionId: $sessionId, ')
           ..write('templateExerciseId: $templateExerciseId, ')
+          ..write('exerciseIdentityId: $exerciseIdentityId, ')
+          ..write('exerciseNameSnapshot: $exerciseNameSnapshot, ')
           ..write('lastWeightKg: $lastWeightKg, ')
           ..write('lastReps: $lastReps')
           ..write(')'))
@@ -2841,8 +3087,15 @@ class WorkoutExerciseResult extends DataClass
   }
 
   @override
-  int get hashCode =>
-      Object.hash(id, sessionId, templateExerciseId, lastWeightKg, lastReps);
+  int get hashCode => Object.hash(
+    id,
+    sessionId,
+    templateExerciseId,
+    exerciseIdentityId,
+    exerciseNameSnapshot,
+    lastWeightKg,
+    lastReps,
+  );
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
@@ -2850,6 +3103,8 @@ class WorkoutExerciseResult extends DataClass
           other.id == this.id &&
           other.sessionId == this.sessionId &&
           other.templateExerciseId == this.templateExerciseId &&
+          other.exerciseIdentityId == this.exerciseIdentityId &&
+          other.exerciseNameSnapshot == this.exerciseNameSnapshot &&
           other.lastWeightKg == this.lastWeightKg &&
           other.lastReps == this.lastReps);
 }
@@ -2859,12 +3114,16 @@ class WorkoutExerciseResultsCompanion
   final Value<int> id;
   final Value<int> sessionId;
   final Value<int> templateExerciseId;
+  final Value<int?> exerciseIdentityId;
+  final Value<String?> exerciseNameSnapshot;
   final Value<double?> lastWeightKg;
   final Value<int?> lastReps;
   const WorkoutExerciseResultsCompanion({
     this.id = const Value.absent(),
     this.sessionId = const Value.absent(),
     this.templateExerciseId = const Value.absent(),
+    this.exerciseIdentityId = const Value.absent(),
+    this.exerciseNameSnapshot = const Value.absent(),
     this.lastWeightKg = const Value.absent(),
     this.lastReps = const Value.absent(),
   });
@@ -2872,6 +3131,8 @@ class WorkoutExerciseResultsCompanion
     this.id = const Value.absent(),
     required int sessionId,
     required int templateExerciseId,
+    this.exerciseIdentityId = const Value.absent(),
+    this.exerciseNameSnapshot = const Value.absent(),
     this.lastWeightKg = const Value.absent(),
     this.lastReps = const Value.absent(),
   }) : sessionId = Value(sessionId),
@@ -2880,6 +3141,8 @@ class WorkoutExerciseResultsCompanion
     Expression<int>? id,
     Expression<int>? sessionId,
     Expression<int>? templateExerciseId,
+    Expression<int>? exerciseIdentityId,
+    Expression<String>? exerciseNameSnapshot,
     Expression<double>? lastWeightKg,
     Expression<int>? lastReps,
   }) {
@@ -2888,6 +3151,10 @@ class WorkoutExerciseResultsCompanion
       if (sessionId != null) 'session_id': sessionId,
       if (templateExerciseId != null)
         'template_exercise_id': templateExerciseId,
+      if (exerciseIdentityId != null)
+        'exercise_identity_id': exerciseIdentityId,
+      if (exerciseNameSnapshot != null)
+        'exercise_name_snapshot': exerciseNameSnapshot,
       if (lastWeightKg != null) 'last_weight_kg': lastWeightKg,
       if (lastReps != null) 'last_reps': lastReps,
     });
@@ -2897,6 +3164,8 @@ class WorkoutExerciseResultsCompanion
     Value<int>? id,
     Value<int>? sessionId,
     Value<int>? templateExerciseId,
+    Value<int?>? exerciseIdentityId,
+    Value<String?>? exerciseNameSnapshot,
     Value<double?>? lastWeightKg,
     Value<int?>? lastReps,
   }) {
@@ -2904,6 +3173,8 @@ class WorkoutExerciseResultsCompanion
       id: id ?? this.id,
       sessionId: sessionId ?? this.sessionId,
       templateExerciseId: templateExerciseId ?? this.templateExerciseId,
+      exerciseIdentityId: exerciseIdentityId ?? this.exerciseIdentityId,
+      exerciseNameSnapshot: exerciseNameSnapshot ?? this.exerciseNameSnapshot,
       lastWeightKg: lastWeightKg ?? this.lastWeightKg,
       lastReps: lastReps ?? this.lastReps,
     );
@@ -2921,6 +3192,14 @@ class WorkoutExerciseResultsCompanion
     if (templateExerciseId.present) {
       map['template_exercise_id'] = Variable<int>(templateExerciseId.value);
     }
+    if (exerciseIdentityId.present) {
+      map['exercise_identity_id'] = Variable<int>(exerciseIdentityId.value);
+    }
+    if (exerciseNameSnapshot.present) {
+      map['exercise_name_snapshot'] = Variable<String>(
+        exerciseNameSnapshot.value,
+      );
+    }
     if (lastWeightKg.present) {
       map['last_weight_kg'] = Variable<double>(lastWeightKg.value);
     }
@@ -2936,6 +3215,8 @@ class WorkoutExerciseResultsCompanion
           ..write('id: $id, ')
           ..write('sessionId: $sessionId, ')
           ..write('templateExerciseId: $templateExerciseId, ')
+          ..write('exerciseIdentityId: $exerciseIdentityId, ')
+          ..write('exerciseNameSnapshot: $exerciseNameSnapshot, ')
           ..write('lastWeightKg: $lastWeightKg, ')
           ..write('lastReps: $lastReps')
           ..write(')'))
@@ -3795,6 +4076,775 @@ class ClientTemplateExerciseOverridesCompanion
   }
 }
 
+class $ExerciseIdentitiesTable extends ExerciseIdentities
+    with TableInfo<$ExerciseIdentitiesTable, ExerciseIdentity> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $ExerciseIdentitiesTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _idMeta = const VerificationMeta('id');
+  @override
+  late final GeneratedColumn<int> id = GeneratedColumn<int>(
+    'id',
+    aliasedName,
+    false,
+    hasAutoIncrement: true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'PRIMARY KEY AUTOINCREMENT',
+    ),
+  );
+  static const VerificationMeta _externalIdMeta = const VerificationMeta(
+    'externalId',
+  );
+  @override
+  late final GeneratedColumn<String> externalId = GeneratedColumn<String>(
+    'external_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _createdAtMeta = const VerificationMeta(
+    'createdAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> createdAt = GeneratedColumn<DateTime>(
+    'created_at',
+    aliasedName,
+    false,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: false,
+    defaultValue: currentDateAndTime,
+  );
+  @override
+  List<GeneratedColumn> get $columns => [id, externalId, createdAt];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'exercise_identities';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<ExerciseIdentity> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('id')) {
+      context.handle(_idMeta, id.isAcceptableOrUnknown(data['id']!, _idMeta));
+    }
+    if (data.containsKey('external_id')) {
+      context.handle(
+        _externalIdMeta,
+        externalId.isAcceptableOrUnknown(data['external_id']!, _externalIdMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_externalIdMeta);
+    }
+    if (data.containsKey('created_at')) {
+      context.handle(
+        _createdAtMeta,
+        createdAt.isAcceptableOrUnknown(data['created_at']!, _createdAtMeta),
+      );
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {id};
+  @override
+  ExerciseIdentity map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return ExerciseIdentity(
+      id: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}id'],
+      )!,
+      externalId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}external_id'],
+      )!,
+      createdAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}created_at'],
+      )!,
+    );
+  }
+
+  @override
+  $ExerciseIdentitiesTable createAlias(String alias) {
+    return $ExerciseIdentitiesTable(attachedDatabase, alias);
+  }
+}
+
+class ExerciseIdentity extends DataClass
+    implements Insertable<ExerciseIdentity> {
+  final int id;
+  final String externalId;
+  final DateTime createdAt;
+  const ExerciseIdentity({
+    required this.id,
+    required this.externalId,
+    required this.createdAt,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['id'] = Variable<int>(id);
+    map['external_id'] = Variable<String>(externalId);
+    map['created_at'] = Variable<DateTime>(createdAt);
+    return map;
+  }
+
+  ExerciseIdentitiesCompanion toCompanion(bool nullToAbsent) {
+    return ExerciseIdentitiesCompanion(
+      id: Value(id),
+      externalId: Value(externalId),
+      createdAt: Value(createdAt),
+    );
+  }
+
+  factory ExerciseIdentity.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return ExerciseIdentity(
+      id: serializer.fromJson<int>(json['id']),
+      externalId: serializer.fromJson<String>(json['externalId']),
+      createdAt: serializer.fromJson<DateTime>(json['createdAt']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'id': serializer.toJson<int>(id),
+      'externalId': serializer.toJson<String>(externalId),
+      'createdAt': serializer.toJson<DateTime>(createdAt),
+    };
+  }
+
+  ExerciseIdentity copyWith({
+    int? id,
+    String? externalId,
+    DateTime? createdAt,
+  }) => ExerciseIdentity(
+    id: id ?? this.id,
+    externalId: externalId ?? this.externalId,
+    createdAt: createdAt ?? this.createdAt,
+  );
+  ExerciseIdentity copyWithCompanion(ExerciseIdentitiesCompanion data) {
+    return ExerciseIdentity(
+      id: data.id.present ? data.id.value : this.id,
+      externalId: data.externalId.present
+          ? data.externalId.value
+          : this.externalId,
+      createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('ExerciseIdentity(')
+          ..write('id: $id, ')
+          ..write('externalId: $externalId, ')
+          ..write('createdAt: $createdAt')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(id, externalId, createdAt);
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is ExerciseIdentity &&
+          other.id == this.id &&
+          other.externalId == this.externalId &&
+          other.createdAt == this.createdAt);
+}
+
+class ExerciseIdentitiesCompanion extends UpdateCompanion<ExerciseIdentity> {
+  final Value<int> id;
+  final Value<String> externalId;
+  final Value<DateTime> createdAt;
+  const ExerciseIdentitiesCompanion({
+    this.id = const Value.absent(),
+    this.externalId = const Value.absent(),
+    this.createdAt = const Value.absent(),
+  });
+  ExerciseIdentitiesCompanion.insert({
+    this.id = const Value.absent(),
+    required String externalId,
+    this.createdAt = const Value.absent(),
+  }) : externalId = Value(externalId);
+  static Insertable<ExerciseIdentity> custom({
+    Expression<int>? id,
+    Expression<String>? externalId,
+    Expression<DateTime>? createdAt,
+  }) {
+    return RawValuesInsertable({
+      if (id != null) 'id': id,
+      if (externalId != null) 'external_id': externalId,
+      if (createdAt != null) 'created_at': createdAt,
+    });
+  }
+
+  ExerciseIdentitiesCompanion copyWith({
+    Value<int>? id,
+    Value<String>? externalId,
+    Value<DateTime>? createdAt,
+  }) {
+    return ExerciseIdentitiesCompanion(
+      id: id ?? this.id,
+      externalId: externalId ?? this.externalId,
+      createdAt: createdAt ?? this.createdAt,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (id.present) {
+      map['id'] = Variable<int>(id.value);
+    }
+    if (externalId.present) {
+      map['external_id'] = Variable<String>(externalId.value);
+    }
+    if (createdAt.present) {
+      map['created_at'] = Variable<DateTime>(createdAt.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('ExerciseIdentitiesCompanion(')
+          ..write('id: $id, ')
+          ..write('externalId: $externalId, ')
+          ..write('createdAt: $createdAt')
+          ..write(')'))
+        .toString();
+  }
+}
+
+class $ExerciseIdentityBindingsTable extends ExerciseIdentityBindings
+    with TableInfo<$ExerciseIdentityBindingsTable, ExerciseIdentityBinding> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $ExerciseIdentityBindingsTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _idMeta = const VerificationMeta('id');
+  @override
+  late final GeneratedColumn<int> id = GeneratedColumn<int>(
+    'id',
+    aliasedName,
+    false,
+    hasAutoIncrement: true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'PRIMARY KEY AUTOINCREMENT',
+    ),
+  );
+  static const VerificationMeta _clientIdMeta = const VerificationMeta(
+    'clientId',
+  );
+  @override
+  late final GeneratedColumn<String> clientId = GeneratedColumn<String>(
+    'client_id',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _sourceTypeMeta = const VerificationMeta(
+    'sourceType',
+  );
+  @override
+  late final GeneratedColumn<String> sourceType = GeneratedColumn<String>(
+    'source_type',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _sourceIdMeta = const VerificationMeta(
+    'sourceId',
+  );
+  @override
+  late final GeneratedColumn<int> sourceId = GeneratedColumn<int>(
+    'source_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _identityIdMeta = const VerificationMeta(
+    'identityId',
+  );
+  @override
+  late final GeneratedColumn<int> identityId = GeneratedColumn<int>(
+    'identity_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _isCurrentMeta = const VerificationMeta(
+    'isCurrent',
+  );
+  @override
+  late final GeneratedColumn<bool> isCurrent = GeneratedColumn<bool>(
+    'is_current',
+    aliasedName,
+    false,
+    type: DriftSqlType.bool,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'CHECK ("is_current" IN (0, 1))',
+    ),
+    defaultValue: const Constant(true),
+  );
+  static const VerificationMeta _createdAtMeta = const VerificationMeta(
+    'createdAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> createdAt = GeneratedColumn<DateTime>(
+    'created_at',
+    aliasedName,
+    false,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: false,
+    defaultValue: currentDateAndTime,
+  );
+  static const VerificationMeta _retiredAtMeta = const VerificationMeta(
+    'retiredAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> retiredAt = GeneratedColumn<DateTime>(
+    'retired_at',
+    aliasedName,
+    true,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: false,
+  );
+  @override
+  List<GeneratedColumn> get $columns => [
+    id,
+    clientId,
+    sourceType,
+    sourceId,
+    identityId,
+    isCurrent,
+    createdAt,
+    retiredAt,
+  ];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'exercise_identity_bindings';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<ExerciseIdentityBinding> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('id')) {
+      context.handle(_idMeta, id.isAcceptableOrUnknown(data['id']!, _idMeta));
+    }
+    if (data.containsKey('client_id')) {
+      context.handle(
+        _clientIdMeta,
+        clientId.isAcceptableOrUnknown(data['client_id']!, _clientIdMeta),
+      );
+    }
+    if (data.containsKey('source_type')) {
+      context.handle(
+        _sourceTypeMeta,
+        sourceType.isAcceptableOrUnknown(data['source_type']!, _sourceTypeMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_sourceTypeMeta);
+    }
+    if (data.containsKey('source_id')) {
+      context.handle(
+        _sourceIdMeta,
+        sourceId.isAcceptableOrUnknown(data['source_id']!, _sourceIdMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_sourceIdMeta);
+    }
+    if (data.containsKey('identity_id')) {
+      context.handle(
+        _identityIdMeta,
+        identityId.isAcceptableOrUnknown(data['identity_id']!, _identityIdMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_identityIdMeta);
+    }
+    if (data.containsKey('is_current')) {
+      context.handle(
+        _isCurrentMeta,
+        isCurrent.isAcceptableOrUnknown(data['is_current']!, _isCurrentMeta),
+      );
+    }
+    if (data.containsKey('created_at')) {
+      context.handle(
+        _createdAtMeta,
+        createdAt.isAcceptableOrUnknown(data['created_at']!, _createdAtMeta),
+      );
+    }
+    if (data.containsKey('retired_at')) {
+      context.handle(
+        _retiredAtMeta,
+        retiredAt.isAcceptableOrUnknown(data['retired_at']!, _retiredAtMeta),
+      );
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {id};
+  @override
+  ExerciseIdentityBinding map(
+    Map<String, dynamic> data, {
+    String? tablePrefix,
+  }) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return ExerciseIdentityBinding(
+      id: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}id'],
+      )!,
+      clientId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}client_id'],
+      ),
+      sourceType: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}source_type'],
+      )!,
+      sourceId: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}source_id'],
+      )!,
+      identityId: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}identity_id'],
+      )!,
+      isCurrent: attachedDatabase.typeMapping.read(
+        DriftSqlType.bool,
+        data['${effectivePrefix}is_current'],
+      )!,
+      createdAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}created_at'],
+      )!,
+      retiredAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}retired_at'],
+      ),
+    );
+  }
+
+  @override
+  $ExerciseIdentityBindingsTable createAlias(String alias) {
+    return $ExerciseIdentityBindingsTable(attachedDatabase, alias);
+  }
+}
+
+class ExerciseIdentityBinding extends DataClass
+    implements Insertable<ExerciseIdentityBinding> {
+  final int id;
+  final String? clientId;
+  final String sourceType;
+  final int sourceId;
+  final int identityId;
+  final bool isCurrent;
+  final DateTime createdAt;
+  final DateTime? retiredAt;
+  const ExerciseIdentityBinding({
+    required this.id,
+    this.clientId,
+    required this.sourceType,
+    required this.sourceId,
+    required this.identityId,
+    required this.isCurrent,
+    required this.createdAt,
+    this.retiredAt,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['id'] = Variable<int>(id);
+    if (!nullToAbsent || clientId != null) {
+      map['client_id'] = Variable<String>(clientId);
+    }
+    map['source_type'] = Variable<String>(sourceType);
+    map['source_id'] = Variable<int>(sourceId);
+    map['identity_id'] = Variable<int>(identityId);
+    map['is_current'] = Variable<bool>(isCurrent);
+    map['created_at'] = Variable<DateTime>(createdAt);
+    if (!nullToAbsent || retiredAt != null) {
+      map['retired_at'] = Variable<DateTime>(retiredAt);
+    }
+    return map;
+  }
+
+  ExerciseIdentityBindingsCompanion toCompanion(bool nullToAbsent) {
+    return ExerciseIdentityBindingsCompanion(
+      id: Value(id),
+      clientId: clientId == null && nullToAbsent
+          ? const Value.absent()
+          : Value(clientId),
+      sourceType: Value(sourceType),
+      sourceId: Value(sourceId),
+      identityId: Value(identityId),
+      isCurrent: Value(isCurrent),
+      createdAt: Value(createdAt),
+      retiredAt: retiredAt == null && nullToAbsent
+          ? const Value.absent()
+          : Value(retiredAt),
+    );
+  }
+
+  factory ExerciseIdentityBinding.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return ExerciseIdentityBinding(
+      id: serializer.fromJson<int>(json['id']),
+      clientId: serializer.fromJson<String?>(json['clientId']),
+      sourceType: serializer.fromJson<String>(json['sourceType']),
+      sourceId: serializer.fromJson<int>(json['sourceId']),
+      identityId: serializer.fromJson<int>(json['identityId']),
+      isCurrent: serializer.fromJson<bool>(json['isCurrent']),
+      createdAt: serializer.fromJson<DateTime>(json['createdAt']),
+      retiredAt: serializer.fromJson<DateTime?>(json['retiredAt']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'id': serializer.toJson<int>(id),
+      'clientId': serializer.toJson<String?>(clientId),
+      'sourceType': serializer.toJson<String>(sourceType),
+      'sourceId': serializer.toJson<int>(sourceId),
+      'identityId': serializer.toJson<int>(identityId),
+      'isCurrent': serializer.toJson<bool>(isCurrent),
+      'createdAt': serializer.toJson<DateTime>(createdAt),
+      'retiredAt': serializer.toJson<DateTime?>(retiredAt),
+    };
+  }
+
+  ExerciseIdentityBinding copyWith({
+    int? id,
+    Value<String?> clientId = const Value.absent(),
+    String? sourceType,
+    int? sourceId,
+    int? identityId,
+    bool? isCurrent,
+    DateTime? createdAt,
+    Value<DateTime?> retiredAt = const Value.absent(),
+  }) => ExerciseIdentityBinding(
+    id: id ?? this.id,
+    clientId: clientId.present ? clientId.value : this.clientId,
+    sourceType: sourceType ?? this.sourceType,
+    sourceId: sourceId ?? this.sourceId,
+    identityId: identityId ?? this.identityId,
+    isCurrent: isCurrent ?? this.isCurrent,
+    createdAt: createdAt ?? this.createdAt,
+    retiredAt: retiredAt.present ? retiredAt.value : this.retiredAt,
+  );
+  ExerciseIdentityBinding copyWithCompanion(
+    ExerciseIdentityBindingsCompanion data,
+  ) {
+    return ExerciseIdentityBinding(
+      id: data.id.present ? data.id.value : this.id,
+      clientId: data.clientId.present ? data.clientId.value : this.clientId,
+      sourceType: data.sourceType.present
+          ? data.sourceType.value
+          : this.sourceType,
+      sourceId: data.sourceId.present ? data.sourceId.value : this.sourceId,
+      identityId: data.identityId.present
+          ? data.identityId.value
+          : this.identityId,
+      isCurrent: data.isCurrent.present ? data.isCurrent.value : this.isCurrent,
+      createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
+      retiredAt: data.retiredAt.present ? data.retiredAt.value : this.retiredAt,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('ExerciseIdentityBinding(')
+          ..write('id: $id, ')
+          ..write('clientId: $clientId, ')
+          ..write('sourceType: $sourceType, ')
+          ..write('sourceId: $sourceId, ')
+          ..write('identityId: $identityId, ')
+          ..write('isCurrent: $isCurrent, ')
+          ..write('createdAt: $createdAt, ')
+          ..write('retiredAt: $retiredAt')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(
+    id,
+    clientId,
+    sourceType,
+    sourceId,
+    identityId,
+    isCurrent,
+    createdAt,
+    retiredAt,
+  );
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is ExerciseIdentityBinding &&
+          other.id == this.id &&
+          other.clientId == this.clientId &&
+          other.sourceType == this.sourceType &&
+          other.sourceId == this.sourceId &&
+          other.identityId == this.identityId &&
+          other.isCurrent == this.isCurrent &&
+          other.createdAt == this.createdAt &&
+          other.retiredAt == this.retiredAt);
+}
+
+class ExerciseIdentityBindingsCompanion
+    extends UpdateCompanion<ExerciseIdentityBinding> {
+  final Value<int> id;
+  final Value<String?> clientId;
+  final Value<String> sourceType;
+  final Value<int> sourceId;
+  final Value<int> identityId;
+  final Value<bool> isCurrent;
+  final Value<DateTime> createdAt;
+  final Value<DateTime?> retiredAt;
+  const ExerciseIdentityBindingsCompanion({
+    this.id = const Value.absent(),
+    this.clientId = const Value.absent(),
+    this.sourceType = const Value.absent(),
+    this.sourceId = const Value.absent(),
+    this.identityId = const Value.absent(),
+    this.isCurrent = const Value.absent(),
+    this.createdAt = const Value.absent(),
+    this.retiredAt = const Value.absent(),
+  });
+  ExerciseIdentityBindingsCompanion.insert({
+    this.id = const Value.absent(),
+    this.clientId = const Value.absent(),
+    required String sourceType,
+    required int sourceId,
+    required int identityId,
+    this.isCurrent = const Value.absent(),
+    this.createdAt = const Value.absent(),
+    this.retiredAt = const Value.absent(),
+  }) : sourceType = Value(sourceType),
+       sourceId = Value(sourceId),
+       identityId = Value(identityId);
+  static Insertable<ExerciseIdentityBinding> custom({
+    Expression<int>? id,
+    Expression<String>? clientId,
+    Expression<String>? sourceType,
+    Expression<int>? sourceId,
+    Expression<int>? identityId,
+    Expression<bool>? isCurrent,
+    Expression<DateTime>? createdAt,
+    Expression<DateTime>? retiredAt,
+  }) {
+    return RawValuesInsertable({
+      if (id != null) 'id': id,
+      if (clientId != null) 'client_id': clientId,
+      if (sourceType != null) 'source_type': sourceType,
+      if (sourceId != null) 'source_id': sourceId,
+      if (identityId != null) 'identity_id': identityId,
+      if (isCurrent != null) 'is_current': isCurrent,
+      if (createdAt != null) 'created_at': createdAt,
+      if (retiredAt != null) 'retired_at': retiredAt,
+    });
+  }
+
+  ExerciseIdentityBindingsCompanion copyWith({
+    Value<int>? id,
+    Value<String?>? clientId,
+    Value<String>? sourceType,
+    Value<int>? sourceId,
+    Value<int>? identityId,
+    Value<bool>? isCurrent,
+    Value<DateTime>? createdAt,
+    Value<DateTime?>? retiredAt,
+  }) {
+    return ExerciseIdentityBindingsCompanion(
+      id: id ?? this.id,
+      clientId: clientId ?? this.clientId,
+      sourceType: sourceType ?? this.sourceType,
+      sourceId: sourceId ?? this.sourceId,
+      identityId: identityId ?? this.identityId,
+      isCurrent: isCurrent ?? this.isCurrent,
+      createdAt: createdAt ?? this.createdAt,
+      retiredAt: retiredAt ?? this.retiredAt,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (id.present) {
+      map['id'] = Variable<int>(id.value);
+    }
+    if (clientId.present) {
+      map['client_id'] = Variable<String>(clientId.value);
+    }
+    if (sourceType.present) {
+      map['source_type'] = Variable<String>(sourceType.value);
+    }
+    if (sourceId.present) {
+      map['source_id'] = Variable<int>(sourceId.value);
+    }
+    if (identityId.present) {
+      map['identity_id'] = Variable<int>(identityId.value);
+    }
+    if (isCurrent.present) {
+      map['is_current'] = Variable<bool>(isCurrent.value);
+    }
+    if (createdAt.present) {
+      map['created_at'] = Variable<DateTime>(createdAt.value);
+    }
+    if (retiredAt.present) {
+      map['retired_at'] = Variable<DateTime>(retiredAt.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('ExerciseIdentityBindingsCompanion(')
+          ..write('id: $id, ')
+          ..write('clientId: $clientId, ')
+          ..write('sourceType: $sourceType, ')
+          ..write('sourceId: $sourceId, ')
+          ..write('identityId: $identityId, ')
+          ..write('isCurrent: $isCurrent, ')
+          ..write('createdAt: $createdAt, ')
+          ..write('retiredAt: $retiredAt')
+          ..write(')'))
+        .toString();
+  }
+}
+
 abstract class _$AppDb extends GeneratedDatabase {
   _$AppDb(QueryExecutor e) : super(e);
   $AppDbManager get managers => $AppDbManager(this);
@@ -3815,6 +4865,10 @@ abstract class _$AppDb extends GeneratedDatabase {
   late final $WorkoutDraftsTable workoutDrafts = $WorkoutDraftsTable(this);
   late final $ClientTemplateExerciseOverridesTable
   clientTemplateExerciseOverrides = $ClientTemplateExerciseOverridesTable(this);
+  late final $ExerciseIdentitiesTable exerciseIdentities =
+      $ExerciseIdentitiesTable(this);
+  late final $ExerciseIdentityBindingsTable exerciseIdentityBindings =
+      $ExerciseIdentityBindingsTable(this);
   @override
   Iterable<TableInfo<Table, Object?>> get allTables =>
       allSchemaEntities.whereType<TableInfo<Table, Object?>>();
@@ -3829,13 +4883,17 @@ abstract class _$AppDb extends GeneratedDatabase {
     workoutExerciseResults,
     workoutDrafts,
     clientTemplateExerciseOverrides,
+    exerciseIdentities,
+    exerciseIdentityBindings,
   ];
 }
 
 typedef $$ClientsTableCreateCompanionBuilder =
     ClientsCompanion Function({
       required String id,
+      Value<String?> externalId,
       required String name,
+      Value<String> status,
       Value<String?> gender,
       Value<String?> plan,
       Value<DateTime?> planStart,
@@ -3846,7 +4904,9 @@ typedef $$ClientsTableCreateCompanionBuilder =
 typedef $$ClientsTableUpdateCompanionBuilder =
     ClientsCompanion Function({
       Value<String> id,
+      Value<String?> externalId,
       Value<String> name,
+      Value<String> status,
       Value<String?> gender,
       Value<String?> plan,
       Value<DateTime?> planStart,
@@ -3868,8 +4928,18 @@ class $$ClientsTableFilterComposer extends Composer<_$AppDb, $ClientsTable> {
     builder: (column) => ColumnFilters(column),
   );
 
+  ColumnFilters<String> get externalId => $composableBuilder(
+    column: $table.externalId,
+    builder: (column) => ColumnFilters(column),
+  );
+
   ColumnFilters<String> get name => $composableBuilder(
     column: $table.name,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get status => $composableBuilder(
+    column: $table.status,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -3912,8 +4982,18 @@ class $$ClientsTableOrderingComposer extends Composer<_$AppDb, $ClientsTable> {
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<String> get externalId => $composableBuilder(
+    column: $table.externalId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   ColumnOrderings<String> get name => $composableBuilder(
     column: $table.name,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get status => $composableBuilder(
+    column: $table.status,
     builder: (column) => ColumnOrderings(column),
   );
 
@@ -3955,8 +5035,16 @@ class $$ClientsTableAnnotationComposer
   GeneratedColumn<String> get id =>
       $composableBuilder(column: $table.id, builder: (column) => column);
 
+  GeneratedColumn<String> get externalId => $composableBuilder(
+    column: $table.externalId,
+    builder: (column) => column,
+  );
+
   GeneratedColumn<String> get name =>
       $composableBuilder(column: $table.name, builder: (column) => column);
+
+  GeneratedColumn<String> get status =>
+      $composableBuilder(column: $table.status, builder: (column) => column);
 
   GeneratedColumn<String> get gender =>
       $composableBuilder(column: $table.gender, builder: (column) => column);
@@ -4003,7 +5091,9 @@ class $$ClientsTableTableManager
           updateCompanionCallback:
               ({
                 Value<String> id = const Value.absent(),
+                Value<String?> externalId = const Value.absent(),
                 Value<String> name = const Value.absent(),
+                Value<String> status = const Value.absent(),
                 Value<String?> gender = const Value.absent(),
                 Value<String?> plan = const Value.absent(),
                 Value<DateTime?> planStart = const Value.absent(),
@@ -4012,7 +5102,9 @@ class $$ClientsTableTableManager
                 Value<int> rowid = const Value.absent(),
               }) => ClientsCompanion(
                 id: id,
+                externalId: externalId,
                 name: name,
+                status: status,
                 gender: gender,
                 plan: plan,
                 planStart: planStart,
@@ -4023,7 +5115,9 @@ class $$ClientsTableTableManager
           createCompanionCallback:
               ({
                 required String id,
+                Value<String?> externalId = const Value.absent(),
                 required String name,
+                Value<String> status = const Value.absent(),
                 Value<String?> gender = const Value.absent(),
                 Value<String?> plan = const Value.absent(),
                 Value<DateTime?> planStart = const Value.absent(),
@@ -4032,7 +5126,9 @@ class $$ClientsTableTableManager
                 Value<int> rowid = const Value.absent(),
               }) => ClientsCompanion.insert(
                 id: id,
+                externalId: externalId,
                 name: name,
+                status: status,
                 gender: gender,
                 plan: plan,
                 planStart: planStart,
@@ -4775,6 +5871,7 @@ typedef $$ClientProgramStatesTableProcessedTableManager =
 typedef $$WorkoutSessionsTableCreateCompanionBuilder =
     WorkoutSessionsCompanion Function({
       Value<int> id,
+      Value<String?> externalId,
       required String clientId,
       required DateTime performedAt,
       required int planInstance,
@@ -4784,6 +5881,7 @@ typedef $$WorkoutSessionsTableCreateCompanionBuilder =
 typedef $$WorkoutSessionsTableUpdateCompanionBuilder =
     WorkoutSessionsCompanion Function({
       Value<int> id,
+      Value<String?> externalId,
       Value<String> clientId,
       Value<DateTime> performedAt,
       Value<int> planInstance,
@@ -4802,6 +5900,11 @@ class $$WorkoutSessionsTableFilterComposer
   });
   ColumnFilters<int> get id => $composableBuilder(
     column: $table.id,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get externalId => $composableBuilder(
+    column: $table.externalId,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -4845,6 +5948,11 @@ class $$WorkoutSessionsTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<String> get externalId => $composableBuilder(
+    column: $table.externalId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   ColumnOrderings<String> get clientId => $composableBuilder(
     column: $table.clientId,
     builder: (column) => ColumnOrderings(column),
@@ -4882,6 +5990,11 @@ class $$WorkoutSessionsTableAnnotationComposer
   });
   GeneratedColumn<int> get id =>
       $composableBuilder(column: $table.id, builder: (column) => column);
+
+  GeneratedColumn<String> get externalId => $composableBuilder(
+    column: $table.externalId,
+    builder: (column) => column,
+  );
 
   GeneratedColumn<String> get clientId =>
       $composableBuilder(column: $table.clientId, builder: (column) => column);
@@ -4937,6 +6050,7 @@ class $$WorkoutSessionsTableTableManager
           updateCompanionCallback:
               ({
                 Value<int> id = const Value.absent(),
+                Value<String?> externalId = const Value.absent(),
                 Value<String> clientId = const Value.absent(),
                 Value<DateTime> performedAt = const Value.absent(),
                 Value<int> planInstance = const Value.absent(),
@@ -4944,6 +6058,7 @@ class $$WorkoutSessionsTableTableManager
                 Value<int> templateIdx = const Value.absent(),
               }) => WorkoutSessionsCompanion(
                 id: id,
+                externalId: externalId,
                 clientId: clientId,
                 performedAt: performedAt,
                 planInstance: planInstance,
@@ -4953,6 +6068,7 @@ class $$WorkoutSessionsTableTableManager
           createCompanionCallback:
               ({
                 Value<int> id = const Value.absent(),
+                Value<String?> externalId = const Value.absent(),
                 required String clientId,
                 required DateTime performedAt,
                 required int planInstance,
@@ -4960,6 +6076,7 @@ class $$WorkoutSessionsTableTableManager
                 required int templateIdx,
               }) => WorkoutSessionsCompanion.insert(
                 id: id,
+                externalId: externalId,
                 clientId: clientId,
                 performedAt: performedAt,
                 planInstance: planInstance,
@@ -5213,6 +6330,8 @@ typedef $$WorkoutExerciseResultsTableCreateCompanionBuilder =
       Value<int> id,
       required int sessionId,
       required int templateExerciseId,
+      Value<int?> exerciseIdentityId,
+      Value<String?> exerciseNameSnapshot,
       Value<double?> lastWeightKg,
       Value<int?> lastReps,
     });
@@ -5221,6 +6340,8 @@ typedef $$WorkoutExerciseResultsTableUpdateCompanionBuilder =
       Value<int> id,
       Value<int> sessionId,
       Value<int> templateExerciseId,
+      Value<int?> exerciseIdentityId,
+      Value<String?> exerciseNameSnapshot,
       Value<double?> lastWeightKg,
       Value<int?> lastReps,
     });
@@ -5246,6 +6367,16 @@ class $$WorkoutExerciseResultsTableFilterComposer
 
   ColumnFilters<int> get templateExerciseId => $composableBuilder(
     column: $table.templateExerciseId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get exerciseIdentityId => $composableBuilder(
+    column: $table.exerciseIdentityId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get exerciseNameSnapshot => $composableBuilder(
+    column: $table.exerciseNameSnapshot,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -5284,6 +6415,16 @@ class $$WorkoutExerciseResultsTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<int> get exerciseIdentityId => $composableBuilder(
+    column: $table.exerciseIdentityId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get exerciseNameSnapshot => $composableBuilder(
+    column: $table.exerciseNameSnapshot,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   ColumnOrderings<double> get lastWeightKg => $composableBuilder(
     column: $table.lastWeightKg,
     builder: (column) => ColumnOrderings(column),
@@ -5312,6 +6453,16 @@ class $$WorkoutExerciseResultsTableAnnotationComposer
 
   GeneratedColumn<int> get templateExerciseId => $composableBuilder(
     column: $table.templateExerciseId,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<int> get exerciseIdentityId => $composableBuilder(
+    column: $table.exerciseIdentityId,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get exerciseNameSnapshot => $composableBuilder(
+    column: $table.exerciseNameSnapshot,
     builder: (column) => column,
   );
 
@@ -5373,12 +6524,16 @@ class $$WorkoutExerciseResultsTableTableManager
                 Value<int> id = const Value.absent(),
                 Value<int> sessionId = const Value.absent(),
                 Value<int> templateExerciseId = const Value.absent(),
+                Value<int?> exerciseIdentityId = const Value.absent(),
+                Value<String?> exerciseNameSnapshot = const Value.absent(),
                 Value<double?> lastWeightKg = const Value.absent(),
                 Value<int?> lastReps = const Value.absent(),
               }) => WorkoutExerciseResultsCompanion(
                 id: id,
                 sessionId: sessionId,
                 templateExerciseId: templateExerciseId,
+                exerciseIdentityId: exerciseIdentityId,
+                exerciseNameSnapshot: exerciseNameSnapshot,
                 lastWeightKg: lastWeightKg,
                 lastReps: lastReps,
               ),
@@ -5387,12 +6542,16 @@ class $$WorkoutExerciseResultsTableTableManager
                 Value<int> id = const Value.absent(),
                 required int sessionId,
                 required int templateExerciseId,
+                Value<int?> exerciseIdentityId = const Value.absent(),
+                Value<String?> exerciseNameSnapshot = const Value.absent(),
                 Value<double?> lastWeightKg = const Value.absent(),
                 Value<int?> lastReps = const Value.absent(),
               }) => WorkoutExerciseResultsCompanion.insert(
                 id: id,
                 sessionId: sessionId,
                 templateExerciseId: templateExerciseId,
+                exerciseIdentityId: exerciseIdentityId,
+                exerciseNameSnapshot: exerciseNameSnapshot,
                 lastWeightKg: lastWeightKg,
                 lastReps: lastReps,
               ),
@@ -5880,6 +7039,443 @@ typedef $$ClientTemplateExerciseOverridesTableProcessedTableManager =
       ClientTemplateExerciseOverride,
       PrefetchHooks Function()
     >;
+typedef $$ExerciseIdentitiesTableCreateCompanionBuilder =
+    ExerciseIdentitiesCompanion Function({
+      Value<int> id,
+      required String externalId,
+      Value<DateTime> createdAt,
+    });
+typedef $$ExerciseIdentitiesTableUpdateCompanionBuilder =
+    ExerciseIdentitiesCompanion Function({
+      Value<int> id,
+      Value<String> externalId,
+      Value<DateTime> createdAt,
+    });
+
+class $$ExerciseIdentitiesTableFilterComposer
+    extends Composer<_$AppDb, $ExerciseIdentitiesTable> {
+  $$ExerciseIdentitiesTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<int> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get externalId => $composableBuilder(
+    column: $table.externalId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get createdAt => $composableBuilder(
+    column: $table.createdAt,
+    builder: (column) => ColumnFilters(column),
+  );
+}
+
+class $$ExerciseIdentitiesTableOrderingComposer
+    extends Composer<_$AppDb, $ExerciseIdentitiesTable> {
+  $$ExerciseIdentitiesTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<int> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get externalId => $composableBuilder(
+    column: $table.externalId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get createdAt => $composableBuilder(
+    column: $table.createdAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+}
+
+class $$ExerciseIdentitiesTableAnnotationComposer
+    extends Composer<_$AppDb, $ExerciseIdentitiesTable> {
+  $$ExerciseIdentitiesTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<int> get id =>
+      $composableBuilder(column: $table.id, builder: (column) => column);
+
+  GeneratedColumn<String> get externalId => $composableBuilder(
+    column: $table.externalId,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<DateTime> get createdAt =>
+      $composableBuilder(column: $table.createdAt, builder: (column) => column);
+}
+
+class $$ExerciseIdentitiesTableTableManager
+    extends
+        RootTableManager<
+          _$AppDb,
+          $ExerciseIdentitiesTable,
+          ExerciseIdentity,
+          $$ExerciseIdentitiesTableFilterComposer,
+          $$ExerciseIdentitiesTableOrderingComposer,
+          $$ExerciseIdentitiesTableAnnotationComposer,
+          $$ExerciseIdentitiesTableCreateCompanionBuilder,
+          $$ExerciseIdentitiesTableUpdateCompanionBuilder,
+          (
+            ExerciseIdentity,
+            BaseReferences<_$AppDb, $ExerciseIdentitiesTable, ExerciseIdentity>,
+          ),
+          ExerciseIdentity,
+          PrefetchHooks Function()
+        > {
+  $$ExerciseIdentitiesTableTableManager(
+    _$AppDb db,
+    $ExerciseIdentitiesTable table,
+  ) : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$ExerciseIdentitiesTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$ExerciseIdentitiesTableOrderingComposer($db: db, $table: table),
+          createComputedFieldComposer: () =>
+              $$ExerciseIdentitiesTableAnnotationComposer(
+                $db: db,
+                $table: table,
+              ),
+          updateCompanionCallback:
+              ({
+                Value<int> id = const Value.absent(),
+                Value<String> externalId = const Value.absent(),
+                Value<DateTime> createdAt = const Value.absent(),
+              }) => ExerciseIdentitiesCompanion(
+                id: id,
+                externalId: externalId,
+                createdAt: createdAt,
+              ),
+          createCompanionCallback:
+              ({
+                Value<int> id = const Value.absent(),
+                required String externalId,
+                Value<DateTime> createdAt = const Value.absent(),
+              }) => ExerciseIdentitiesCompanion.insert(
+                id: id,
+                externalId: externalId,
+                createdAt: createdAt,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map((e) => (e.readTable(table), BaseReferences(db, table, e)))
+              .toList(),
+          prefetchHooksCallback: null,
+        ),
+      );
+}
+
+typedef $$ExerciseIdentitiesTableProcessedTableManager =
+    ProcessedTableManager<
+      _$AppDb,
+      $ExerciseIdentitiesTable,
+      ExerciseIdentity,
+      $$ExerciseIdentitiesTableFilterComposer,
+      $$ExerciseIdentitiesTableOrderingComposer,
+      $$ExerciseIdentitiesTableAnnotationComposer,
+      $$ExerciseIdentitiesTableCreateCompanionBuilder,
+      $$ExerciseIdentitiesTableUpdateCompanionBuilder,
+      (
+        ExerciseIdentity,
+        BaseReferences<_$AppDb, $ExerciseIdentitiesTable, ExerciseIdentity>,
+      ),
+      ExerciseIdentity,
+      PrefetchHooks Function()
+    >;
+typedef $$ExerciseIdentityBindingsTableCreateCompanionBuilder =
+    ExerciseIdentityBindingsCompanion Function({
+      Value<int> id,
+      Value<String?> clientId,
+      required String sourceType,
+      required int sourceId,
+      required int identityId,
+      Value<bool> isCurrent,
+      Value<DateTime> createdAt,
+      Value<DateTime?> retiredAt,
+    });
+typedef $$ExerciseIdentityBindingsTableUpdateCompanionBuilder =
+    ExerciseIdentityBindingsCompanion Function({
+      Value<int> id,
+      Value<String?> clientId,
+      Value<String> sourceType,
+      Value<int> sourceId,
+      Value<int> identityId,
+      Value<bool> isCurrent,
+      Value<DateTime> createdAt,
+      Value<DateTime?> retiredAt,
+    });
+
+class $$ExerciseIdentityBindingsTableFilterComposer
+    extends Composer<_$AppDb, $ExerciseIdentityBindingsTable> {
+  $$ExerciseIdentityBindingsTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<int> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get clientId => $composableBuilder(
+    column: $table.clientId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get sourceType => $composableBuilder(
+    column: $table.sourceType,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get sourceId => $composableBuilder(
+    column: $table.sourceId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get identityId => $composableBuilder(
+    column: $table.identityId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<bool> get isCurrent => $composableBuilder(
+    column: $table.isCurrent,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get createdAt => $composableBuilder(
+    column: $table.createdAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get retiredAt => $composableBuilder(
+    column: $table.retiredAt,
+    builder: (column) => ColumnFilters(column),
+  );
+}
+
+class $$ExerciseIdentityBindingsTableOrderingComposer
+    extends Composer<_$AppDb, $ExerciseIdentityBindingsTable> {
+  $$ExerciseIdentityBindingsTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<int> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get clientId => $composableBuilder(
+    column: $table.clientId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get sourceType => $composableBuilder(
+    column: $table.sourceType,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get sourceId => $composableBuilder(
+    column: $table.sourceId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get identityId => $composableBuilder(
+    column: $table.identityId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<bool> get isCurrent => $composableBuilder(
+    column: $table.isCurrent,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get createdAt => $composableBuilder(
+    column: $table.createdAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get retiredAt => $composableBuilder(
+    column: $table.retiredAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+}
+
+class $$ExerciseIdentityBindingsTableAnnotationComposer
+    extends Composer<_$AppDb, $ExerciseIdentityBindingsTable> {
+  $$ExerciseIdentityBindingsTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<int> get id =>
+      $composableBuilder(column: $table.id, builder: (column) => column);
+
+  GeneratedColumn<String> get clientId =>
+      $composableBuilder(column: $table.clientId, builder: (column) => column);
+
+  GeneratedColumn<String> get sourceType => $composableBuilder(
+    column: $table.sourceType,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<int> get sourceId =>
+      $composableBuilder(column: $table.sourceId, builder: (column) => column);
+
+  GeneratedColumn<int> get identityId => $composableBuilder(
+    column: $table.identityId,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<bool> get isCurrent =>
+      $composableBuilder(column: $table.isCurrent, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get createdAt =>
+      $composableBuilder(column: $table.createdAt, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get retiredAt =>
+      $composableBuilder(column: $table.retiredAt, builder: (column) => column);
+}
+
+class $$ExerciseIdentityBindingsTableTableManager
+    extends
+        RootTableManager<
+          _$AppDb,
+          $ExerciseIdentityBindingsTable,
+          ExerciseIdentityBinding,
+          $$ExerciseIdentityBindingsTableFilterComposer,
+          $$ExerciseIdentityBindingsTableOrderingComposer,
+          $$ExerciseIdentityBindingsTableAnnotationComposer,
+          $$ExerciseIdentityBindingsTableCreateCompanionBuilder,
+          $$ExerciseIdentityBindingsTableUpdateCompanionBuilder,
+          (
+            ExerciseIdentityBinding,
+            BaseReferences<
+              _$AppDb,
+              $ExerciseIdentityBindingsTable,
+              ExerciseIdentityBinding
+            >,
+          ),
+          ExerciseIdentityBinding,
+          PrefetchHooks Function()
+        > {
+  $$ExerciseIdentityBindingsTableTableManager(
+    _$AppDb db,
+    $ExerciseIdentityBindingsTable table,
+  ) : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$ExerciseIdentityBindingsTableFilterComposer(
+                $db: db,
+                $table: table,
+              ),
+          createOrderingComposer: () =>
+              $$ExerciseIdentityBindingsTableOrderingComposer(
+                $db: db,
+                $table: table,
+              ),
+          createComputedFieldComposer: () =>
+              $$ExerciseIdentityBindingsTableAnnotationComposer(
+                $db: db,
+                $table: table,
+              ),
+          updateCompanionCallback:
+              ({
+                Value<int> id = const Value.absent(),
+                Value<String?> clientId = const Value.absent(),
+                Value<String> sourceType = const Value.absent(),
+                Value<int> sourceId = const Value.absent(),
+                Value<int> identityId = const Value.absent(),
+                Value<bool> isCurrent = const Value.absent(),
+                Value<DateTime> createdAt = const Value.absent(),
+                Value<DateTime?> retiredAt = const Value.absent(),
+              }) => ExerciseIdentityBindingsCompanion(
+                id: id,
+                clientId: clientId,
+                sourceType: sourceType,
+                sourceId: sourceId,
+                identityId: identityId,
+                isCurrent: isCurrent,
+                createdAt: createdAt,
+                retiredAt: retiredAt,
+              ),
+          createCompanionCallback:
+              ({
+                Value<int> id = const Value.absent(),
+                Value<String?> clientId = const Value.absent(),
+                required String sourceType,
+                required int sourceId,
+                required int identityId,
+                Value<bool> isCurrent = const Value.absent(),
+                Value<DateTime> createdAt = const Value.absent(),
+                Value<DateTime?> retiredAt = const Value.absent(),
+              }) => ExerciseIdentityBindingsCompanion.insert(
+                id: id,
+                clientId: clientId,
+                sourceType: sourceType,
+                sourceId: sourceId,
+                identityId: identityId,
+                isCurrent: isCurrent,
+                createdAt: createdAt,
+                retiredAt: retiredAt,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map((e) => (e.readTable(table), BaseReferences(db, table, e)))
+              .toList(),
+          prefetchHooksCallback: null,
+        ),
+      );
+}
+
+typedef $$ExerciseIdentityBindingsTableProcessedTableManager =
+    ProcessedTableManager<
+      _$AppDb,
+      $ExerciseIdentityBindingsTable,
+      ExerciseIdentityBinding,
+      $$ExerciseIdentityBindingsTableFilterComposer,
+      $$ExerciseIdentityBindingsTableOrderingComposer,
+      $$ExerciseIdentityBindingsTableAnnotationComposer,
+      $$ExerciseIdentityBindingsTableCreateCompanionBuilder,
+      $$ExerciseIdentityBindingsTableUpdateCompanionBuilder,
+      (
+        ExerciseIdentityBinding,
+        BaseReferences<
+          _$AppDb,
+          $ExerciseIdentityBindingsTable,
+          ExerciseIdentityBinding
+        >,
+      ),
+      ExerciseIdentityBinding,
+      PrefetchHooks Function()
+    >;
 
 class $AppDbManager {
   final _$AppDb _db;
@@ -5911,5 +7507,12 @@ class $AppDbManager {
       $$ClientTemplateExerciseOverridesTableTableManager(
         _db,
         _db.clientTemplateExerciseOverrides,
+      );
+  $$ExerciseIdentitiesTableTableManager get exerciseIdentities =>
+      $$ExerciseIdentitiesTableTableManager(_db, _db.exerciseIdentities);
+  $$ExerciseIdentityBindingsTableTableManager get exerciseIdentityBindings =>
+      $$ExerciseIdentityBindingsTableTableManager(
+        _db,
+        _db.exerciseIdentityBindings,
       );
 }
