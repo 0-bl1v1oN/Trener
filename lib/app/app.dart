@@ -15,6 +15,7 @@ import '../features/more/records_screen.dart';
 import '../features/more/contests_screen.dart';
 import '../features/more/data_backup_screen.dart';
 import '../features/more/progress_screen.dart';
+import '../features/more/sync_screen.dart';
 import '../theme_controller.dart';
 import 'app_db_scope.dart';
 import 'app_error_reporter.dart';
@@ -38,6 +39,7 @@ class _MyFitnessAppState extends State<MyFitnessApp> {
     // Авто-фиксация прошлого месяца при первом запуске в новом месяце.
     final db = AppDbScope.of(context);
     db.ensurePreviousMonthProgressSnapshot();
+    db.cleanupSyncLogs().onError((_, _) => 0);
   }
 
   Future<void> _warmUpCalendarBackground() async {
@@ -335,6 +337,11 @@ final GoRouter _router = GoRouter(
       parentNavigatorKey: _rootNavKey,
       path: '/progress',
       builder: (context, state) => const ProgressScreen(),
+    ),
+    GoRoute(
+      parentNavigatorKey: _rootNavKey,
+      path: '/sync',
+      builder: (context, state) => const SyncScreen(),
     ),
   ],
 );

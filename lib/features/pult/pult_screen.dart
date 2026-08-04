@@ -555,7 +555,7 @@ class _PultWorkoutPageState extends State<_PultWorkoutPage>
   final Map<int, FocusNode> _kgFocusNodes = <int, FocusNode>{};
   final Map<int, FocusNode> _repsFocusNodes = <int, FocusNode>{};
   final Map<int, FocusNode> _nameFocusNodes = <int, FocusNode>{};
-  final Set<int> _nameSaveInFlight = <int>{};
+  final Map<int, Future<void>> _nameCommitFutures = <int, Future<void>>{};
   final Map<int, String> _persistedExerciseNames = <int, String>{};
   final Map<int, GlobalKey> _exerciseKeys = <int, GlobalKey>{};
   final ScrollController _pageScrollController = ScrollController();
@@ -565,6 +565,7 @@ class _PultWorkoutPageState extends State<_PultWorkoutPage>
   bool _loading = true;
   bool _completing = false;
   Timer? _draftDebounce;
+  Future<void>? _draftCommitInFlight;
 
   late final AnimationController _headerGlowController;
   VideoPlayerController? _headerVideoController;
@@ -1158,6 +1159,8 @@ class _PultWorkoutPageState extends State<_PultWorkoutPage>
             if (node?.hasFocus == true && controller != null) {
               _scheduleSelectAll(controller);
               _scheduleBringIntoView(e.templateExerciseId);
+            } else {
+              unawaited(_commitDraftsNow());
             }
           });
         _repsFocusNodes[e.templateExerciseId] = FocusNode()
@@ -1167,6 +1170,8 @@ class _PultWorkoutPageState extends State<_PultWorkoutPage>
             if (node?.hasFocus == true && controller != null) {
               _scheduleSelectAll(controller);
               _scheduleBringIntoView(e.templateExerciseId);
+            } else {
+              unawaited(_commitDraftsNow());
             }
           });
         _nameFocusNodes[e.templateExerciseId] = FocusNode()
@@ -1177,7 +1182,7 @@ class _PultWorkoutPageState extends State<_PultWorkoutPage>
               _scheduleSelectAll(controller);
               _scheduleBringIntoView(e.templateExerciseId);
             } else {
-              unawaited(_saveExerciseName(e.templateExerciseId));
+              unawaited(_commitExerciseName(e.templateExerciseId));
             }
           });
       }
@@ -1222,7 +1227,7 @@ class _PultWorkoutPageState extends State<_PultWorkoutPage>
     _kgFocusNodes.clear();
     _repsFocusNodes.clear();
     _nameFocusNodes.clear();
-    _nameSaveInFlight.clear();
+    _nameCommitFutures.clear();
     _persistedExerciseNames.clear();
     _exerciseKeys.clear();
   }
@@ -1266,6 +1271,45 @@ class _PultWorkoutPageState extends State<_PultWorkoutPage>
           ),
       },
     );
+  }
+
+  Future<void> _commitDraftsNow() {
+    _draftDebounce?.cancel();
+    final current = _draftCommitInFlight;
+    if (current != null) return current;
+
+    late final Future<void> future;
+    future = _saveDrafts().whenComplete(() {
+      if (identical(_draftCommitInFlight, future)) {
+        _draftCommitInFlight = null;
+      }
+    });
+    _draftCommitInFlight = future;
+    return future;
+  }
+
+  Future<void> _commitExerciseName(int templateExerciseId) {
+    final current = _nameCommitFutures[templateExerciseId];
+    if (current != null) return current;
+
+    late final Future<void> future;
+    future = _saveExerciseName(templateExerciseId).whenComplete(() {
+      if (identical(_nameCommitFutures[templateExerciseId], future)) {
+        _nameCommitFutures.remove(templateExerciseId);
+      }
+    });
+    _nameCommitFutures[templateExerciseId] = future;
+    return future;
+  }
+
+  void _commitNameFromInteraction(int templateExerciseId) {
+    unawaited(_commitExerciseName(templateExerciseId));
+    _nameFocusNodes[templateExerciseId]?.unfocus();
+  }
+
+  void _commitDraftsFromInteraction(FocusNode focusNode) {
+    unawaited(_commitDraftsNow());
+    focusNode.unfocus();
   }
 
   Future<String?> _showExerciseNameDialog({
@@ -1435,6 +1479,12 @@ class _PultWorkoutPageState extends State<_PultWorkoutPage>
     _draftDebounce?.cancel();
 
     try {
+      FocusManager.instance.primaryFocus?.unfocus();
+      for (final exercise in _data!.exercises) {
+        await _commitExerciseName(exercise.templateExerciseId);
+      }
+      await _commitDraftsNow();
+
       final results = <int, (double? kg, int? reps)>{};
       for (final e in _data!.exercises) {
         results[e.templateExerciseId] = (
@@ -1471,7 +1521,6 @@ class _PultWorkoutPageState extends State<_PultWorkoutPage>
   }
 
   Future<void> _saveExerciseName(int templateExerciseId) async {
-    if (_nameSaveInFlight.contains(templateExerciseId)) return;
     final controller = _nameControllers[templateExerciseId];
     if (controller == null) return;
 
@@ -1481,25 +1530,20 @@ class _PultWorkoutPageState extends State<_PultWorkoutPage>
     final persisted = _persistedExerciseNames[templateExerciseId];
     if (persisted?.trim() == nextName) return;
 
-    _nameSaveInFlight.add(templateExerciseId);
-    try {
-      final kind = await showExerciseChangeDialog(context);
-      if (!mounted) return;
-      if (kind == null) {
-        _restoreExerciseName(templateExerciseId, persisted);
-        return;
-      }
-      await applyClientExerciseNameChange(
-        db: widget.db,
-        clientId: widget.tab.clientId,
-        templateExerciseId: templateExerciseId,
-        newName: nextName,
-        kind: kind,
-      );
-      _persistedExerciseNames[templateExerciseId] = nextName;
-    } finally {
-      _nameSaveInFlight.remove(templateExerciseId);
+    final kind = await showExerciseChangeDialog(context);
+    if (!mounted) return;
+    if (kind == null) {
+      _restoreExerciseName(templateExerciseId, persisted);
+      return;
     }
+    await applyClientExerciseNameChange(
+      db: widget.db,
+      clientId: widget.tab.clientId,
+      templateExerciseId: templateExerciseId,
+      newName: nextName,
+      kind: kind,
+    );
+    _persistedExerciseNames[templateExerciseId] = nextName;
   }
 
   void _restoreExerciseName(int templateExerciseId, String? persisted) {
@@ -1655,9 +1699,16 @@ class _PultWorkoutPageState extends State<_PultWorkoutPage>
                           ),
                         ),
                         onTap: () => _scheduleSelectAll(controller),
+                        onSubmitted: (_) => _commitNameFromInteraction(
+                          exercise.templateExerciseId,
+                        ),
+                        onTapOutside: (_) => _commitNameFromInteraction(
+                          exercise.templateExerciseId,
+                        ),
                         minLines: 1,
                         maxLines: isSingleLine ? 1 : 3,
-                        keyboardType: TextInputType.multiline,
+                        keyboardType: TextInputType.text,
+                        textInputAction: TextInputAction.done,
                         textAlign: TextAlign.center,
                         style: fieldStyle,
                       ),
@@ -2439,6 +2490,16 @@ class _PultWorkoutPageState extends State<_PultWorkoutPage>
                                     ).copyWith(counterText: ''),
                                     onTap: () =>
                                         _scheduleSelectAll(kgController),
+                                    onSubmitted: (_) =>
+                                        _commitDraftsFromInteraction(
+                                          _kgFocusNodes[exercise
+                                              .templateExerciseId]!,
+                                        ),
+                                    onTapOutside: (_) =>
+                                        _commitDraftsFromInteraction(
+                                          _kgFocusNodes[exercise
+                                              .templateExerciseId]!,
+                                        ),
                                     textAlign: TextAlign.center,
                                     style: theme.textTheme.titleMedium
                                         ?.copyWith(
@@ -2450,6 +2511,7 @@ class _PultWorkoutPageState extends State<_PultWorkoutPage>
                                         const TextInputType.numberWithOptions(
                                           decimal: true,
                                         ),
+                                    textInputAction: TextInputAction.done,
                                   ),
                                 ),
                                 const SizedBox(width: 8),
@@ -2467,6 +2529,16 @@ class _PultWorkoutPageState extends State<_PultWorkoutPage>
                                     ),
                                     onTap: () =>
                                         _scheduleSelectAll(repsController),
+                                    onSubmitted: (_) =>
+                                        _commitDraftsFromInteraction(
+                                          _repsFocusNodes[exercise
+                                              .templateExerciseId]!,
+                                        ),
+                                    onTapOutside: (_) =>
+                                        _commitDraftsFromInteraction(
+                                          _repsFocusNodes[exercise
+                                              .templateExerciseId]!,
+                                        ),
                                     textAlign: TextAlign.center,
                                     style: theme.textTheme.titleMedium
                                         ?.copyWith(
@@ -2474,6 +2546,7 @@ class _PultWorkoutPageState extends State<_PultWorkoutPage>
                                           letterSpacing: 0.1,
                                         ),
                                     keyboardType: TextInputType.number,
+                                    textInputAction: TextInputAction.done,
                                   ),
                                 ),
                               ],

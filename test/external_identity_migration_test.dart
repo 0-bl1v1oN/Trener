@@ -74,9 +74,37 @@ void main() {
         final version = await db
             .customSelect('PRAGMA user_version')
             .getSingle();
-        expect(version.read<int>('user_version'), 8);
+        expect(version.read<int>('user_version'), 9);
       },
     );
+
+    test('migrates schema 8 to sync schema 9 without data loss', () async {
+      final temp = await Directory.systemTemp.createTemp(
+        'trener-v8-migration-',
+      );
+      addTearDown(() => temp.delete(recursive: true));
+      final file = File(
+        '${temp.path}${Platform.pathSeparator}legacy-v8.sqlite',
+      );
+      _createLegacyV8Database(file);
+
+      final db = AppDb.forTesting(NativeDatabase(file));
+      addTearDown(db.close);
+
+      final version = await db.customSelect('PRAGMA user_version').getSingle();
+      expect(version.read<int>('user_version'), 9);
+      expect(await _count(db, 'clients'), 2);
+      expect(await _count(db, 'workout_sessions'), 2);
+      expect(await _count(db, 'workout_exercise_results'), 2);
+      final queue = await db.select(db.syncQueue).get();
+      expect(queue, hasLength(2));
+      expect(queue.every((entry) => entry.status == 'PENDING'), isTrue);
+      expect(queue.map((entry) => entry.entityExternalId).toSet(), {
+        '33333333-3333-4333-8333-333333333333',
+        '44444444-4444-4444-8444-444444444444',
+      });
+      expect(await db.select(db.syncLog).get(), isEmpty);
+    });
 
     test(
       'new client and workout receive stable UUIDs and ACTIVE status',
@@ -285,6 +313,8 @@ void main() {
         final tables = oldPayload['tables'] as Map<String, dynamic>;
         tables.remove('exercise_identities');
         tables.remove('exercise_identity_bindings');
+        tables.remove('sync_queue');
+        tables.remove('sync_log');
         for (final raw in tables['clients'] as List<dynamic>) {
           final row = raw as Map<String, dynamic>;
           row.remove('external_id');
@@ -318,6 +348,7 @@ void main() {
         expect(result.lastReps, 10);
         expect(result.exerciseIdentityId, isNotNull);
         expect(result.exerciseNameSnapshot, isNotEmpty);
+        expect(await restored.getPendingSyncTaskCount(), 1);
       },
     );
 
@@ -515,6 +546,67 @@ void _createLegacyV7Database(File file) {
       "VALUES (52, 42, 31, 37.5, 11)",
     );
     db.execute('PRAGMA user_version = 7');
+  } finally {
+    db.dispose();
+  }
+}
+
+void _createLegacyV8Database(File file) {
+  _createLegacyV7Database(file);
+  final db = sqlite.sqlite3.open(file.path);
+  try {
+    db.execute('ALTER TABLE clients ADD COLUMN external_id TEXT');
+    db.execute(
+      "ALTER TABLE clients ADD COLUMN status TEXT NOT NULL DEFAULT 'ACTIVE'",
+    );
+    db.execute('ALTER TABLE workout_sessions ADD COLUMN external_id TEXT');
+    db.execute(
+      'ALTER TABLE workout_exercise_results '
+      'ADD COLUMN exercise_identity_id INTEGER',
+    );
+    db.execute(
+      'ALTER TABLE workout_exercise_results '
+      'ADD COLUMN exercise_name_snapshot TEXT',
+    );
+    db.execute('''CREATE TABLE exercise_identities (
+      id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+      external_id TEXT NOT NULL,
+      created_at INTEGER NOT NULL DEFAULT (strftime('%s', CURRENT_TIMESTAMP))
+    )''');
+    db.execute('''CREATE TABLE exercise_identity_bindings (
+      id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+      client_id TEXT,
+      source_type TEXT NOT NULL,
+      source_id INTEGER NOT NULL,
+      identity_id INTEGER NOT NULL,
+      is_current INTEGER NOT NULL DEFAULT 1,
+      created_at INTEGER NOT NULL DEFAULT (strftime('%s', CURRENT_TIMESTAMP)),
+      retired_at INTEGER
+    )''');
+    db.execute(
+      "UPDATE clients SET external_id = CASE id "
+      "WHEN 'legacy-client' THEN '11111111-1111-4111-8111-111111111111' "
+      "ELSE '22222222-2222-4222-8222-222222222222' END",
+    );
+    db.execute(
+      "UPDATE workout_sessions SET external_id = CASE id "
+      "WHEN 41 THEN '33333333-3333-4333-8333-333333333333' "
+      "ELSE '44444444-4444-4444-8444-444444444444' END",
+    );
+    db.execute(
+      "INSERT INTO exercise_identities (id, external_id) "
+      "VALUES (61, '55555555-5555-4555-8555-555555555555')",
+    );
+    db.execute(
+      "INSERT INTO exercise_identity_bindings "
+      "(client_id, source_type, source_id, identity_id, is_current) "
+      "VALUES (NULL, 'TEMPLATE', 31, 61, 1)",
+    );
+    db.execute(
+      "UPDATE workout_exercise_results "
+      "SET exercise_identity_id = 61, exercise_name_snapshot = 'Тяга'",
+    );
+    db.execute('PRAGMA user_version = 8');
   } finally {
     db.dispose();
   }

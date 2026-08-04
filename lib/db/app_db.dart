@@ -4,6 +4,9 @@ import 'package:drift/drift.dart';
 import 'package:drift_flutter/drift_flutter.dart';
 import 'package:uuid/uuid.dart';
 
+import '../sync/sync_models.dart';
+import '../sync/workout_sync_payload.dart';
+
 part 'app_db.g.dart';
 
 class Clients extends Table {
@@ -159,6 +162,40 @@ class ExerciseIdentityBindings extends Table {
   BoolColumn get isCurrent => boolean().withDefault(const Constant(true))();
   DateTimeColumn get createdAt => dateTime().withDefault(currentDateAndTime)();
   DateTimeColumn get retiredAt => dateTime().nullable()();
+}
+
+@DataClassName('SyncQueueEntry')
+class SyncQueue extends Table {
+  IntColumn get id => integer().autoIncrement()();
+  TextColumn get entityType => text()();
+  TextColumn get entityExternalId => text()();
+  TextColumn get operation => text()();
+  TextColumn get payload => text()();
+  TextColumn get status =>
+      text().withDefault(const Constant(SyncQueueStatuses.pending))();
+  IntColumn get attempts => integer().withDefault(const Constant(0))();
+  DateTimeColumn get createdAt => dateTime().withDefault(currentDateAndTime)();
+  DateTimeColumn get updatedAt => dateTime().withDefault(currentDateAndTime)();
+  DateTimeColumn get lastAttemptAt => dateTime().nullable()();
+  DateTimeColumn get nextAttemptAt => dateTime().nullable()();
+  TextColumn get lastError => text().nullable()();
+
+  @override
+  List<Set<Column>> get uniqueKeys => [
+    {entityType, entityExternalId, operation},
+  ];
+}
+
+@DataClassName('SyncLogEntry')
+class SyncLog extends Table {
+  IntColumn get id => integer().autoIncrement()();
+  DateTimeColumn get timestamp => dateTime().withDefault(currentDateAndTime)();
+  TextColumn get entityType => text()();
+  TextColumn get entityExternalId => text()();
+  TextColumn get result => text()();
+  IntColumn get httpStatus => integer().nullable()();
+  TextColumn get message => text().nullable()();
+  IntColumn get attemptNumber => integer()();
 }
 
 class WorkoutDrafts extends Table {
@@ -437,6 +474,8 @@ class ProgressSnapshotClientVm {
     ClientTemplateExerciseOverrides,
     ExerciseIdentities,
     ExerciseIdentityBindings,
+    SyncQueue,
+    SyncLog,
   ],
 )
 class AppDb extends _$AppDb {
@@ -455,7 +494,7 @@ class AppDb extends _$AppDb {
   Future<void>? _templateDefaultsPatchFuture;
 
   @override
-  int get schemaVersion => 8;
+  int get schemaVersion => 9;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -471,9 +510,11 @@ class AppDb extends _$AppDb {
       await _ensureClientAddedExercisesTable();
       await ensureProgressTables();
       await _ensureExternalIdentityIndexes();
+      await _ensureSyncIndexes();
       await _seedWorkoutTemplates();
       await _seedWorkoutTemplateExercises();
       await _backfillExternalIdentities();
+      await cleanupSyncLogs();
     },
 
     onUpgrade: (m, from, to) async {
@@ -493,6 +534,10 @@ class AppDb extends _$AppDb {
         await m.createTable(exerciseIdentities);
         await m.createTable(exerciseIdentityBindings);
       }
+      if (from < 9) {
+        await m.createTable(syncQueue);
+        await m.createTable(syncLog);
+      }
 
       await _ensureProgramDayOverridesTable();
       await ensureIncomeTables();
@@ -504,10 +549,15 @@ class AppDb extends _$AppDb {
       await _ensureClientAddedExercisesTable();
       await ensureProgressTables();
       await _ensureExternalIdentityIndexes();
+      await _ensureSyncIndexes();
 
       await _seedWorkoutTemplates();
       await _seedWorkoutTemplateExercises();
       await _backfillExternalIdentities();
+      if (from < 9) {
+        await _enqueueAllExistingWorkoutSessionsForSync();
+      }
+      await cleanupSyncLogs();
     },
 
     beforeOpen: (details) async {
@@ -521,7 +571,9 @@ class AppDb extends _$AppDb {
       await _ensureClientAddedExercisesTable();
       await ensureProgressTables();
       await _ensureExternalIdentityIndexes();
+      await _ensureSyncIndexes();
       await _backfillExternalIdentities();
+      await cleanupSyncLogs();
     },
   );
 
@@ -551,6 +603,17 @@ class AppDb extends _$AppDb {
       CREATE UNIQUE INDEX IF NOT EXISTS exercise_identity_bindings_client_current_unique
       ON exercise_identity_bindings (client_id, source_type, source_id)
       WHERE client_id IS NOT NULL AND is_current = 1
+    ''');
+  }
+
+  Future<void> _ensureSyncIndexes() async {
+    await customStatement('''
+      CREATE INDEX IF NOT EXISTS sync_queue_status_created_at_idx
+      ON sync_queue (status, created_at)
+    ''');
+    await customStatement('''
+      CREATE INDEX IF NOT EXISTS sync_log_timestamp_idx
+      ON sync_log (timestamp)
     ''');
   }
 
@@ -957,6 +1020,317 @@ class AppDb extends _$AppDb {
         'bindingsDangling=$danglingBindings',
       );
     }
+  }
+
+  // --- Offline-first sync infrastructure ---
+  Future<WorkoutSyncPayload?> buildWorkoutSyncPayload(
+    String workoutExternalId,
+  ) async {
+    final normalizedId = workoutExternalId.trim();
+    if (normalizedId.isEmpty) return null;
+
+    final session =
+        await (select(workoutSessions)
+              ..where((row) => row.externalId.equals(normalizedId))
+              ..limit(1))
+            .getSingleOrNull();
+    if (session == null) return null;
+
+    final client = await getClientById(session.clientId);
+    final clientExternalId = client?.externalId?.trim() ?? '';
+    if (client == null || clientExternalId.isEmpty) {
+      throw StateError('У тренировки отсутствует внешний UUID клиента');
+    }
+
+    final template =
+        await (select(workoutTemplates)
+              ..where(
+                (row) =>
+                    row.gender.equals(session.gender) &
+                    row.idx.equals(session.templateIdx),
+              )
+              ..limit(1))
+            .getSingleOrNull();
+    final results =
+        await (select(workoutExerciseResults)
+              ..where((row) => row.sessionId.equals(session.id))
+              ..orderBy([(row) => OrderingTerm.asc(row.id)]))
+            .get();
+
+    final exercises = <WorkoutSyncExerciseSource>[];
+    for (final result in results) {
+      final identityId = result.exerciseIdentityId;
+      final historicalName = result.exerciseNameSnapshot?.trim() ?? '';
+      if (identityId == null || historicalName.isEmpty) {
+        throw StateError(
+          'У результата ${result.id} отсутствует историческая identity',
+        );
+      }
+      final identity =
+          await (select(exerciseIdentities)
+                ..where((row) => row.id.equals(identityId))
+                ..limit(1))
+              .getSingleOrNull();
+      final exerciseExternalId = identity?.externalId.trim() ?? '';
+      if (exerciseExternalId.isEmpty) {
+        throw StateError(
+          'У результата ${result.id} отсутствует внешний UUID упражнения',
+        );
+      }
+      exercises.add(
+        WorkoutSyncExerciseSource(
+          exerciseExternalId: exerciseExternalId,
+          name: historicalName,
+          weightKg: result.lastWeightKg,
+          reps: result.lastReps,
+        ),
+      );
+    }
+
+    return WorkoutSyncPayload.fromSource(
+      WorkoutSyncSource(
+        clientExternalId: clientExternalId,
+        clientName: client.name,
+        workoutExternalId: normalizedId,
+        performedAt: session.performedAt,
+        templateIndex: session.templateIdx,
+        dayLabel: template?.label,
+        dayTitle: template?.title,
+        planInstance: session.planInstance,
+        exercises: exercises,
+      ),
+    );
+  }
+
+  Future<SyncQueueEntry> enqueueWorkoutSync(String workoutExternalId) async {
+    final payload = await buildWorkoutSyncPayload(workoutExternalId);
+    if (payload == null) {
+      throw StateError('Завершённая тренировка не найдена');
+    }
+    return upsertSyncQueueTask(
+      entityType: SyncEntityTypes.workout,
+      entityExternalId: payload.workoutExternalId,
+      operation: SyncOperations.workoutUpsert,
+      payload: payload.encode(),
+    );
+  }
+
+  Future<SyncQueueEntry> upsertSyncQueueTask({
+    required String entityType,
+    required String entityExternalId,
+    required String operation,
+    required String payload,
+  }) {
+    return transaction(() async {
+      final now = DateTime.now();
+      final existing =
+          await (select(syncQueue)
+                ..where(
+                  (row) =>
+                      row.entityType.equals(entityType) &
+                      row.entityExternalId.equals(entityExternalId) &
+                      row.operation.equals(operation),
+                )
+                ..limit(1))
+              .getSingleOrNull();
+
+      if (existing == null) {
+        final id = await into(syncQueue).insert(
+          SyncQueueCompanion.insert(
+            entityType: entityType,
+            entityExternalId: entityExternalId,
+            operation: operation,
+            payload: payload,
+            updatedAt: Value(now),
+          ),
+        );
+        return (select(
+          syncQueue,
+        )..where((row) => row.id.equals(id))).getSingle();
+      }
+
+      await (update(
+        syncQueue,
+      )..where((row) => row.id.equals(existing.id))).write(
+        SyncQueueCompanion(
+          payload: Value(payload),
+          status: const Value(SyncQueueStatuses.pending),
+          updatedAt: Value(now),
+          nextAttemptAt: const Value(null),
+          lastError: const Value(null),
+        ),
+      );
+      return (select(
+        syncQueue,
+      )..where((row) => row.id.equals(existing.id))).getSingle();
+    });
+  }
+
+  Future<void> _enqueueWorkoutSyncSafely(String? workoutExternalId) async {
+    if (workoutExternalId == null || workoutExternalId.trim().isEmpty) return;
+    try {
+      await enqueueWorkoutSync(workoutExternalId);
+    } catch (_) {
+      // Локальная тренировка уже зафиксирована. Ошибка инфраструктуры sync
+      // не должна отменять или скрывать её от пользователя.
+    }
+  }
+
+  Future<void> _enqueueAllExistingWorkoutSessionsForSync() async {
+    final sessions =
+        await (select(workoutSessions)
+              ..where((row) => row.externalId.isNotNull())
+              ..orderBy([(row) => OrderingTerm.asc(row.id)]))
+            .get();
+    for (final session in sessions) {
+      await _enqueueWorkoutSyncSafely(session.externalId);
+    }
+  }
+
+  Future<List<SyncQueueEntry>> getPendingSyncTasks() async {
+    final now = DateTime.now();
+    return (select(syncQueue)
+          ..where(
+            (row) =>
+                (row.status.equals(SyncQueueStatuses.pending) |
+                    row.status.equals(SyncQueueStatuses.failed)) &
+                (row.nextAttemptAt.isNull() |
+                    row.nextAttemptAt.isSmallerOrEqualValue(now)),
+          )
+          ..orderBy([(row) => OrderingTerm.asc(row.createdAt)]))
+        .get();
+  }
+
+  Future<int> getPendingSyncTaskCount() async {
+    final row = await customSelect(
+      "SELECT COUNT(*) AS c FROM sync_queue WHERE status IN ('PENDING', 'FAILED')",
+      readsFrom: {syncQueue},
+    ).getSingle();
+    return row.read<int>('c');
+  }
+
+  Future<void> recoverInterruptedSyncTasks() async {
+    await (update(
+      syncQueue,
+    )..where((row) => row.status.equals(SyncQueueStatuses.processing))).write(
+      SyncQueueCompanion(
+        status: const Value(SyncQueueStatuses.pending),
+        updatedAt: Value(DateTime.now()),
+        lastError: const Value('Предыдущая попытка была прервана'),
+      ),
+    );
+  }
+
+  Future<SyncQueueEntry?> beginSyncAttempt(int id) {
+    return transaction(() async {
+      final entry =
+          await (select(syncQueue)
+                ..where((row) => row.id.equals(id))
+                ..limit(1))
+              .getSingleOrNull();
+      if (entry == null) return null;
+      final now = DateTime.now();
+      await (update(syncQueue)..where((row) => row.id.equals(id))).write(
+        SyncQueueCompanion(
+          status: const Value(SyncQueueStatuses.processing),
+          attempts: Value(entry.attempts + 1),
+          updatedAt: Value(now),
+          lastAttemptAt: Value(now),
+          lastError: const Value(null),
+        ),
+      );
+      return (select(syncQueue)..where((row) => row.id.equals(id))).getSingle();
+    });
+  }
+
+  Future<void> markSyncTaskForRetry(int id, String message) async {
+    final shortMessage = message.trim();
+    await (update(syncQueue)..where((row) => row.id.equals(id))).write(
+      SyncQueueCompanion(
+        status: const Value(SyncQueueStatuses.pending),
+        updatedAt: Value(DateTime.now()),
+        lastError: Value(
+          shortMessage.length <= 500
+              ? shortMessage
+              : shortMessage.substring(0, 500),
+        ),
+      ),
+    );
+  }
+
+  Future<bool> deleteSyncTaskAfterSuccess({
+    required int id,
+    required String sentPayload,
+  }) async {
+    final deleted =
+        await (delete(syncQueue)..where(
+              (row) => row.id.equals(id) & row.payload.equals(sentPayload),
+            ))
+            .go();
+    return deleted > 0;
+  }
+
+  Future<void> deleteWorkoutSyncTask(String? workoutExternalId) async {
+    if (workoutExternalId == null || workoutExternalId.trim().isEmpty) return;
+    await (delete(syncQueue)..where(
+          (row) =>
+              row.entityType.equals(SyncEntityTypes.workout) &
+              row.entityExternalId.equals(workoutExternalId) &
+              row.operation.equals(SyncOperations.workoutUpsert),
+        ))
+        .go();
+  }
+
+  Future<void> addSyncLog({
+    required String entityType,
+    required String entityExternalId,
+    required String result,
+    required int attemptNumber,
+    int? httpStatus,
+    String? message,
+    DateTime? timestamp,
+  }) async {
+    final normalizedMessage = message?.trim();
+    final shortMessage = normalizedMessage == null
+        ? null
+        : (normalizedMessage.length <= 500
+              ? normalizedMessage
+              : normalizedMessage.substring(0, 500));
+    await into(syncLog).insert(
+      SyncLogCompanion.insert(
+        timestamp: Value(timestamp ?? DateTime.now()),
+        entityType: entityType,
+        entityExternalId: entityExternalId,
+        result: result,
+        httpStatus: Value(httpStatus),
+        message: Value(shortMessage),
+        attemptNumber: attemptNumber,
+      ),
+    );
+  }
+
+  Future<List<SyncLogEntry>> getRecentSyncLogs({int limit = 50}) {
+    return (select(syncLog)
+          ..orderBy([(row) => OrderingTerm.desc(row.timestamp)])
+          ..limit(limit))
+        .get();
+  }
+
+  Future<DateTime?> getLastSuccessfulSyncAt() async {
+    final row =
+        await (select(syncLog)
+              ..where((entry) => entry.result.equals(SyncLogResults.success))
+              ..orderBy([(entry) => OrderingTerm.desc(entry.timestamp)])
+              ..limit(1))
+            .getSingleOrNull();
+    return row?.timestamp;
+  }
+
+  Future<int> cleanupSyncLogs({DateTime? now}) {
+    final cutoff = (now ?? DateTime.now()).subtract(const Duration(days: 7));
+    return (delete(
+      syncLog,
+    )..where((entry) => entry.timestamp.isSmallerThanValue(cutoff))).go();
   }
 
   Future<void> _ensureProgramDayOverridesTable() async {
@@ -3188,6 +3562,7 @@ class AppDb extends _$AppDb {
   Future<void> completeWorkoutForClient({
     required String clientId,
     required DateTime when,
+    bool enqueueForSync = true,
   }) async {
     final c = await getClientById(clientId);
     if (c == null) return;
@@ -3206,9 +3581,10 @@ class AppDb extends _$AppDb {
 
     final realIdx = _mod(st.cycleStartIndex + st.nextOffset, cycleLen);
 
+    final workoutExternalId = await _newUniqueUuidForTable('workout_sessions');
     await into(workoutSessions).insert(
       WorkoutSessionsCompanion.insert(
-        externalId: Value(await _newUniqueUuidForTable('workout_sessions')),
+        externalId: Value(workoutExternalId),
         clientId: clientId,
         performedAt: when,
         planInstance: st.planInstance,
@@ -3228,12 +3604,16 @@ class AppDb extends _$AppDb {
         nextOffset: Value(newNextOffset),
       ),
     );
+    if (enqueueForSync) {
+      await _enqueueWorkoutSyncSafely(workoutExternalId);
+    }
   }
 
   Future<void> completeWorkoutForClientWithTemplateIdx({
     required String clientId,
     required DateTime when,
     required int templateIdx, // 0..8
+    bool enqueueForSync = true,
   }) async {
     final c = await getClientById(clientId);
     if (c == null) return;
@@ -3255,9 +3635,10 @@ class AppDb extends _$AppDb {
     final normalizedTemplateIdx = _mod(templateIdx, cycleLen);
     final k = _mod(normalizedTemplateIdx - realIdx, cycleLen);
 
+    final workoutExternalId = await _newUniqueUuidForTable('workout_sessions');
     await into(workoutSessions).insert(
       WorkoutSessionsCompanion.insert(
-        externalId: Value(await _newUniqueUuidForTable('workout_sessions')),
+        externalId: Value(workoutExternalId),
         clientId: clientId,
         performedAt: when,
         planInstance: st.planInstance,
@@ -3277,6 +3658,9 @@ class AppDb extends _$AppDb {
         nextOffset: Value(newNextOffset),
       ),
     );
+    if (enqueueForSync) {
+      await _enqueueWorkoutSyncSafely(workoutExternalId);
+    }
   }
 
   Future<void> _seedWorkoutTemplateExercises() async {
@@ -3351,6 +3735,7 @@ class AppDb extends _$AppDb {
 
     // === 1) Если уже выполнено сегодня — ОТМЕНЯЕМ (delete + откат state)
     if (existing != null) {
+      await deleteWorkoutSyncTask(existing.externalId);
       // 1) удаляем результаты этой тренировки
       await (delete(
         workoutExerciseResults,
@@ -3422,6 +3807,7 @@ class AppDb extends _$AppDb {
             .getSingleOrNull();
 
     if (existing != null) {
+      await deleteWorkoutSyncTask(existing.externalId);
       await (delete(
         workoutExerciseResults,
       )..where((r) => r.sessionId.equals(existing.id))).go();
@@ -3459,6 +3845,7 @@ class AppDb extends _$AppDb {
     required int absoluteIndex,
     required int templateIdx,
     required DateTime when,
+    bool enqueueForSync = true,
   }) async {
     final c = await getClientById(clientId);
     if (c == null) return false;
@@ -3487,6 +3874,7 @@ class AppDb extends _$AppDb {
         : null;
 
     if (existing != null) {
+      await deleteWorkoutSyncTask(existing.externalId);
       await (delete(
         workoutExerciseResults,
       )..where((r) => r.sessionId.equals(existing.id))).go();
@@ -3514,6 +3902,7 @@ class AppDb extends _$AppDb {
       clientId: clientId,
       when: when,
       templateIdx: templateIdx,
+      enqueueForSync: enqueueForSync,
     );
 
     return true;
@@ -3913,6 +4302,7 @@ class AppDb extends _$AppDb {
     int? templateIdx,
     int? absoluteIndex,
   }) async {
+    String? completedWorkoutExternalId;
     await transaction(() async {
       final ds = _dayStart(day);
       final de = _dayEnd(day);
@@ -3973,19 +4363,25 @@ class AppDb extends _$AppDb {
         );
 
         if (templateIdx == null) {
-          await completeWorkoutForClient(clientId: clientId, when: when);
+          await completeWorkoutForClient(
+            clientId: clientId,
+            when: when,
+            enqueueForSync: false,
+          );
         } else if (absoluteIndex != null) {
           await toggleWorkoutForClientAtAbsoluteIndex(
             clientId: clientId,
             absoluteIndex: absoluteIndex,
             templateIdx: templateIdx,
             when: when,
+            enqueueForSync: false,
           );
         } else {
           await completeWorkoutForClientWithTemplateIdx(
             clientId: clientId,
             when: when,
             templateIdx: templateIdx,
+            enqueueForSync: false,
           );
         }
 
@@ -4024,6 +4420,7 @@ class AppDb extends _$AppDb {
       }
 
       if (sess == null) return;
+      completedWorkoutExternalId = sess.externalId;
 
       // upsert результатов
       for (final entry in resultsByTemplateExerciseId.entries) {
@@ -4088,6 +4485,8 @@ class AppDb extends _$AppDb {
         }
       }
     });
+
+    await _enqueueWorkoutSyncSafely(completedWorkoutExternalId);
 
     await clearWorkoutDraftResults(
       clientId: clientId,
@@ -5351,6 +5750,7 @@ class AppDb extends _$AppDb {
     for (final row in tables) {
       final tableName = (row.data['name'] as String?) ?? '';
       if (tableName.isEmpty) continue;
+      if (tableName == syncLog.actualTableName) continue;
 
       final dataRows = await customSelect(
         'SELECT * FROM ${_quoteIdent(tableName)}',
@@ -5592,6 +5992,9 @@ class AppDb extends _$AppDb {
         // выполняется до commit той же транзакции, поэтому при любой ошибке
         // удаление исходной базы также будет отменено.
         await _backfillExternalIdentities();
+        if (!rawTables.containsKey(syncQueue.actualTableName)) {
+          await _enqueueAllExistingWorkoutSessionsForSync();
+        }
       } finally {
         await customStatement('PRAGMA foreign_keys = ON');
       }
