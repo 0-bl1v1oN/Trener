@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
@@ -83,18 +84,50 @@ void main() {
       final exercises = payload['exercises'] as List<dynamic>;
       final exercise = exercises.single as Map<String, dynamic>;
 
-      expect(client['client_id'], fixture.client.externalId);
-      expect(client['client_id'], matches(_uuidV4));
-      expect(workout['workout_id'], queue.entityExternalId);
-      expect(workout['workout_id'], matches(_uuidV4));
-      expect(exercise['exercise_id'], matches(_uuidV4));
-      expect(exercise['exercise_id'], firstExercise['exercise_id']);
+      expect(client['uuid'], fixture.client.externalId);
+      expect(client['uuid'], matches(_uuidV4));
+      expect(workout['uuid'], queue.entityExternalId);
+      expect(workout['uuid'], matches(_uuidV4));
+      expect(exercise['uuid'], matches(_uuidV4));
+      expect(exercise['uuid'], firstExercise['uuid']);
       expect(exercise['name'], historicalName);
       expect(exercise['weight_kg'], 61.5);
       expect(exercise['reps'], 7);
       expect(exercises, hasLength(1));
+      expect(client.containsKey('client_id'), isFalse);
+      expect(workout.containsKey('workout_id'), isFalse);
+      expect(exercise.containsKey('exercise_id'), isFalse);
       expect(exercise.containsKey('template_exercise_id'), isFalse);
       expect(workout.containsKey('session_id'), isFalse);
+    });
+
+    test('legacy queued payload is normalized to uuid contract', () {
+      final payload = WorkoutSyncPayload.fromJson({
+        'client': {'client_id': 'client-uuid', 'name': 'Клиент'},
+        'workout': {
+          'workout_id': 'workout-uuid',
+          'performed_at': '2026-08-05T09:00:00.000Z',
+          'day_index': 2,
+          'day_label': 'День 3',
+          'day_title': 'Ноги',
+          'plan_instance': 1,
+        },
+        'exercises': [
+          {
+            'exercise_id': 'exercise-uuid',
+            'name': 'Присед',
+            'weight_kg': null,
+            'reps': 10,
+          },
+        ],
+      }).toJson();
+
+      expect(payload['client'], {'uuid': 'client-uuid', 'name': 'Клиент'});
+      expect((payload['workout'] as Map)['uuid'], 'workout-uuid');
+      expect(
+        ((payload['exercises'] as List).single as Map)['uuid'],
+        'exercise-uuid',
+      );
     });
 
     test('queue survives closing and reopening the database', () async {
@@ -185,6 +218,188 @@ void main() {
   });
 
   group('SyncService', () {
+    test('starts the next workout only after the previous response', () async {
+      final db = AppDb.forTesting(NativeDatabase.memory());
+      addTearDown(db.close);
+      final newer = await _createFixture(db: db, day: DateTime(2026, 8, 6, 12));
+      await _saveCompletedResult(newer, weight: 60, reps: 6);
+      final older = await _createFixture(db: db, day: DateTime(2026, 8, 5, 12));
+      await _saveCompletedResult(older, weight: 50, reps: 5);
+      final transport = _ControlledTransport(2);
+      final service = SyncService(db: db, transport: transport);
+      final progress = <SyncProgress>[];
+
+      final run = service.syncPending(onProgress: progress.add);
+      await transport.started[0].future;
+      await Future<void>.delayed(Duration.zero);
+      expect(transport.payloads, hasLength(1));
+      expect(
+        (transport.payloads.first.toJson()['workout'] as Map)['performed_at'],
+        older.day.toUtc().toIso8601String(),
+      );
+
+      transport.responses[0].complete(
+        const SyncTransportResult.success(httpStatus: 200),
+      );
+      await transport.started[1].future;
+      expect(transport.payloads, hasLength(2));
+      transport.responses[1].complete(
+        const SyncTransportResult.success(httpStatus: 200),
+      );
+
+      final result = await run;
+      expect(result.succeeded, 2);
+      expect(progress.map((value) => value.sent), [0, 1, 2]);
+      expect(progress.every((value) => value.total == 2), isTrue);
+      expect(await db.getPendingSyncTaskCount(), 0);
+    });
+
+    test('transient server error stops the current queue pass', () async {
+      final db = AppDb.forTesting(NativeDatabase.memory());
+      addTearDown(db.close);
+      final first = await _createFixture(db: db);
+      await _saveCompletedResult(first, weight: 40, reps: 10);
+      final second = await _createFixture(db: db);
+      await _saveCompletedResult(second, weight: 45, reps: 9);
+      final transport = _FakeTransport(
+        const SyncTransportResult.failure(
+          message: 'Сервер недоступен',
+          httpStatus: 503,
+        ),
+      );
+
+      final result = await SyncService(
+        db: db,
+        transport: transport,
+      ).syncPending();
+
+      expect(result.stopReason, SyncRunStopReason.transientFailure);
+      expect(result.failed, 1);
+      expect(transport.payloads, hasLength(1));
+      final queue = await db.select(db.syncQueue).get();
+      expect(queue.where((task) => task.attempts == 1), hasLength(1));
+      expect(queue.where((task) => task.attempts == 0), hasLength(1));
+      expect(
+        queue.every((task) => task.status == SyncQueueStatuses.pending),
+        isTrue,
+      );
+    });
+
+    test(
+      '4xx is permanent for the pass and does not start the next task',
+      () async {
+        final db = AppDb.forTesting(NativeDatabase.memory());
+        addTearDown(db.close);
+        final first = await _createFixture(db: db);
+        await _saveCompletedResult(first, weight: 40, reps: 10);
+        final second = await _createFixture(db: db);
+        await _saveCompletedResult(second, weight: 45, reps: 9);
+        final transport = _FakeTransport(
+          const SyncTransportResult.failure(
+            message: 'Некорректный контракт',
+            httpStatus: 422,
+          ),
+        );
+
+        final result = await SyncService(
+          db: db,
+          transport: transport,
+        ).syncPending();
+
+        expect(result.stopReason, SyncRunStopReason.permanentFailure);
+        expect(transport.payloads, hasLength(1));
+        final queue = await db.select(db.syncQueue).get();
+        expect(
+          queue.where((task) => task.status == SyncQueueStatuses.failed),
+          hasLength(1),
+        );
+        expect(queue.where((task) => task.attempts == 0), hasLength(1));
+      },
+    );
+
+    test(
+      'a workout changed during send keeps and sends latest payload',
+      () async {
+        final fixture = await _createFixture();
+        addTearDown(fixture.db.close);
+        await _saveCompletedResult(fixture, weight: 50, reps: 8);
+        final transport = _ControlledTransport(2);
+        final service = SyncService(db: fixture.db, transport: transport);
+
+        final run = service.syncPending();
+        await transport.started[0].future;
+        await _saveCompletedResult(fixture, weight: 55, reps: 9);
+        transport.responses[0].complete(
+          const SyncTransportResult.success(httpStatus: 200),
+        );
+
+        await transport.started[1].future;
+        final retainedTask = await fixture.db
+            .select(fixture.db.syncQueue)
+            .getSingle();
+        final retainedPayload =
+            jsonDecode(retainedTask.payload) as Map<String, dynamic>;
+        final retainedExercise =
+            (retainedPayload['exercises'] as List).single as Map;
+        expect(retainedExercise['weight_kg'], 55.0);
+        final latestExercise =
+            (transport.payloads[1].toJson()['exercises'] as List).single as Map;
+        expect(latestExercise['weight_kg'], 55.0);
+        expect(latestExercise['reps'], 9);
+        transport.responses[1].complete(
+          const SyncTransportResult.success(httpStatus: 200),
+        );
+
+        final result = await run;
+        expect(result.succeeded, 2);
+        expect(await fixture.db.getPendingSyncTaskCount(), 0);
+      },
+    );
+
+    test('a 2000 task backlog begins only one task before failure', () async {
+      final db = AppDb.forTesting(NativeDatabase.memory());
+      addTearDown(db.close);
+      final payload = jsonEncode({
+        'client': {'uuid': 'client-uuid', 'name': 'Клиент'},
+        'workout': {
+          'uuid': 'workout-uuid',
+          'performed_at': '2026-08-05T09:00:00.000Z',
+          'day_index': 0,
+          'plan_instance': 1,
+        },
+        'exercises': <Object?>[],
+      });
+      await db.batch((batch) {
+        for (var index = 0; index < 2000; index++) {
+          batch.insert(
+            db.syncQueue,
+            SyncQueueCompanion.insert(
+              entityType: SyncEntityTypes.workout,
+              entityExternalId: 'workout-$index',
+              operation: SyncOperations.workoutUpsert,
+              payload: payload,
+            ),
+          );
+        }
+      });
+      final transport = _FakeTransport(
+        const SyncTransportResult.failure(message: 'Сеть недоступна'),
+      );
+
+      final result = await SyncService(
+        db: db,
+        transport: transport,
+      ).syncPending();
+
+      expect(result.failed, 1);
+      expect(transport.payloads, hasLength(1));
+      final attempted = await (db.select(
+        db.syncQueue,
+      )..where((task) => task.attempts.isBiggerThanValue(0))).get();
+      expect(attempted, hasLength(1));
+      expect(await db.getPendingSyncTaskCount(), 2000);
+    });
+
     test('confirmed success removes queue task and writes log', () async {
       final fixture = await _createFixture();
       addTearDown(fixture.db.close);
@@ -274,7 +489,7 @@ class _SyncFixture {
   final DateTime day;
 }
 
-Future<_SyncFixture> _createFixture({AppDb? db}) async {
+Future<_SyncFixture> _createFixture({AppDb? db, DateTime? day}) async {
   final database = db ?? AppDb.forTesting(NativeDatabase.memory());
   final clientId = 'sync-client-${DateTime.now().microsecondsSinceEpoch}';
   await database.upsertClient(
@@ -301,7 +516,7 @@ Future<_SyncFixture> _createFixture({AppDb? db}) async {
     client: client,
     template: template,
     exercise: exercise,
-    day: DateTime(2026, 8, 5, 12),
+    day: day ?? DateTime(2026, 8, 5, 12),
   );
 }
 
@@ -331,5 +546,29 @@ class _FakeTransport implements SyncTransport {
   Future<SyncTransportResult> sendWorkout(WorkoutSyncPayload payload) async {
     payloads.add(payload);
     return result;
+  }
+}
+
+class _ControlledTransport implements SyncTransport {
+  _ControlledTransport(int requestCount)
+    : started = List.generate(requestCount, (_) => Completer<void>()),
+      responses = List.generate(
+        requestCount,
+        (_) => Completer<SyncTransportResult>(),
+      );
+
+  final List<Completer<void>> started;
+  final List<Completer<SyncTransportResult>> responses;
+  final List<WorkoutSyncPayload> payloads = [];
+
+  @override
+  bool get isConfigured => true;
+
+  @override
+  Future<SyncTransportResult> sendWorkout(WorkoutSyncPayload payload) {
+    final index = payloads.length;
+    payloads.add(payload);
+    started[index].complete();
+    return responses[index].future;
   }
 }

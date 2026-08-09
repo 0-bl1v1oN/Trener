@@ -1201,6 +1201,30 @@ class AppDb extends _$AppDb {
         .get();
   }
 
+  Future<SyncQueueEntry?> getNextPendingSyncTask() async {
+    final now = DateTime.now();
+    final query =
+        select(syncQueue).join([
+            leftOuterJoin(
+              workoutSessions,
+              workoutSessions.externalId.equalsExp(syncQueue.entityExternalId),
+            ),
+          ])
+          ..where(
+            (syncQueue.status.equals(SyncQueueStatuses.pending) |
+                    syncQueue.status.equals(SyncQueueStatuses.failed)) &
+                (syncQueue.nextAttemptAt.isNull() |
+                    syncQueue.nextAttemptAt.isSmallerOrEqualValue(now)),
+          )
+          ..orderBy([
+            OrderingTerm.asc(workoutSessions.performedAt),
+            OrderingTerm.asc(syncQueue.createdAt),
+          ])
+          ..limit(1);
+    final row = await query.getSingleOrNull();
+    return row?.readTable(syncQueue);
+  }
+
   Future<int> getPendingSyncTaskCount() async {
     final row = await customSelect(
       "SELECT COUNT(*) AS c FROM sync_queue WHERE status IN ('PENDING', 'FAILED')",
@@ -1248,6 +1272,21 @@ class AppDb extends _$AppDb {
     await (update(syncQueue)..where((row) => row.id.equals(id))).write(
       SyncQueueCompanion(
         status: const Value(SyncQueueStatuses.pending),
+        updatedAt: Value(DateTime.now()),
+        lastError: Value(
+          shortMessage.length <= 500
+              ? shortMessage
+              : shortMessage.substring(0, 500),
+        ),
+      ),
+    );
+  }
+
+  Future<void> markSyncTaskAsPermanentFailure(int id, String message) async {
+    final shortMessage = message.trim();
+    await (update(syncQueue)..where((row) => row.id.equals(id))).write(
+      SyncQueueCompanion(
+        status: const Value(SyncQueueStatuses.failed),
         updatedAt: Value(DateTime.now()),
         lastError: Value(
           shortMessage.length <= 500

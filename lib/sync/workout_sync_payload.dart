@@ -52,14 +52,14 @@ class WorkoutSyncPayload {
     if (workout is! Map || exercises is! List || client is! Map) {
       throw const FormatException('Некорректный workout sync payload');
     }
-    return WorkoutSyncPayload._(json);
+    return WorkoutSyncPayload._(_normalize(json));
   }
 
   final Map<String, dynamic> _json;
 
   String get workoutExternalId {
     final workout = _json['workout'] as Map;
-    return workout['workout_id'] as String;
+    return workout['uuid'] as String;
   }
 
   Map<String, dynamic> toJson() => _json;
@@ -67,9 +67,9 @@ class WorkoutSyncPayload {
   String encode() => jsonEncode(_json);
 
   static Map<String, dynamic> _serialize(WorkoutSyncSource source) => {
-    'client': {'client_id': source.clientExternalId, 'name': source.clientName},
+    'client': {'uuid': source.clientExternalId, 'name': source.clientName},
     'workout': {
-      'workout_id': source.workoutExternalId,
+      'uuid': source.workoutExternalId,
       'performed_at': source.performedAt.toUtc().toIso8601String(),
       'day_index': source.templateIndex,
       if (source.dayLabel != null) 'day_label': source.dayLabel,
@@ -79,11 +79,46 @@ class WorkoutSyncPayload {
     'exercises': [
       for (final exercise in source.exercises)
         {
-          'exercise_id': exercise.exerciseExternalId,
+          'uuid': exercise.exerciseExternalId,
           'name': exercise.name,
           'weight_kg': exercise.weightKg,
           'reps': exercise.reps,
         },
     ],
   };
+
+  static Map<String, dynamic> _normalize(Map<String, dynamic> json) {
+    final client = Map<String, dynamic>.from(json['client'] as Map);
+    final workout = Map<String, dynamic>.from(json['workout'] as Map);
+    final exercises = json['exercises'] as List;
+
+    return {
+      'client': {
+        'uuid': client['uuid'] ?? client['client_id'],
+        'name': client['name'],
+      },
+      'workout': {
+        'uuid': workout['uuid'] ?? workout['workout_id'],
+        'performed_at': workout['performed_at'],
+        'day_index': workout['day_index'],
+        if (workout['day_label'] != null) 'day_label': workout['day_label'],
+        if (workout['day_title'] != null) 'day_title': workout['day_title'],
+        'plan_instance': workout['plan_instance'],
+      },
+      'exercises': [
+        for (final rawExercise in exercises)
+          if (rawExercise is Map)
+            {
+              'uuid': rawExercise['uuid'] ?? rawExercise['exercise_id'],
+              'name': rawExercise['name'],
+              'weight_kg': rawExercise['weight_kg'],
+              'reps': rawExercise['reps'],
+            }
+          else
+            throw const FormatException(
+              'Некорректное упражнение в workout sync payload',
+            ),
+      ],
+    };
+  }
 }

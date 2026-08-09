@@ -15,21 +15,28 @@ class SyncService {
 
   bool get isConfigured => _transport.isConfigured;
 
-  Future<SyncRunResult> syncPending() async {
+  Future<SyncRunResult> syncPending({
+    void Function(SyncProgress progress)? onProgress,
+  }) async {
     await _db.cleanupSyncLogs();
     if (!_transport.isConfigured) {
       return const SyncRunResult(status: SyncRunStatus.notConfigured);
     }
 
     await _db.recoverInterruptedSyncTasks();
-    final tasks = await _db.getPendingSyncTasks();
+    final total = await _db.getPendingSyncTaskCount();
     var succeeded = 0;
     var failed = 0;
+    SyncRunStopReason? stopReason;
+    onProgress?.call(SyncProgress(sent: 0, total: total));
 
-    for (final queued in tasks) {
+    while (true) {
+      final queued = await _db.getNextPendingSyncTask();
+      if (queued == null) break;
       final task = await _db.beginSyncAttempt(queued.id);
       if (task == null) continue;
 
+      WorkoutSyncPayload payload;
       try {
         if (task.operation != SyncOperations.workoutUpsert) {
           throw StateError('Неподдерживаемая sync-операция: ${task.operation}');
@@ -38,34 +45,25 @@ class SyncService {
         if (decoded is! Map<String, dynamic>) {
           throw const FormatException('Некорректный payload очереди');
         }
-        final payload = WorkoutSyncPayload.fromJson(decoded);
-        final result = await _transport.sendWorkout(payload);
-
-        if (result.isSuccess) {
-          await _db.deleteSyncTaskAfterSuccess(
-            id: task.id,
-            sentPayload: task.payload,
-          );
-          await _writeLogSafely(
-            task: task,
-            result: SyncLogResults.success,
-            message: result.message,
-            httpStatus: result.httpStatus,
-          );
-          succeeded++;
-          continue;
-        }
-
-        await _db.markSyncTaskForRetry(task.id, result.message);
+        payload = WorkoutSyncPayload.fromJson(decoded);
+      } catch (error) {
+        final message = 'Ошибка синхронизации: $error';
+        await _db.markSyncTaskAsPermanentFailure(task.id, message);
         await _writeLogSafely(
           task: task,
           result: SyncLogResults.error,
-          message: result.message,
-          httpStatus: result.httpStatus,
+          message: message,
         );
         failed++;
+        stopReason = SyncRunStopReason.permanentFailure;
+        break;
+      }
+
+      SyncTransportResult result;
+      try {
+        result = await _transport.sendWorkout(payload);
       } catch (error) {
-        final message = 'Ошибка синхронизации: $error';
+        final message = 'Ошибка сети: $error';
         await _db.markSyncTaskForRetry(task.id, message);
         await _writeLogSafely(
           task: task,
@@ -73,13 +71,51 @@ class SyncService {
           message: message,
         );
         failed++;
+        stopReason = SyncRunStopReason.transientFailure;
+        break;
       }
+
+      if (result.isSuccess) {
+        await _db.deleteSyncTaskAfterSuccess(
+          id: task.id,
+          sentPayload: task.payload,
+        );
+        await _writeLogSafely(
+          task: task,
+          result: SyncLogResults.success,
+          message: result.message,
+          httpStatus: result.httpStatus,
+        );
+        succeeded++;
+        onProgress?.call(SyncProgress(sent: succeeded, total: total));
+        continue;
+      }
+
+      final isPermanent =
+          result.resolvedFailureKind == SyncFailureKind.permanent;
+      if (isPermanent) {
+        await _db.markSyncTaskAsPermanentFailure(task.id, result.message);
+      } else {
+        await _db.markSyncTaskForRetry(task.id, result.message);
+      }
+      await _writeLogSafely(
+        task: task,
+        result: SyncLogResults.error,
+        message: result.message,
+        httpStatus: result.httpStatus,
+      );
+      failed++;
+      stopReason = isPermanent
+          ? SyncRunStopReason.permanentFailure
+          : SyncRunStopReason.transientFailure;
+      break;
     }
 
     return SyncRunResult(
       status: SyncRunStatus.completed,
       succeeded: succeeded,
       failed: failed,
+      stopReason: stopReason,
     );
   }
 

@@ -19,14 +19,25 @@ class SyncLogResults {
 
 enum SyncRunStatus { completed, notConfigured }
 
+enum SyncRunStopReason { transientFailure, permanentFailure }
+
+class SyncProgress {
+  const SyncProgress({required this.sent, required this.total});
+
+  final int sent;
+  final int total;
+}
+
 class SyncRunResult {
   const SyncRunResult({
     required this.status,
     this.succeeded = 0,
     this.failed = 0,
+    this.stopReason,
   });
 
   final SyncRunStatus status;
   final int succeeded;
   final int failed;
+  final SyncRunStopReason? stopReason;
 }

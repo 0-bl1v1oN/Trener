@@ -19,6 +19,8 @@ class _SyncScreenState extends State<SyncScreen> {
   SyncService? _service;
   bool _loading = true;
   bool _syncing = false;
+  int _syncSent = 0;
+  int _syncTotal = 0;
   int _pendingCount = 0;
   DateTime? _lastSuccessAt;
   List<SyncLogEntry> _logs = const [];
@@ -64,13 +66,33 @@ class _SyncScreenState extends State<SyncScreen> {
   Future<void> _syncNow() async {
     final service = _service;
     if (service == null || _syncing) return;
-    setState(() => _syncing = true);
+    setState(() {
+      _syncing = true;
+      _syncSent = 0;
+      _syncTotal = _pendingCount;
+    });
     try {
-      final result = await service.syncPending();
+      final result = await service.syncPending(
+        onProgress: (progress) {
+          if (!mounted) return;
+          setState(() {
+            _syncSent = progress.sent;
+            _syncTotal = progress.total;
+          });
+        },
+      );
       if (!mounted) return;
-      final message = result.status == SyncRunStatus.notConfigured
-          ? 'Сервер синхронизации пока не настроен'
-          : 'Отправлено: ${result.succeeded}, ошибок: ${result.failed}';
+      final message = switch ((result.status, result.stopReason)) {
+        (SyncRunStatus.notConfigured, _) =>
+          'Сервер синхронизации пока не настроен',
+        (_, SyncRunStopReason.transientFailure) =>
+          'Отправлено: ${result.succeeded}. '
+              'Проход остановлен: сервер или сеть недоступны',
+        (_, SyncRunStopReason.permanentFailure) =>
+          'Отправлено: ${result.succeeded}. '
+              'Проход остановлен: ошибка контракта сервера',
+        _ => 'Отправлено: ${result.succeeded}, ошибок: ${result.failed}',
+      };
       ScaffoldMessenger.of(
         context,
       ).showSnackBar(SnackBar(content: Text(message)));
@@ -136,6 +158,13 @@ class _SyncScreenState extends State<SyncScreen> {
                             label: 'Ожидают отправки',
                             value: '$_pendingCount',
                           ),
+                          if (_syncing) ...[
+                            const SizedBox(height: 10),
+                            _StatusRow(
+                              label: 'Прогресс',
+                              value: 'Отправлено $_syncSent из $_syncTotal',
+                            ),
+                          ],
                           const SizedBox(height: 16),
                           SizedBox(
                             width: double.infinity,
