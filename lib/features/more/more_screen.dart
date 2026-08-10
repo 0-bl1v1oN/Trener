@@ -55,6 +55,13 @@ class MoreScreen extends StatelessWidget {
       accent: Color(0xFF4D9CFF),
       route: '/records',
     ),
+    _MenuItem(
+      icon: Icons.admin_panel_settings_rounded,
+      title: 'Служебные данные',
+      description: 'UUID тренера и клиентов',
+      accent: Color(0xFF8EA6FF),
+      route: '/service-data',
+    ),
   ];
 
   @override

@@ -74,11 +74,11 @@ void main() {
         final version = await db
             .customSelect('PRAGMA user_version')
             .getSingle();
-        expect(version.read<int>('user_version'), 9);
+        expect(version.read<int>('user_version'), 10);
       },
     );
 
-    test('migrates schema 8 to sync schema 9 without data loss', () async {
+    test('migrates schema 8 to current schema without data loss', () async {
       final temp = await Directory.systemTemp.createTemp(
         'trener-v8-migration-',
       );
@@ -92,7 +92,7 @@ void main() {
       addTearDown(db.close);
 
       final version = await db.customSelect('PRAGMA user_version').getSingle();
-      expect(version.read<int>('user_version'), 9);
+      expect(version.read<int>('user_version'), 10);
       expect(await _count(db, 'clients'), 2);
       expect(await _count(db, 'workout_sessions'), 2);
       expect(await _count(db, 'workout_exercise_results'), 2);

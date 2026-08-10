@@ -164,6 +164,14 @@ class ExerciseIdentityBindings extends Table {
   DateTimeColumn get retiredAt => dateTime().nullable()();
 }
 
+class AppSettings extends Table {
+  TextColumn get settingKey => text()();
+  TextColumn get settingValue => text()();
+
+  @override
+  Set<Column> get primaryKey => {settingKey};
+}
+
 @DataClassName('SyncQueueEntry')
 class SyncQueue extends Table {
   IntColumn get id => integer().autoIncrement()();
@@ -474,6 +482,7 @@ class ProgressSnapshotClientVm {
     ClientTemplateExerciseOverrides,
     ExerciseIdentities,
     ExerciseIdentityBindings,
+    AppSettings,
     SyncQueue,
     SyncLog,
   ],
@@ -485,6 +494,7 @@ class AppDb extends _$AppDb {
   static const Uuid _uuid = Uuid();
   static const String activeClientStatus = 'ACTIVE';
   static const String archivedClientStatus = 'ARCHIVED';
+  static const String _trainerUuidSettingKey = 'trainer_uuid';
   static const String _templateExerciseSource = 'TEMPLATE';
   static const String _clientAddedExerciseSource = 'CLIENT_ADDED';
 
@@ -494,7 +504,7 @@ class AppDb extends _$AppDb {
   Future<void>? _templateDefaultsPatchFuture;
 
   @override
-  int get schemaVersion => 9;
+  int get schemaVersion => 10;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -514,6 +524,7 @@ class AppDb extends _$AppDb {
       await _seedWorkoutTemplates();
       await _seedWorkoutTemplateExercises();
       await _backfillExternalIdentities();
+      await _ensureTrainerUuid();
       await cleanupSyncLogs();
     },
 
@@ -538,6 +549,9 @@ class AppDb extends _$AppDb {
         await m.createTable(syncQueue);
         await m.createTable(syncLog);
       }
+      if (from < 10) {
+        await m.createTable(appSettings);
+      }
 
       await _ensureProgramDayOverridesTable();
       await ensureIncomeTables();
@@ -554,6 +568,7 @@ class AppDb extends _$AppDb {
       await _seedWorkoutTemplates();
       await _seedWorkoutTemplateExercises();
       await _backfillExternalIdentities();
+      await _ensureTrainerUuid();
       if (from < 9) {
         await _enqueueAllExistingWorkoutSessionsForSync();
       }
@@ -573,11 +588,50 @@ class AppDb extends _$AppDb {
       await _ensureExternalIdentityIndexes();
       await _ensureSyncIndexes();
       await _backfillExternalIdentities();
+      await _ensureTrainerUuid();
       await cleanupSyncLogs();
     },
   );
 
   String _newUuid() => _uuid.v4();
+
+  Future<String> _ensureTrainerUuid() async {
+    final existing =
+        await (select(appSettings)
+              ..where((row) => row.settingKey.equals(_trainerUuidSettingKey))
+              ..limit(1))
+            .getSingleOrNull();
+    if (existing != null) {
+      final value = existing.settingValue.trim();
+      if (!_isUuidV4(value)) {
+        throw StateError('В локальной БД хранится некорректный UUID тренера');
+      }
+      return value;
+    }
+
+    final generated = _newUuid();
+    await into(appSettings).insert(
+      AppSettingsCompanion.insert(
+        settingKey: _trainerUuidSettingKey,
+        settingValue: generated,
+      ),
+      mode: InsertMode.insertOrIgnore,
+    );
+    final stored =
+        await (select(appSettings)
+              ..where((row) => row.settingKey.equals(_trainerUuidSettingKey))
+              ..limit(1))
+            .getSingle();
+    final value = stored.settingValue.trim();
+    if (!_isUuidV4(value)) {
+      throw StateError('Не удалось сохранить UUID тренера');
+    }
+    return value;
+  }
+
+  Future<String> getTrainerUuid() => transaction(_ensureTrainerUuid);
+
+  Future<void> ensureExternalIdentities() => _backfillExternalIdentities();
 
   Future<void> _ensureExternalIdentityIndexes() async {
     await customStatement('''
@@ -5773,6 +5827,7 @@ class AppDb extends _$AppDb {
   Future<Map<String, dynamic>> buildBackupPayload() async {
     await ensureIncomeTables();
     await ensureContestTables();
+    await getTrainerUuid();
 
     final tables = await customSelect(
       "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' ORDER BY name",
@@ -5920,6 +5975,17 @@ class AppDb extends _$AppDb {
     normalizeExternalIds('workout_sessions');
     normalizeExternalIds('exercise_identities');
 
+    final settingsRows = normalized[appSettings.actualTableName];
+    if (settingsRows is List<Map<String, dynamic>>) {
+      for (final row in settingsRows) {
+        if (row['setting_key'] != _trainerUuidSettingKey) continue;
+        final value = row['setting_value'];
+        if (value is! String || !_isUuidV4(value.trim())) {
+          throw const FormatException('Некорректный UUID тренера в backup');
+        }
+      }
+    }
+
     final clientRows = normalized['clients'];
     if (clientRows is List<Map<String, dynamic>>) {
       for (final row in clientRows) {
@@ -6031,6 +6097,7 @@ class AppDb extends _$AppDb {
         // выполняется до commit той же транзакции, поэтому при любой ошибке
         // удаление исходной базы также будет отменено.
         await _backfillExternalIdentities();
+        await _ensureTrainerUuid();
         if (!rawTables.containsKey(syncQueue.actualTableName)) {
           await _enqueueAllExistingWorkoutSessionsForSync();
         }

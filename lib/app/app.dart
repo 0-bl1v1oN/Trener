@@ -16,6 +16,7 @@ import '../features/more/contests_screen.dart';
 import '../features/more/data_backup_screen.dart';
 import '../features/more/progress_screen.dart';
 import '../features/more/sync_screen.dart';
+import '../features/more/service_data_screen.dart';
 import '../theme_controller.dart';
 import 'app_db_scope.dart';
 import 'app_error_reporter.dart';
@@ -342,6 +343,11 @@ final GoRouter _router = GoRouter(
       parentNavigatorKey: _rootNavKey,
       path: '/sync',
       builder: (context, state) => const SyncScreen(),
+    ),
+    GoRoute(
+      parentNavigatorKey: _rootNavKey,
+      path: '/service-data',
+      builder: (context, state) => const ServiceDataScreen(),
     ),
   ],
 );

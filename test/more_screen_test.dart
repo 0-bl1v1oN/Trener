@@ -40,6 +40,7 @@ void main() {
       'Экспорт / Импорт',
       'Доход',
       'Рекорды',
+      'Служебные данные',
     ]) {
       expect(find.text(title), findsOneWidget);
     }
