@@ -75,8 +75,10 @@ class _ClientProgramScreenState extends State<ClientProgramScreen> {
       for (final slot in data.overview.slots) {
         final details = await db.getWorkoutDetailsForClientProgramSlot(
           clientId: widget.clientId,
+          planInstance: data.overview.st.planInstance,
           absoluteIndex: slot.absoluteIndex,
           templateIdx: slot.templateIdx,
+          sessionId: slot.sessionId,
         );
 
         final exercises = details.$3;
@@ -741,7 +743,10 @@ class _ClientProgramScreenState extends State<ClientProgramScreen> {
                                           templateIdx:
                                               slot.templateIdx, // 🔥 главное
                                           displayTitle: displayTitle,
+                                          planInstance:
+                                              overview.st.planInstance,
                                           absoluteIndex: slot.absoluteIndex,
+                                          sessionId: slot.sessionId,
                                         ),
                                       ),
                                     );
@@ -763,7 +768,9 @@ class _ClientProgramScreenState extends State<ClientProgramScreen> {
                                     day: day,
                                     templateIdx: slot.templateIdx,
                                     displayTitle: displayTitle,
+                                    planInstance: overview.st.planInstance,
                                     absoluteIndex: slot.absoluteIndex,
+                                    sessionId: slot.sessionId,
                                   ),
                                 ),
                               );

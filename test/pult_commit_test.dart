@@ -50,6 +50,7 @@ void main() {
           clientName: 'Клиент Пульта',
           day: day,
           templateIdx: template.idx,
+          planInstance: 1,
           absoluteIndex: 0,
         ),
       );

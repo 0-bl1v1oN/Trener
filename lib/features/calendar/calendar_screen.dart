@@ -2479,20 +2479,25 @@ class _CalendarScreenState extends State<CalendarScreen>
     AppointmentWithClient item,
   ) async {
     final overview = await db.getProgramOverview(item.client.id);
+    final planInstance = overview.st.planInstance;
     final nextAbsoluteIndex = overview.st.completedInPlan;
+    final nextSlotPosition = overview.slots.indexWhere(
+      (slot) => slot.absoluteIndex == nextAbsoluteIndex,
+    );
 
-    if (nextAbsoluteIndex < 0 || nextAbsoluteIndex >= overview.slots.length) {
+    if (nextAbsoluteIndex < 0 || nextSlotPosition < 0) {
       if (!mounted) return _QuickWorkoutCheckResult.skipped;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('У клиента нет активной программы.')),
       );
       return _QuickWorkoutCheckResult.skipped;
     }
-    final nextSlot = overview.slots[nextAbsoluteIndex];
+    final nextSlot = overview.slots[nextSlotPosition];
     final nextTemplateIdx = nextSlot.templateIdx;
 
     final details = await db.getWorkoutDetailsForClientProgramSlot(
       clientId: item.client.id,
+      planInstance: planInstance,
       absoluteIndex: nextAbsoluteIndex,
       templateIdx: nextTemplateIdx,
     );
@@ -2891,6 +2896,7 @@ class _CalendarScreenState extends State<CalendarScreen>
       day: _selectedDay,
       resultsByTemplateExerciseId: results,
       templateIdx: nextTemplateIdx,
+      planInstance: planInstance,
       absoluteIndex: nextAbsoluteIndex,
     );
 
@@ -2913,19 +2919,23 @@ class _CalendarScreenState extends State<CalendarScreen>
     }
     final overview = await db.getProgramOverview(item.client.id);
     final nextAbsoluteIndex = overview.st.completedInPlan;
+    final nextSlotPosition = overview.slots.indexWhere(
+      (slot) => slot.absoluteIndex == nextAbsoluteIndex,
+    );
 
-    if (nextAbsoluteIndex < 0 || nextAbsoluteIndex >= overview.slots.length) {
+    if (nextAbsoluteIndex < 0 || nextSlotPosition < 0) {
       _showCalendarMessage('У клиента нет активной программы.');
       return;
     }
 
-    final nextSlot = overview.slots[nextAbsoluteIndex];
+    final nextSlot = overview.slots[nextSlotPosition];
     final result = await PultStore.addOrUpdateTab(
       PultTabEntry(
         clientId: item.client.id,
         clientName: item.client.name,
         day: DateTime(_selectedDay.year, _selectedDay.month, _selectedDay.day),
         templateIdx: nextSlot.templateIdx,
+        planInstance: overview.st.planInstance,
         absoluteIndex: nextAbsoluteIndex,
       ),
     );

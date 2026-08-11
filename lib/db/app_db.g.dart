@@ -1956,6 +1956,17 @@ class $WorkoutSessionsTable extends WorkoutSessions
     type: DriftSqlType.int,
     requiredDuringInsert: true,
   );
+  static const VerificationMeta _absoluteIndexMeta = const VerificationMeta(
+    'absoluteIndex',
+  );
+  @override
+  late final GeneratedColumn<int> absoluteIndex = GeneratedColumn<int>(
+    'absolute_index',
+    aliasedName,
+    true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+  );
   static const VerificationMeta _genderMeta = const VerificationMeta('gender');
   @override
   late final GeneratedColumn<String> gender = GeneratedColumn<String>(
@@ -1983,6 +1994,7 @@ class $WorkoutSessionsTable extends WorkoutSessions
     clientId,
     performedAt,
     planInstance,
+    absoluteIndex,
     gender,
     templateIdx,
   ];
@@ -2037,6 +2049,15 @@ class $WorkoutSessionsTable extends WorkoutSessions
     } else if (isInserting) {
       context.missing(_planInstanceMeta);
     }
+    if (data.containsKey('absolute_index')) {
+      context.handle(
+        _absoluteIndexMeta,
+        absoluteIndex.isAcceptableOrUnknown(
+          data['absolute_index']!,
+          _absoluteIndexMeta,
+        ),
+      );
+    }
     if (data.containsKey('gender')) {
       context.handle(
         _genderMeta,
@@ -2085,6 +2106,10 @@ class $WorkoutSessionsTable extends WorkoutSessions
         DriftSqlType.int,
         data['${effectivePrefix}plan_instance'],
       )!,
+      absoluteIndex: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}absolute_index'],
+      ),
       gender: attachedDatabase.typeMapping.read(
         DriftSqlType.string,
         data['${effectivePrefix}gender'],
@@ -2108,6 +2133,7 @@ class WorkoutSession extends DataClass implements Insertable<WorkoutSession> {
   final String clientId;
   final DateTime performedAt;
   final int planInstance;
+  final int? absoluteIndex;
   final String gender;
   final int templateIdx;
   const WorkoutSession({
@@ -2116,6 +2142,7 @@ class WorkoutSession extends DataClass implements Insertable<WorkoutSession> {
     required this.clientId,
     required this.performedAt,
     required this.planInstance,
+    this.absoluteIndex,
     required this.gender,
     required this.templateIdx,
   });
@@ -2129,6 +2156,9 @@ class WorkoutSession extends DataClass implements Insertable<WorkoutSession> {
     map['client_id'] = Variable<String>(clientId);
     map['performed_at'] = Variable<DateTime>(performedAt);
     map['plan_instance'] = Variable<int>(planInstance);
+    if (!nullToAbsent || absoluteIndex != null) {
+      map['absolute_index'] = Variable<int>(absoluteIndex);
+    }
     map['gender'] = Variable<String>(gender);
     map['template_idx'] = Variable<int>(templateIdx);
     return map;
@@ -2143,6 +2173,9 @@ class WorkoutSession extends DataClass implements Insertable<WorkoutSession> {
       clientId: Value(clientId),
       performedAt: Value(performedAt),
       planInstance: Value(planInstance),
+      absoluteIndex: absoluteIndex == null && nullToAbsent
+          ? const Value.absent()
+          : Value(absoluteIndex),
       gender: Value(gender),
       templateIdx: Value(templateIdx),
     );
@@ -2159,6 +2192,7 @@ class WorkoutSession extends DataClass implements Insertable<WorkoutSession> {
       clientId: serializer.fromJson<String>(json['clientId']),
       performedAt: serializer.fromJson<DateTime>(json['performedAt']),
       planInstance: serializer.fromJson<int>(json['planInstance']),
+      absoluteIndex: serializer.fromJson<int?>(json['absoluteIndex']),
       gender: serializer.fromJson<String>(json['gender']),
       templateIdx: serializer.fromJson<int>(json['templateIdx']),
     );
@@ -2172,6 +2206,7 @@ class WorkoutSession extends DataClass implements Insertable<WorkoutSession> {
       'clientId': serializer.toJson<String>(clientId),
       'performedAt': serializer.toJson<DateTime>(performedAt),
       'planInstance': serializer.toJson<int>(planInstance),
+      'absoluteIndex': serializer.toJson<int?>(absoluteIndex),
       'gender': serializer.toJson<String>(gender),
       'templateIdx': serializer.toJson<int>(templateIdx),
     };
@@ -2183,6 +2218,7 @@ class WorkoutSession extends DataClass implements Insertable<WorkoutSession> {
     String? clientId,
     DateTime? performedAt,
     int? planInstance,
+    Value<int?> absoluteIndex = const Value.absent(),
     String? gender,
     int? templateIdx,
   }) => WorkoutSession(
@@ -2191,6 +2227,9 @@ class WorkoutSession extends DataClass implements Insertable<WorkoutSession> {
     clientId: clientId ?? this.clientId,
     performedAt: performedAt ?? this.performedAt,
     planInstance: planInstance ?? this.planInstance,
+    absoluteIndex: absoluteIndex.present
+        ? absoluteIndex.value
+        : this.absoluteIndex,
     gender: gender ?? this.gender,
     templateIdx: templateIdx ?? this.templateIdx,
   );
@@ -2207,6 +2246,9 @@ class WorkoutSession extends DataClass implements Insertable<WorkoutSession> {
       planInstance: data.planInstance.present
           ? data.planInstance.value
           : this.planInstance,
+      absoluteIndex: data.absoluteIndex.present
+          ? data.absoluteIndex.value
+          : this.absoluteIndex,
       gender: data.gender.present ? data.gender.value : this.gender,
       templateIdx: data.templateIdx.present
           ? data.templateIdx.value
@@ -2222,6 +2264,7 @@ class WorkoutSession extends DataClass implements Insertable<WorkoutSession> {
           ..write('clientId: $clientId, ')
           ..write('performedAt: $performedAt, ')
           ..write('planInstance: $planInstance, ')
+          ..write('absoluteIndex: $absoluteIndex, ')
           ..write('gender: $gender, ')
           ..write('templateIdx: $templateIdx')
           ..write(')'))
@@ -2235,6 +2278,7 @@ class WorkoutSession extends DataClass implements Insertable<WorkoutSession> {
     clientId,
     performedAt,
     planInstance,
+    absoluteIndex,
     gender,
     templateIdx,
   );
@@ -2247,6 +2291,7 @@ class WorkoutSession extends DataClass implements Insertable<WorkoutSession> {
           other.clientId == this.clientId &&
           other.performedAt == this.performedAt &&
           other.planInstance == this.planInstance &&
+          other.absoluteIndex == this.absoluteIndex &&
           other.gender == this.gender &&
           other.templateIdx == this.templateIdx);
 }
@@ -2257,6 +2302,7 @@ class WorkoutSessionsCompanion extends UpdateCompanion<WorkoutSession> {
   final Value<String> clientId;
   final Value<DateTime> performedAt;
   final Value<int> planInstance;
+  final Value<int?> absoluteIndex;
   final Value<String> gender;
   final Value<int> templateIdx;
   const WorkoutSessionsCompanion({
@@ -2265,6 +2311,7 @@ class WorkoutSessionsCompanion extends UpdateCompanion<WorkoutSession> {
     this.clientId = const Value.absent(),
     this.performedAt = const Value.absent(),
     this.planInstance = const Value.absent(),
+    this.absoluteIndex = const Value.absent(),
     this.gender = const Value.absent(),
     this.templateIdx = const Value.absent(),
   });
@@ -2274,6 +2321,7 @@ class WorkoutSessionsCompanion extends UpdateCompanion<WorkoutSession> {
     required String clientId,
     required DateTime performedAt,
     required int planInstance,
+    this.absoluteIndex = const Value.absent(),
     required String gender,
     required int templateIdx,
   }) : clientId = Value(clientId),
@@ -2287,6 +2335,7 @@ class WorkoutSessionsCompanion extends UpdateCompanion<WorkoutSession> {
     Expression<String>? clientId,
     Expression<DateTime>? performedAt,
     Expression<int>? planInstance,
+    Expression<int>? absoluteIndex,
     Expression<String>? gender,
     Expression<int>? templateIdx,
   }) {
@@ -2296,6 +2345,7 @@ class WorkoutSessionsCompanion extends UpdateCompanion<WorkoutSession> {
       if (clientId != null) 'client_id': clientId,
       if (performedAt != null) 'performed_at': performedAt,
       if (planInstance != null) 'plan_instance': planInstance,
+      if (absoluteIndex != null) 'absolute_index': absoluteIndex,
       if (gender != null) 'gender': gender,
       if (templateIdx != null) 'template_idx': templateIdx,
     });
@@ -2307,6 +2357,7 @@ class WorkoutSessionsCompanion extends UpdateCompanion<WorkoutSession> {
     Value<String>? clientId,
     Value<DateTime>? performedAt,
     Value<int>? planInstance,
+    Value<int?>? absoluteIndex,
     Value<String>? gender,
     Value<int>? templateIdx,
   }) {
@@ -2316,6 +2367,7 @@ class WorkoutSessionsCompanion extends UpdateCompanion<WorkoutSession> {
       clientId: clientId ?? this.clientId,
       performedAt: performedAt ?? this.performedAt,
       planInstance: planInstance ?? this.planInstance,
+      absoluteIndex: absoluteIndex ?? this.absoluteIndex,
       gender: gender ?? this.gender,
       templateIdx: templateIdx ?? this.templateIdx,
     );
@@ -2339,6 +2391,9 @@ class WorkoutSessionsCompanion extends UpdateCompanion<WorkoutSession> {
     if (planInstance.present) {
       map['plan_instance'] = Variable<int>(planInstance.value);
     }
+    if (absoluteIndex.present) {
+      map['absolute_index'] = Variable<int>(absoluteIndex.value);
+    }
     if (gender.present) {
       map['gender'] = Variable<String>(gender.value);
     }
@@ -2356,6 +2411,7 @@ class WorkoutSessionsCompanion extends UpdateCompanion<WorkoutSession> {
           ..write('clientId: $clientId, ')
           ..write('performedAt: $performedAt, ')
           ..write('planInstance: $planInstance, ')
+          ..write('absoluteIndex: $absoluteIndex, ')
           ..write('gender: $gender, ')
           ..write('templateIdx: $templateIdx')
           ..write(')'))
@@ -7333,6 +7389,7 @@ typedef $$WorkoutSessionsTableCreateCompanionBuilder =
       required String clientId,
       required DateTime performedAt,
       required int planInstance,
+      Value<int?> absoluteIndex,
       required String gender,
       required int templateIdx,
     });
@@ -7343,6 +7400,7 @@ typedef $$WorkoutSessionsTableUpdateCompanionBuilder =
       Value<String> clientId,
       Value<DateTime> performedAt,
       Value<int> planInstance,
+      Value<int?> absoluteIndex,
       Value<String> gender,
       Value<int> templateIdx,
     });
@@ -7378,6 +7436,11 @@ class $$WorkoutSessionsTableFilterComposer
 
   ColumnFilters<int> get planInstance => $composableBuilder(
     column: $table.planInstance,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get absoluteIndex => $composableBuilder(
+    column: $table.absoluteIndex,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -7426,6 +7489,11 @@ class $$WorkoutSessionsTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<int> get absoluteIndex => $composableBuilder(
+    column: $table.absoluteIndex,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   ColumnOrderings<String> get gender => $composableBuilder(
     column: $table.gender,
     builder: (column) => ColumnOrderings(column),
@@ -7464,6 +7532,11 @@ class $$WorkoutSessionsTableAnnotationComposer
 
   GeneratedColumn<int> get planInstance => $composableBuilder(
     column: $table.planInstance,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<int> get absoluteIndex => $composableBuilder(
+    column: $table.absoluteIndex,
     builder: (column) => column,
   );
 
@@ -7512,6 +7585,7 @@ class $$WorkoutSessionsTableTableManager
                 Value<String> clientId = const Value.absent(),
                 Value<DateTime> performedAt = const Value.absent(),
                 Value<int> planInstance = const Value.absent(),
+                Value<int?> absoluteIndex = const Value.absent(),
                 Value<String> gender = const Value.absent(),
                 Value<int> templateIdx = const Value.absent(),
               }) => WorkoutSessionsCompanion(
@@ -7520,6 +7594,7 @@ class $$WorkoutSessionsTableTableManager
                 clientId: clientId,
                 performedAt: performedAt,
                 planInstance: planInstance,
+                absoluteIndex: absoluteIndex,
                 gender: gender,
                 templateIdx: templateIdx,
               ),
@@ -7530,6 +7605,7 @@ class $$WorkoutSessionsTableTableManager
                 required String clientId,
                 required DateTime performedAt,
                 required int planInstance,
+                Value<int?> absoluteIndex = const Value.absent(),
                 required String gender,
                 required int templateIdx,
               }) => WorkoutSessionsCompanion.insert(
@@ -7538,6 +7614,7 @@ class $$WorkoutSessionsTableTableManager
                 clientId: clientId,
                 performedAt: performedAt,
                 planInstance: planInstance,
+                absoluteIndex: absoluteIndex,
                 gender: gender,
                 templateIdx: templateIdx,
               ),

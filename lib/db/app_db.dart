@@ -101,6 +101,7 @@ class WorkoutSessions extends Table {
   DateTimeColumn get performedAt => dateTime()();
 
   IntColumn get planInstance => integer()();
+  IntColumn get absoluteIndex => integer().nullable()();
 
   TextColumn get gender => text()(); // 'М'/'Ж' на момент выполнения
   IntColumn get templateIdx => integer()(); // 0..8
@@ -352,6 +353,23 @@ class ProgramOverviewVm {
   ProgramOverviewVm({required this.st, required this.slots});
 }
 
+class StaleProgramSlotException implements Exception {
+  final String clientId;
+  final int requestedPlanInstance;
+  final int activePlanInstance;
+
+  const StaleProgramSlotException({
+    required this.clientId,
+    required this.requestedPlanInstance,
+    required this.activePlanInstance,
+  });
+
+  @override
+  String toString() =>
+      'Слот относится к абонементу $requestedPlanInstance, '
+      'активен абонемент $activePlanInstance. Обновите экран.';
+}
+
 class ExerciseHistoryRowVm {
   final DateTime performedAt;
   final double? weightKg;
@@ -541,7 +559,7 @@ class AppDb extends _$AppDb {
   Future<void>? _templateDefaultsPatchFuture;
 
   @override
-  int get schemaVersion => 10;
+  int get schemaVersion => 11;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -557,6 +575,7 @@ class AppDb extends _$AppDb {
       await _ensureClientAddedExercisesTable();
       await ensureProgressTables();
       await _ensureExternalIdentityIndexes();
+      await _ensureWorkoutSlotIdentityIndex();
       await _ensureSyncIndexes();
       await _seedWorkoutTemplates();
       await _seedWorkoutTemplateExercises();
@@ -589,6 +608,9 @@ class AppDb extends _$AppDb {
       if (from < 10) {
         await m.createTable(appSettings);
       }
+      if (from < 11) {
+        await m.addColumn(workoutSessions, workoutSessions.absoluteIndex);
+      }
 
       await _ensureProgramDayOverridesTable();
       await ensureIncomeTables();
@@ -600,6 +622,7 @@ class AppDb extends _$AppDb {
       await _ensureClientAddedExercisesTable();
       await ensureProgressTables();
       await _ensureExternalIdentityIndexes();
+      await _ensureWorkoutSlotIdentityIndex();
       await _ensureSyncIndexes();
 
       await _seedWorkoutTemplates();
@@ -623,6 +646,7 @@ class AppDb extends _$AppDb {
       await _ensureClientAddedExercisesTable();
       await ensureProgressTables();
       await _ensureExternalIdentityIndexes();
+      await _ensureWorkoutSlotIdentityIndex();
       await _ensureSyncIndexes();
       await _backfillExternalIdentities();
       await _ensureTrainerUuid();
@@ -694,6 +718,14 @@ class AppDb extends _$AppDb {
       CREATE UNIQUE INDEX IF NOT EXISTS exercise_identity_bindings_client_current_unique
       ON exercise_identity_bindings (client_id, source_type, source_id)
       WHERE client_id IS NOT NULL AND is_current = 1
+    ''');
+  }
+
+  Future<void> _ensureWorkoutSlotIdentityIndex() async {
+    await customStatement('''
+      CREATE UNIQUE INDEX IF NOT EXISTS workout_sessions_program_slot_unique
+      ON workout_sessions (client_id, plan_instance, absolute_index)
+      WHERE absolute_index IS NOT NULL
     ''');
   }
 
@@ -3815,108 +3847,271 @@ class AppDb extends _$AppDb {
     );
   }
 
+  Future<WorkoutSession?> getWorkoutSessionForProgramSlot({
+    required String clientId,
+    required int planInstance,
+    required int absoluteIndex,
+  }) {
+    return (select(workoutSessions)..where(
+          (row) =>
+              row.clientId.equals(clientId) &
+              row.planInstance.equals(planInstance) &
+              row.absoluteIndex.equals(absoluteIndex),
+        ))
+        .getSingleOrNull();
+  }
+
+  Future<WorkoutSession?> _getLegacyWorkoutSessionForProgramSlot({
+    required String clientId,
+    required int planInstance,
+    required int absoluteIndex,
+  }) async {
+    if (absoluteIndex < 0) return null;
+    final legacySessions =
+        await (select(workoutSessions)
+              ..where(
+                (row) =>
+                    row.clientId.equals(clientId) &
+                    row.planInstance.equals(planInstance) &
+                    row.absoluteIndex.isNull(),
+              )
+              ..orderBy([
+                (row) => OrderingTerm.asc(row.performedAt),
+                (row) => OrderingTerm.asc(row.id),
+              ]))
+            .get();
+    return absoluteIndex < legacySessions.length
+        ? legacySessions[absoluteIndex]
+        : null;
+  }
+
+  Future<void> _writeWorkoutResultsForSession({
+    required WorkoutSession session,
+    required String clientId,
+    required Map<int, (double? kg, int? reps)> results,
+  }) async {
+    for (final entry in results.entries) {
+      final exerciseId = entry.key;
+      final kg = entry.value.$1;
+      final reps = entry.value.$2;
+
+      if (kg == null && reps == null) {
+        await (delete(workoutExerciseResults)..where(
+              (row) =>
+                  row.sessionId.equals(session.id) &
+                  row.templateExerciseId.equals(exerciseId),
+            ))
+            .go();
+        continue;
+      }
+
+      final existing =
+          await (select(workoutExerciseResults)..where(
+                (row) =>
+                    row.sessionId.equals(session.id) &
+                    row.templateExerciseId.equals(exerciseId),
+              ))
+              .getSingleOrNull();
+      if (existing == null) {
+        final identityId = await _resolveExerciseIdentity(
+          clientId: clientId,
+          templateExerciseId: exerciseId,
+        );
+        final exerciseName = await _resolveExerciseDisplayName(
+          clientId: clientId,
+          templateExerciseId: exerciseId,
+        );
+        await into(workoutExerciseResults).insert(
+          WorkoutExerciseResultsCompanion.insert(
+            sessionId: session.id,
+            templateExerciseId: exerciseId,
+            exerciseIdentityId: Value(identityId),
+            exerciseNameSnapshot: Value(exerciseName),
+            lastWeightKg: Value(kg),
+            lastReps: Value(reps),
+          ),
+        );
+      } else {
+        final identityId =
+            existing.exerciseIdentityId ??
+            await _resolveExerciseIdentity(
+              clientId: clientId,
+              templateExerciseId: exerciseId,
+            );
+        await (update(
+          workoutExerciseResults,
+        )..where((row) => row.id.equals(existing.id))).write(
+          WorkoutExerciseResultsCompanion(
+            exerciseIdentityId: Value(identityId),
+            lastWeightKg: Value(kg),
+            lastReps: Value(reps),
+          ),
+        );
+      }
+    }
+  }
+
+  Future<WorkoutSession> saveCompletedProgramSlot({
+    required String clientId,
+    required int planInstance,
+    required int absoluteIndex,
+    required DateTime performedAt,
+    required int templateIdx,
+    required Map<int, (double? kg, int? reps)> results,
+    bool enqueueForSync = true,
+  }) async {
+    if (absoluteIndex < 0) {
+      throw ArgumentError.value(absoluteIndex, 'absoluteIndex');
+    }
+
+    late WorkoutSession savedSession;
+    await transaction(() async {
+      final client = await getClientById(clientId);
+      if (client == null || _parsePlanSize(client.plan) <= 0) {
+        throw StateError('У клиента нет активной программы');
+      }
+      await ensureProgramStateForClient(clientId);
+      final state = await (select(
+        clientProgramStates,
+      )..where((row) => row.clientId.equals(clientId))).getSingle();
+
+      var session = await getWorkoutSessionForProgramSlot(
+        clientId: clientId,
+        planInstance: planInstance,
+        absoluteIndex: absoluteIndex,
+      );
+      if (session == null && state.planInstance != planInstance) {
+        throw StaleProgramSlotException(
+          clientId: clientId,
+          requestedPlanInstance: planInstance,
+          activePlanInstance: state.planInstance,
+        );
+      }
+
+      final gender = _programTrackByClient(client);
+      final cycleLength = _cycleLenByGender(gender);
+      final normalizedTemplateIdx = _mod(templateIdx, cycleLength);
+      var created = false;
+
+      if (session == null) {
+        final candidateExternalId = await _newUniqueUuidForTable(
+          'workout_sessions',
+        );
+        await into(workoutSessions).insert(
+          WorkoutSessionsCompanion.insert(
+            externalId: Value(candidateExternalId),
+            clientId: clientId,
+            performedAt: performedAt,
+            planInstance: planInstance,
+            absoluteIndex: Value(absoluteIndex),
+            gender: gender,
+            templateIdx: normalizedTemplateIdx,
+          ),
+          mode: InsertMode.insertOrIgnore,
+        );
+        session = await getWorkoutSessionForProgramSlot(
+          clientId: clientId,
+          planInstance: planInstance,
+          absoluteIndex: absoluteIndex,
+        );
+        if (session == null) {
+          throw StateError('Не удалось сохранить слот тренировки');
+        }
+        created = session.externalId == candidateExternalId;
+      }
+
+      final persistedSession = session;
+
+      await (update(
+        workoutSessions,
+      )..where((row) => row.id.equals(persistedSession.id))).write(
+        WorkoutSessionsCompanion(
+          performedAt: Value(performedAt),
+          gender: Value(gender),
+          templateIdx: Value(normalizedTemplateIdx),
+        ),
+      );
+      savedSession = await (select(
+        workoutSessions,
+      )..where((row) => row.id.equals(persistedSession.id))).getSingle();
+
+      await _writeWorkoutResultsForSession(
+        session: savedSession,
+        clientId: clientId,
+        results: results,
+      );
+
+      if (created && absoluteIndex >= state.completedInPlan) {
+        final currentTemplateIdx = _mod(
+          state.cycleStartIndex + state.nextOffset,
+          cycleLength,
+        );
+        final skippedTemplates = _mod(
+          normalizedTemplateIdx - currentTemplateIdx,
+          cycleLength,
+        );
+        await (update(
+          clientProgramStates,
+        )..where((row) => row.clientId.equals(clientId))).write(
+          ClientProgramStatesCompanion(
+            completedInPlan: Value(state.completedInPlan + 1),
+            nextOffset: Value(
+              _mod(state.nextOffset + skippedTemplates + 1, cycleLength),
+            ),
+          ),
+        );
+      }
+
+      if (enqueueForSync) {
+        await _enqueueWorkoutSyncSafely(savedSession.externalId);
+      }
+    });
+    return savedSession;
+  }
+
   Future<void> completeWorkoutForClient({
     required String clientId,
     required DateTime when,
     bool enqueueForSync = true,
   }) async {
-    final c = await getClientById(clientId);
-    if (c == null) return;
-
-    final planSize = _parsePlanSize(c.plan);
-    if (planSize <= 0) return;
-
     await ensureProgramStateForClient(clientId);
-
-    final st = await (select(
-      clientProgramStates,
-    )..where((t) => t.clientId.equals(clientId))).getSingle();
-
-    final gender = _programTrackByClient(c);
-    final cycleLen = _cycleLenByGender(gender);
-
-    final realIdx = _mod(st.cycleStartIndex + st.nextOffset, cycleLen);
-
-    final workoutExternalId = await _newUniqueUuidForTable('workout_sessions');
-    await into(workoutSessions).insert(
-      WorkoutSessionsCompanion.insert(
-        externalId: Value(workoutExternalId),
-        clientId: clientId,
-        performedAt: when,
-        planInstance: st.planInstance,
-        gender: gender,
-        templateIdx: realIdx,
-      ),
+    final state = await getProgramStateForClient(clientId);
+    final client = await getClientById(clientId);
+    if (state == null || client == null) return;
+    final gender = _programTrackByClient(client);
+    final templateIdx = _mod(
+      state.cycleStartIndex + state.nextOffset,
+      _cycleLenByGender(gender),
     );
-
-    final newCompleted = st.completedInPlan + 1;
-    final newNextOffset = _mod(st.nextOffset + 1, cycleLen);
-
-    await (update(
-      clientProgramStates,
-    )..where((t) => t.clientId.equals(clientId))).write(
-      ClientProgramStatesCompanion(
-        completedInPlan: Value(newCompleted),
-        nextOffset: Value(newNextOffset),
-      ),
+    await saveCompletedProgramSlot(
+      clientId: clientId,
+      planInstance: state.planInstance,
+      absoluteIndex: state.completedInPlan,
+      performedAt: when,
+      templateIdx: templateIdx,
+      results: const {},
+      enqueueForSync: enqueueForSync,
     );
-    if (enqueueForSync) {
-      await _enqueueWorkoutSyncSafely(workoutExternalId);
-    }
   }
 
   Future<void> completeWorkoutForClientWithTemplateIdx({
     required String clientId,
     required DateTime when,
-    required int templateIdx, // 0..8
+    required int templateIdx,
     bool enqueueForSync = true,
   }) async {
-    final c = await getClientById(clientId);
-    if (c == null) return;
-
-    final planSize = _parsePlanSize(c.plan);
-    if (planSize <= 0) return;
-
     await ensureProgramStateForClient(clientId);
-
-    final st = await (select(
-      clientProgramStates,
-    )..where((t) => t.clientId.equals(clientId))).getSingle();
-
-    final gender = _programTrackByClient(c);
-
-    // насколько “впереди” выбранный idx от текущего realIdx
-    final cycleLen = _cycleLenByGender(gender);
-    final realIdx = _mod(st.cycleStartIndex + st.nextOffset, cycleLen);
-    final normalizedTemplateIdx = _mod(templateIdx, cycleLen);
-    final k = _mod(normalizedTemplateIdx - realIdx, cycleLen);
-
-    final workoutExternalId = await _newUniqueUuidForTable('workout_sessions');
-    await into(workoutSessions).insert(
-      WorkoutSessionsCompanion.insert(
-        externalId: Value(workoutExternalId),
-        clientId: clientId,
-        performedAt: when,
-        planInstance: st.planInstance,
-        gender: gender,
-        templateIdx: normalizedTemplateIdx, // ✅ выбранный
-      ),
+    final state = await getProgramStateForClient(clientId);
+    if (state == null) return;
+    await saveCompletedProgramSlot(
+      clientId: clientId,
+      planInstance: state.planInstance,
+      absoluteIndex: state.completedInPlan,
+      performedAt: when,
+      templateIdx: templateIdx,
+      results: const {},
+      enqueueForSync: enqueueForSync,
     );
-
-    final newCompleted = st.completedInPlan + 1;
-    final newNextOffset = _mod(st.nextOffset + k + 1, cycleLen);
-
-    await (update(
-      clientProgramStates,
-    )..where((t) => t.clientId.equals(clientId))).write(
-      ClientProgramStatesCompanion(
-        completedInPlan: Value(newCompleted),
-        nextOffset: Value(newNextOffset),
-      ),
-    );
-    if (enqueueForSync) {
-      await _enqueueWorkoutSyncSafely(workoutExternalId);
-    }
   }
 
   Future<void> _seedWorkoutTemplateExercises() async {
@@ -4098,9 +4293,11 @@ class AppDb extends _$AppDb {
 
   Future<bool> toggleWorkoutForClientAtAbsoluteIndex({
     required String clientId,
+    required int planInstance,
     required int absoluteIndex,
     required int templateIdx,
     required DateTime when,
+    int? sessionId,
     bool enqueueForSync = true,
   }) async {
     final c = await getClientById(clientId);
@@ -4115,49 +4312,59 @@ class AppDb extends _$AppDb {
     final gender = _programTrackByClient(c);
     final cycleLen = _cycleLenByGender(gender);
 
-    final sessions =
-        await (select(workoutSessions)
-              ..where(
-                (t) =>
-                    t.clientId.equals(clientId) &
-                    t.planInstance.equals(st.planInstance),
-              )
-              ..orderBy([(t) => OrderingTerm.asc(t.performedAt)]))
-            .get();
-
-    final existing = (absoluteIndex >= 0 && absoluteIndex < sessions.length)
-        ? sessions[absoluteIndex]
-        : null;
+    WorkoutSession? existing;
+    if (sessionId != null) {
+      existing =
+          await (select(workoutSessions)..where(
+                (row) =>
+                    row.id.equals(sessionId) & row.clientId.equals(clientId),
+              ))
+              .getSingleOrNull();
+    }
+    existing ??= await getWorkoutSessionForProgramSlot(
+      clientId: clientId,
+      planInstance: planInstance,
+      absoluteIndex: absoluteIndex,
+    );
+    existing ??= await _getLegacyWorkoutSessionForProgramSlot(
+      clientId: clientId,
+      planInstance: planInstance,
+      absoluteIndex: absoluteIndex,
+    );
 
     if (existing != null) {
-      await deleteWorkoutSyncTask(existing.externalId);
+      final sessionToDelete = existing;
+      await deleteWorkoutSyncTask(sessionToDelete.externalId);
       await (delete(
         workoutExerciseResults,
-      )..where((r) => r.sessionId.equals(existing.id))).go();
+      )..where((r) => r.sessionId.equals(sessionToDelete.id))).go();
 
       await (delete(
         workoutSessions,
-      )..where((t) => t.id.equals(existing.id))).go();
+      )..where((t) => t.id.equals(sessionToDelete.id))).go();
 
-      final newCompleted = st.completedInPlan > 0 ? st.completedInPlan - 1 : 0;
-      final newNextOffset = _mod(st.nextOffset - 1, cycleLen);
-
-      await (update(
-        clientProgramStates,
-      )..where((t) => t.clientId.equals(clientId))).write(
-        ClientProgramStatesCompanion(
-          completedInPlan: Value(newCompleted),
-          nextOffset: Value(newNextOffset),
-        ),
-      );
+      if (st.planInstance == planInstance &&
+          absoluteIndex == st.completedInPlan - 1) {
+        await (update(
+          clientProgramStates,
+        )..where((t) => t.clientId.equals(clientId))).write(
+          ClientProgramStatesCompanion(
+            completedInPlan: Value(st.completedInPlan - 1),
+            nextOffset: Value(_mod(st.nextOffset - 1, cycleLen)),
+          ),
+        );
+      }
 
       return false;
     }
 
-    await completeWorkoutForClientWithTemplateIdx(
+    await saveCompletedProgramSlot(
       clientId: clientId,
-      when: when,
+      planInstance: planInstance,
+      absoluteIndex: absoluteIndex,
+      performedAt: when,
       templateIdx: templateIdx,
+      results: const {},
       enqueueForSync: enqueueForSync,
     );
 
@@ -4375,8 +4582,10 @@ class AppDb extends _$AppDb {
   >
   getWorkoutDetailsForClientProgramSlot({
     required String clientId,
+    required int planInstance,
     required int absoluteIndex,
     required int templateIdx,
+    int? sessionId,
   }) async {
     await _ensureTemplateDefaultsPatched();
 
@@ -4404,23 +4613,29 @@ class AppDb extends _$AppDb {
     )..where((x) => x.clientId.equals(clientId))).getSingle();
 
     final gender = _programTrackByClient(c);
-    final sessions =
-        await (select(workoutSessions)
-              ..where(
-                (t) =>
-                    t.clientId.equals(clientId) &
-                    t.planInstance.equals(st.planInstance),
-              )
-              ..orderBy([(t) => OrderingTerm.asc(t.performedAt)]))
-            .get();
-
-    final sess = (absoluteIndex >= 0 && absoluteIndex < sessions.length)
-        ? sessions[absoluteIndex]
-        : null;
+    WorkoutSession? sess;
+    if (sessionId != null) {
+      sess =
+          await (select(workoutSessions)..where(
+                (row) =>
+                    row.id.equals(sessionId) & row.clientId.equals(clientId),
+              ))
+              .getSingleOrNull();
+    }
+    sess ??= await getWorkoutSessionForProgramSlot(
+      clientId: clientId,
+      planInstance: planInstance,
+      absoluteIndex: absoluteIndex,
+    );
+    sess ??= await _getLegacyWorkoutSessionForProgramSlot(
+      clientId: clientId,
+      planInstance: planInstance,
+      absoluteIndex: absoluteIndex,
+    );
 
     final overrides = await _getProgramDayOverrides(
       clientId: clientId,
-      planInstance: st.planInstance,
+      planInstance: planInstance,
     );
 
     final resolvedTemplateIdx =
@@ -4453,9 +4668,11 @@ class AppDb extends _$AppDb {
       return (info, null, preview);
     }
 
+    final resolvedSession = sess;
+
     final resRows = await (select(
       workoutExerciseResults,
-    )..where((r) => r.sessionId.equals(sess.id))).get();
+    )..where((r) => r.sessionId.equals(resolvedSession.id))).get();
 
     final resMap = {
       for (final r in resRows)
@@ -4556,193 +4773,119 @@ class AppDb extends _$AppDb {
     required DateTime day,
     required Map<int, (double? kg, int? reps)> resultsByTemplateExerciseId,
     int? templateIdx,
+    int? planInstance,
     int? absoluteIndex,
+    int? sessionId,
   }) async {
-    String? completedWorkoutExternalId;
-    await transaction(() async {
+    WorkoutSession? selectedSession;
+    if (sessionId != null) {
+      selectedSession =
+          await (select(workoutSessions)..where(
+                (row) =>
+                    row.id.equals(sessionId) & row.clientId.equals(clientId),
+              ))
+              .getSingleOrNull();
+    }
+
+    final now = DateTime.now();
+    final performedAt = DateTime(
+      day.year,
+      day.month,
+      day.day,
+      12,
+      0,
+      0,
+      now.millisecond,
+      now.microsecond,
+    );
+
+    if (selectedSession?.absoluteIndex != null) {
+      await saveCompletedProgramSlot(
+        clientId: clientId,
+        planInstance: selectedSession!.planInstance,
+        absoluteIndex: selectedSession.absoluteIndex!,
+        performedAt: performedAt,
+        templateIdx: templateIdx ?? selectedSession.templateIdx,
+        results: resultsByTemplateExerciseId,
+      );
+    } else if (selectedSession != null) {
+      await transaction(() async {
+        await _writeWorkoutResultsForSession(
+          session: selectedSession!,
+          clientId: clientId,
+          results: resultsByTemplateExerciseId,
+        );
+      });
+      await _enqueueWorkoutSyncSafely(selectedSession.externalId);
+    } else if (planInstance != null && absoluteIndex != null) {
+      await saveCompletedProgramSlot(
+        clientId: clientId,
+        planInstance: planInstance,
+        absoluteIndex: absoluteIndex,
+        performedAt: performedAt,
+        templateIdx:
+            templateIdx ??
+            (throw ArgumentError('templateIdx обязателен для program slot')),
+        results: resultsByTemplateExerciseId,
+      );
+    } else {
+      final state = await getProgramStateForClient(clientId);
       final ds = _dayStart(day);
       final de = _dayEnd(day);
-      final st = await (select(
-        clientProgramStates,
-      )..where((t) => t.clientId.equals(clientId))).getSingleOrNull();
+      final legacySession =
+          await (select(workoutSessions)
+                ..where(
+                  (row) =>
+                      row.clientId.equals(clientId) &
+                      (state == null
+                          ? const Constant(true)
+                          : row.planInstance.equals(state.planInstance)) &
+                      (templateIdx == null
+                          ? const Constant(true)
+                          : row.templateIdx.equals(templateIdx)) &
+                      row.performedAt.isBiggerOrEqualValue(ds) &
+                      row.performedAt.isSmallerThanValue(de),
+                )
+                ..orderBy([
+                  (row) => OrderingTerm.desc(row.performedAt),
+                  (row) => OrderingTerm.desc(row.id),
+                ])
+                ..limit(1))
+              .getSingleOrNull();
 
-      final activePlanInstance = st?.planInstance;
-
-      WorkoutSession? sess;
-
-      if (absoluteIndex != null && activePlanInstance != null) {
-        final sessions =
-            await (select(workoutSessions)
-                  ..where(
-                    (t) =>
-                        t.clientId.equals(clientId) &
-                        t.planInstance.equals(activePlanInstance),
-                  )
-                  ..orderBy([(t) => OrderingTerm.asc(t.performedAt)]))
-                .get();
-
-        if (absoluteIndex >= 0 && absoluteIndex < sessions.length) {
-          sess = sessions[absoluteIndex];
-        }
+      if (legacySession != null) {
+        await transaction(() async {
+          await _writeWorkoutResultsForSession(
+            session: legacySession,
+            clientId: clientId,
+            results: resultsByTemplateExerciseId,
+          );
+        });
+        await _enqueueWorkoutSyncSafely(legacySession.externalId);
       } else {
-        sess =
-            await (select(workoutSessions)
-                  ..where(
-                    (t) =>
-                        t.clientId.equals(clientId) &
-                        (activePlanInstance == null
-                            ? const Constant(true)
-                            : t.planInstance.equals(activePlanInstance)) &
-                        (templateIdx == null
-                            ? const Constant(true)
-                            : t.templateIdx.equals(templateIdx)) &
-                        t.performedAt.isBiggerOrEqualValue(ds) &
-                        t.performedAt.isSmallerThanValue(de),
-                  )
-                  ..orderBy([(t) => OrderingTerm.desc(t.performedAt)])
-                  ..limit(1))
-                .getSingleOrNull();
-      }
-
-      // если нет — создаём через твою “засчитать тренировку” (она двигает программу)
-      if (sess == null) {
-        final now = DateTime.now();
-        final when = DateTime(
-          day.year,
-          day.month,
-          day.day,
-          12,
-          0,
-          0,
-          now.millisecond,
-          now.microsecond,
+        if (state == null) {
+          await ensureProgramStateForClient(clientId);
+        }
+        final activeState = await getProgramStateForClient(clientId);
+        final client = await getClientById(clientId);
+        if (activeState == null || client == null) return;
+        final gender = _programTrackByClient(client);
+        final resolvedTemplateIdx =
+            templateIdx ??
+            _mod(
+              activeState.cycleStartIndex + activeState.nextOffset,
+              _cycleLenByGender(gender),
+            );
+        await saveCompletedProgramSlot(
+          clientId: clientId,
+          planInstance: activeState.planInstance,
+          absoluteIndex: activeState.completedInPlan,
+          performedAt: performedAt,
+          templateIdx: resolvedTemplateIdx,
+          results: resultsByTemplateExerciseId,
         );
-
-        if (templateIdx == null) {
-          await completeWorkoutForClient(
-            clientId: clientId,
-            when: when,
-            enqueueForSync: false,
-          );
-        } else if (absoluteIndex != null) {
-          await toggleWorkoutForClientAtAbsoluteIndex(
-            clientId: clientId,
-            absoluteIndex: absoluteIndex,
-            templateIdx: templateIdx,
-            when: when,
-            enqueueForSync: false,
-          );
-        } else {
-          await completeWorkoutForClientWithTemplateIdx(
-            clientId: clientId,
-            when: when,
-            templateIdx: templateIdx,
-            enqueueForSync: false,
-          );
-        }
-
-        if (activePlanInstance != null && absoluteIndex != null) {
-          final sessions =
-              await (select(workoutSessions)
-                    ..where(
-                      (t) =>
-                          t.clientId.equals(clientId) &
-                          t.planInstance.equals(activePlanInstance),
-                    )
-                    ..orderBy([(t) => OrderingTerm.asc(t.performedAt)]))
-                  .get();
-          if (absoluteIndex >= 0 && absoluteIndex < sessions.length) {
-            sess = sessions[absoluteIndex];
-          }
-        } else {
-          sess =
-              await (select(workoutSessions)
-                    ..where(
-                      (t) =>
-                          t.clientId.equals(clientId) &
-                          (activePlanInstance == null
-                              ? const Constant(true)
-                              : t.planInstance.equals(activePlanInstance)) &
-                          (templateIdx == null
-                              ? const Constant(true)
-                              : t.templateIdx.equals(templateIdx)) &
-                          t.performedAt.isBiggerOrEqualValue(ds) &
-                          t.performedAt.isSmallerThanValue(de),
-                    )
-                    ..orderBy([(t) => OrderingTerm.desc(t.performedAt)])
-                    ..limit(1))
-                  .getSingleOrNull();
-        }
       }
-
-      if (sess == null) return;
-      completedWorkoutExternalId = sess.externalId;
-
-      // upsert результатов
-      for (final entry in resultsByTemplateExerciseId.entries) {
-        final exId = entry.key;
-        final kg = entry.value.$1;
-        final reps = entry.value.$2;
-
-        // если оба пустые — удалим (чтобы не хранить мусор)
-        if (kg == null && reps == null) {
-          await (delete(workoutExerciseResults)..where(
-                (r) =>
-                    r.sessionId.equals(sess!.id) &
-                    r.templateExerciseId.equals(exId),
-              ))
-              .go();
-          continue;
-        }
-
-        final existing =
-            await (select(workoutExerciseResults)..where(
-                  (r) =>
-                      r.sessionId.equals(sess!.id) &
-                      r.templateExerciseId.equals(exId),
-                ))
-                .getSingleOrNull();
-
-        if (existing == null) {
-          final identityId = await _resolveExerciseIdentity(
-            clientId: clientId,
-            templateExerciseId: exId,
-          );
-          final exerciseName = await _resolveExerciseDisplayName(
-            clientId: clientId,
-            templateExerciseId: exId,
-          );
-          await into(workoutExerciseResults).insert(
-            WorkoutExerciseResultsCompanion.insert(
-              sessionId: sess.id,
-              templateExerciseId: exId,
-              exerciseIdentityId: Value(identityId),
-              exerciseNameSnapshot: Value(exerciseName),
-              lastWeightKg: kg == null ? const Value.absent() : Value(kg),
-              lastReps: reps == null ? const Value.absent() : Value(reps),
-            ),
-          );
-        } else {
-          final identityId =
-              existing.exerciseIdentityId ??
-              await _resolveExerciseIdentity(
-                clientId: clientId,
-                templateExerciseId: exId,
-              );
-          await (update(
-            workoutExerciseResults,
-          )..where((r) => r.id.equals(existing.id))).write(
-            WorkoutExerciseResultsCompanion(
-              exerciseIdentityId: Value(identityId),
-              lastWeightKg: Value(kg),
-              lastReps: Value(reps),
-            ),
-          );
-        }
-      }
-    });
-
-    await _enqueueWorkoutSyncSafely(completedWorkoutExternalId);
+    }
 
     await clearWorkoutDraftResults(
       clientId: clientId,
@@ -5300,13 +5443,22 @@ class AppDb extends _$AppDb {
                     t.clientId.equals(clientId) &
                     t.planInstance.equals(st.planInstance),
               )
-              ..orderBy([(t) => OrderingTerm.asc(t.performedAt)]))
+              ..orderBy([
+                (t) => OrderingTerm.asc(t.performedAt),
+                (t) => OrderingTerm.asc(t.id),
+              ]))
             .get();
     final planSize = st.planSize;
     final completed = st.completedInPlan;
     final bundleStart = (completed ~/ planSize) * planSize;
     final completedInBundle = completed - bundleStart;
-    final bundleSessions = sessions.skip(bundleStart).take(planSize).toList();
+    final indexedSessions = <int, WorkoutSession>{
+      for (final session in sessions)
+        if (session.absoluteIndex != null) session.absoluteIndex!: session,
+    };
+    final legacySessions = sessions
+        .where((session) => session.absoluteIndex == null)
+        .toList(growable: false);
     final overrides = await _getProgramDayOverrides(
       clientId: clientId,
       planInstance: st.planInstance,
@@ -5317,8 +5469,11 @@ class AppDb extends _$AppDb {
     for (var k = 0; k < planSize; k++) {
       final absoluteIndex = bundleStart + k;
       final defaultIdx = _mod(st.cycleStartIndex + absoluteIndex, cycleLen);
-      final hasSession = k < completedInBundle && k < bundleSessions.length;
-      final s = hasSession ? bundleSessions[k] : null;
+      final exactSession = indexedSessions[absoluteIndex];
+      final legacySession = absoluteIndex < legacySessions.length
+          ? legacySessions[absoluteIndex]
+          : null;
+      final s = exactSession ?? (k < completedInBundle ? legacySession : null);
       final plannedIdx = overrides[absoluteIndex] ?? defaultIdx;
 
       slots.add(

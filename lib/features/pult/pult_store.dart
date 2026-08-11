@@ -8,6 +8,7 @@ class PultTabEntry {
   final String clientName;
   final DateTime day;
   final int templateIdx;
+  final int? planInstance;
   final int absoluteIndex;
 
   const PultTabEntry({
@@ -15,6 +16,7 @@ class PultTabEntry {
     required this.clientName,
     required this.day,
     required this.templateIdx,
+    required this.planInstance,
     required this.absoluteIndex,
   });
 
@@ -23,6 +25,7 @@ class PultTabEntry {
     'clientName': clientName,
     'day': DateTime(day.year, day.month, day.day).toIso8601String(),
     'templateIdx': templateIdx,
+    'planInstance': planInstance,
     'absoluteIndex': absoluteIndex,
   };
 
@@ -36,6 +39,7 @@ class PultTabEntry {
       clientName: json['clientName'] as String? ?? 'Клиент',
       day: day,
       templateIdx: (json['templateIdx'] as num?)?.toInt() ?? 0,
+      planInstance: (json['planInstance'] as num?)?.toInt(),
       absoluteIndex: (json['absoluteIndex'] as num?)?.toInt() ?? 0,
     );
   }
@@ -128,6 +132,7 @@ class PultStore {
           current.day.month == tab.day.month &&
           current.day.day == tab.day.day &&
           current.templateIdx == tab.templateIdx &&
+          current.planInstance == tab.planInstance &&
           current.absoluteIndex == tab.absoluteIndex;
       if (same) {
         result = PultAddResult.exists;

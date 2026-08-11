@@ -74,7 +74,7 @@ void main() {
         final version = await db
             .customSelect('PRAGMA user_version')
             .getSingle();
-        expect(version.read<int>('user_version'), 10);
+        expect(version.read<int>('user_version'), 11);
       },
     );
 
@@ -92,7 +92,7 @@ void main() {
       addTearDown(db.close);
 
       final version = await db.customSelect('PRAGMA user_version').getSingle();
-      expect(version.read<int>('user_version'), 10);
+      expect(version.read<int>('user_version'), 11);
       expect(await _count(db, 'clients'), 2);
       expect(await _count(db, 'workout_sessions'), 2);
       expect(await _count(db, 'workout_exercise_results'), 2);

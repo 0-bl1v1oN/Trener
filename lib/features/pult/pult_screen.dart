@@ -1112,8 +1112,20 @@ class _PultWorkoutPageState extends State<_PultWorkoutPage>
 
   Future<void> _load() async {
     try {
+      final activeState = await widget.db.getProgramStateForClient(
+        widget.tab.clientId,
+      );
+      if (widget.tab.planInstance == null ||
+          activeState == null ||
+          widget.tab.planInstance != activeState.planInstance) {
+        throw StateError(
+          'Вкладка Пульта устарела после продления. '
+          'Удалите её и добавьте клиента из календаря заново.',
+        );
+      }
       final details = await widget.db.getWorkoutDetailsForClientProgramSlot(
         clientId: widget.tab.clientId,
+        planInstance: widget.tab.planInstance!,
         absoluteIndex: widget.tab.absoluteIndex,
         templateIdx: widget.tab.templateIdx,
       );
@@ -1497,6 +1509,7 @@ class _PultWorkoutPageState extends State<_PultWorkoutPage>
         clientId: widget.tab.clientId,
         day: widget.tab.day,
         templateIdx: widget.tab.templateIdx,
+        planInstance: widget.tab.planInstance!,
         absoluteIndex: widget.tab.absoluteIndex,
         resultsByTemplateExerciseId: results,
       );
@@ -1513,6 +1526,15 @@ class _PultWorkoutPageState extends State<_PultWorkoutPage>
       }
 
       await widget.onCompleted();
+    } on StaleProgramSlotException catch (error) {
+      if (mounted) {
+        setState(() {
+          _error = StateError(
+            'Вкладка Пульта устарела после продления. '
+            'Удалите её и добавьте клиента из календаря заново. ($error)',
+          );
+        });
+      }
     } finally {
       if (mounted) {
         setState(() => _completing = false);

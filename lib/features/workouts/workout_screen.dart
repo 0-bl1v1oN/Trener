@@ -11,7 +11,9 @@ class WorkoutScreen extends StatefulWidget {
   final int?
   templateIdx; // ✅ выбранная тренировка 0..8 (если null — обычная логика)
   final String? displayTitle;
+  final int? planInstance;
   final int? absoluteIndex;
+  final int? sessionId;
 
   const WorkoutScreen({
     super.key,
@@ -19,7 +21,9 @@ class WorkoutScreen extends StatefulWidget {
     required this.day,
     this.templateIdx,
     this.displayTitle,
+    this.planInstance,
     this.absoluteIndex,
+    this.sessionId,
   });
 
   @override
@@ -310,7 +314,9 @@ class _WorkoutScreenState extends State<WorkoutScreen> {
         day: widget.day,
         resultsByTemplateExerciseId: results,
         templateIdx: widget.templateIdx,
+        planInstance: widget.planInstance,
         absoluteIndex: widget.absoluteIndex,
+        sessionId: widget.sessionId,
       );
 
       if (!mounted) return;
@@ -340,11 +346,15 @@ class _WorkoutScreenState extends State<WorkoutScreen> {
         templateIdx: widget.templateIdx,
         absoluteIndex: widget.absoluteIndex,
       );
-      if (widget.templateIdx != null && widget.absoluteIndex != null) {
+      if (widget.templateIdx != null &&
+          widget.planInstance != null &&
+          widget.absoluteIndex != null) {
         await db.toggleWorkoutForClientAtAbsoluteIndex(
           clientId: widget.clientId,
+          planInstance: widget.planInstance!,
           absoluteIndex: widget.absoluteIndex!,
           templateIdx: widget.templateIdx!,
+          sessionId: widget.sessionId,
           when: DateTime(
             widget.day.year,
             widget.day.month,
@@ -458,11 +468,13 @@ class _WorkoutScreenState extends State<WorkoutScreen> {
             clientId: widget.clientId,
             day: widget.day,
           )
-        : (widget.absoluteIndex != null
+        : (widget.planInstance != null && widget.absoluteIndex != null
               ? await db.getWorkoutDetailsForClientProgramSlot(
                   clientId: widget.clientId,
+                  planInstance: widget.planInstance!,
                   absoluteIndex: widget.absoluteIndex!,
                   templateIdx: widget.templateIdx!,
+                  sessionId: widget.sessionId,
                 )
               : await db.getWorkoutDetailsForClientOnDayForcedTemplateIdx(
                   clientId: widget.clientId,
