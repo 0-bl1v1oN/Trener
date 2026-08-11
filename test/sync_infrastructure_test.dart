@@ -5,7 +5,11 @@ import 'dart:io';
 import 'package:drift/drift.dart' hide isNotNull, isNull;
 import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:http/http.dart' as http;
+import 'package:http/testing.dart';
 import 'package:myfitness/db/app_db.dart';
+import 'package:myfitness/sync/sync_connection_config.dart';
+import 'package:myfitness/sync/sync_http_client.dart';
 import 'package:myfitness/sync/sync_models.dart';
 import 'package:myfitness/sync/sync_service.dart';
 import 'package:myfitness/sync/sync_transport.dart';
@@ -84,24 +88,35 @@ void main() {
       final exercises = payload['exercises'] as List<dynamic>;
       final exercise = exercises.single as Map<String, dynamic>;
 
-      expect(client['uuid'], fixture.client.externalId);
-      expect(client['uuid'], matches(_uuidV4));
-      expect(workout['uuid'], queue.entityExternalId);
-      expect(workout['uuid'], matches(_uuidV4));
-      expect(exercise['uuid'], matches(_uuidV4));
-      expect(exercise['uuid'], firstExercise['uuid']);
+      expect(client['client_id'], fixture.client.externalId);
+      expect(client['client_id'], matches(_uuidV4));
+      expect(workout['workout_id'], queue.entityExternalId);
+      expect(workout['workout_id'], matches(_uuidV4));
+      expect(workout['date'], '2026-08-05');
+      expect(workout['date'], matches(RegExp(r'^\d{4}-\d{2}-\d{2}$')));
+      expect(workout['name'], fixture.template.title);
+      expect(exercise['exercise_id'], matches(_uuidV4));
+      expect(exercise['exercise_id'], firstExercise['exercise_id']);
       expect(exercise['name'], historicalName);
       expect(exercise['weight_kg'], 61.5);
       expect(exercise['reps'], 7);
       expect(exercises, hasLength(1));
-      expect(client.containsKey('client_id'), isFalse);
-      expect(workout.containsKey('workout_id'), isFalse);
-      expect(exercise.containsKey('exercise_id'), isFalse);
+      expect(client.containsKey('uuid'), isFalse);
+      expect(workout.containsKey('uuid'), isFalse);
+      expect(exercise.containsKey('uuid'), isFalse);
       expect(exercise.containsKey('template_exercise_id'), isFalse);
       expect(workout.containsKey('session_id'), isFalse);
+      expect(workout.containsKey('performed_at'), isFalse);
+      expect(workout.containsKey('day_index'), isFalse);
+      expect(workout.containsKey('plan_instance'), isFalse);
+      expect(workout.containsKey('absolute_index'), isFalse);
+      expect(exercise.containsKey('sets'), isFalse);
+      expect(firstPayload.containsKey('trainer_uuid'), isFalse);
+      expect(workout.containsKey('duration'), isFalse);
+      expect(workout.containsKey('volume'), isFalse);
     });
 
-    test('legacy queued payload is normalized to uuid contract', () {
+    test('legacy queued payload is normalized to compact contract', () {
       final payload = WorkoutSyncPayload.fromJson({
         'client': {'client_id': 'client-uuid', 'name': 'Клиент'},
         'workout': {
@@ -122,13 +137,44 @@ void main() {
         ],
       }).toJson();
 
-      expect(payload['client'], {'uuid': 'client-uuid', 'name': 'Клиент'});
-      expect((payload['workout'] as Map)['uuid'], 'workout-uuid');
+      expect(payload['client'], {'client_id': 'client-uuid', 'name': 'Клиент'});
+      expect(payload['workout'], {
+        'workout_id': 'workout-uuid',
+        'date': '2026-08-05',
+        'name': 'Ноги',
+      });
       expect(
-        ((payload['exercises'] as List).single as Map)['uuid'],
+        ((payload['exercises'] as List).single as Map)['exercise_id'],
         'exercise-uuid',
       );
     });
+
+    test(
+      'building the new payload does not rewrite existing queue rows',
+      () async {
+        final fixture = await _createFixture();
+        addTearDown(fixture.db.close);
+        await _saveCompletedResult(fixture, weight: 45, reps: 11);
+        final queued = await fixture.db
+            .select(fixture.db.syncQueue)
+            .getSingle();
+        const oldPayload = '{"old_contract":true}';
+        await (fixture.db.update(fixture.db.syncQueue)
+              ..where((row) => row.id.equals(queued.id)))
+            .write(const SyncQueueCompanion(payload: Value(oldPayload)));
+
+        final rebuilt = await fixture.db.buildWorkoutSyncPayload(
+          queued.entityExternalId,
+        );
+        final queueAfter = await fixture.db
+            .select(fixture.db.syncQueue)
+            .getSingle();
+
+        expect(rebuilt?.workoutExternalId, queued.entityExternalId);
+        expect(queueAfter.id, queued.id);
+        expect(queueAfter.payload, oldPayload);
+      },
+    );
 
     test('queue survives closing and reopening the database', () async {
       final temp = await Directory.systemTemp.createTemp('trener-sync-queue-');
@@ -218,6 +264,59 @@ void main() {
   });
 
   group('SyncService', () {
+    test(
+      'real HTTP transport deletes 201 task then stops on HTTP error',
+      () async {
+        final db = AppDb.forTesting(NativeDatabase.memory());
+        addTearDown(db.close);
+        final first = await _createFixture(
+          db: db,
+          day: DateTime(2026, 8, 5, 12),
+        );
+        await _saveCompletedResult(first, weight: 50, reps: 8);
+        final second = await _createFixture(
+          db: db,
+          day: DateTime(2026, 8, 6, 12),
+        );
+        await _saveCompletedResult(second, weight: 55, reps: 9);
+        const config = SyncConnectionConfig(
+          endpoint: 'https://training.viro35.ru/api/ingest',
+          token: 'bulk-sync-test-token',
+        );
+        final requests = <http.Request>[];
+        final client = MockClient((request) async {
+          requests.add(request);
+          if (requests.length == 1) {
+            return http.Response('{"message":"Stored.","id":1}', 201);
+          }
+          return http.Response('{"detail":"Invalid workout"}', 422);
+        });
+        final progress = <SyncProgress>[];
+
+        final result = await SyncService(
+          db: db,
+          transport: HttpSyncTransport(
+            config: config,
+            client: SyncHttpClient(config: config, client: client),
+          ),
+        ).syncPending(onProgress: progress.add);
+
+        expect(requests, hasLength(2));
+        expect(requests.every((request) => request.method == 'POST'), isTrue);
+        expect(result.succeeded, 1);
+        expect(result.failed, 1);
+        expect(result.stopReason, SyncRunStopReason.permanentFailure);
+        expect(result.httpStatus, 422);
+        expect(result.responseBody, contains('Invalid workout'));
+        expect(progress.map((value) => value.sent), [0, 1]);
+        expect(progress.every((value) => value.total == 2), isTrue);
+        final queue = await db.select(db.syncQueue).get();
+        expect(queue, hasLength(1));
+        expect(queue.single.status, SyncQueueStatuses.failed);
+        expect(queue.single.attempts, 1);
+      },
+    );
+
     test('starts the next workout only after the previous response', () async {
       final db = AppDb.forTesting(NativeDatabase.memory());
       addTearDown(db.close);
@@ -234,8 +333,8 @@ void main() {
       await Future<void>.delayed(Duration.zero);
       expect(transport.payloads, hasLength(1));
       expect(
-        (transport.payloads.first.toJson()['workout'] as Map)['performed_at'],
-        older.day.toUtc().toIso8601String(),
+        (transport.payloads.first.toJson()['workout'] as Map)['date'],
+        '2026-08-05',
       );
 
       transport.responses[0].complete(

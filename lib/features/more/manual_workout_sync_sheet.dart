@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
 
 import '../../db/app_db.dart';
@@ -34,6 +35,8 @@ class _ManualWorkoutSyncSheetState extends State<ManualWorkoutSyncSheet> {
   WorkoutSyncPayload? _preview;
   bool _sending = false;
   String? _errorMessage;
+  String? _errorResponseBody;
+  int? _errorHttpStatus;
 
   @override
   void initState() {
@@ -45,6 +48,8 @@ class _ManualWorkoutSyncSheetState extends State<ManualWorkoutSyncSheet> {
     setState(() {
       _clients = null;
       _errorMessage = null;
+      _errorResponseBody = null;
+      _errorHttpStatus = null;
     });
     try {
       final clients = await widget.db.getPendingWorkoutSyncClients();
@@ -61,6 +66,8 @@ class _ManualWorkoutSyncSheetState extends State<ManualWorkoutSyncSheet> {
       _selectedClient = client;
       _tasks = null;
       _errorMessage = null;
+      _errorResponseBody = null;
+      _errorHttpStatus = null;
     });
     try {
       final tasks = await widget.db.getPendingWorkoutSyncTasksForClient(
@@ -79,6 +86,8 @@ class _ManualWorkoutSyncSheetState extends State<ManualWorkoutSyncSheet> {
       _selectedTask = task;
       _preview = null;
       _errorMessage = null;
+      _errorResponseBody = null;
+      _errorHttpStatus = null;
     });
     try {
       final queued = await widget.db.getPendingWorkoutSyncTask(task.taskId);
@@ -103,6 +112,8 @@ class _ManualWorkoutSyncSheetState extends State<ManualWorkoutSyncSheet> {
     setState(() {
       _sending = true;
       _errorMessage = null;
+      _errorResponseBody = null;
+      _errorHttpStatus = null;
     });
     final result = await widget.service.syncTaskById(task.taskId);
     if (!mounted) return;
@@ -118,7 +129,27 @@ class _ManualWorkoutSyncSheetState extends State<ManualWorkoutSyncSheet> {
     setState(() {
       _sending = false;
       _errorMessage = result.message;
+      _errorResponseBody = result.responseBody;
+      _errorHttpStatus = result.httpStatus;
     });
+  }
+
+  Future<void> _copyError() async {
+    final httpStatus = _errorHttpStatus;
+    if (httpStatus == null) return;
+    final responseBody = _errorResponseBody;
+    final responseText = responseBody == null || responseBody.isEmpty
+        ? 'Ответ сервера отсутствует.'
+        : 'Ответ сервера:\n$responseBody';
+    await Clipboard.setData(
+      ClipboardData(
+        text: 'Ошибка отправки тренировки\nHTTP: $httpStatus\n\n$responseText',
+      ),
+    );
+    if (!mounted) return;
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(const SnackBar(content: Text('Ошибка скопирована')));
   }
 
   void _goBack() {
@@ -128,6 +159,8 @@ class _ManualWorkoutSyncSheetState extends State<ManualWorkoutSyncSheet> {
         _selectedTask = null;
         _preview = null;
         _errorMessage = null;
+        _errorResponseBody = null;
+        _errorHttpStatus = null;
       });
       return;
     }
@@ -136,6 +169,8 @@ class _ManualWorkoutSyncSheetState extends State<ManualWorkoutSyncSheet> {
         _selectedClient = null;
         _tasks = null;
         _errorMessage = null;
+        _errorResponseBody = null;
+        _errorHttpStatus = null;
       });
       return;
     }
@@ -180,12 +215,11 @@ class _ManualWorkoutSyncSheetState extends State<ManualWorkoutSyncSheet> {
               ),
             ),
             if (_errorMessage != null)
-              Padding(
-                padding: const EdgeInsets.fromLTRB(16, 6, 16, 6),
-                child: Text(
-                  _errorMessage!,
-                  style: TextStyle(color: Theme.of(context).colorScheme.error),
-                ),
+              _ManualSyncError(
+                message: _errorMessage!,
+                responseBody: _errorResponseBody,
+                httpStatus: _errorHttpStatus,
+                onCopy: _copyError,
               ),
             Expanded(child: _buildStep()),
           ],
@@ -326,6 +360,68 @@ class _ManualWorkoutSyncSheetState extends State<ManualWorkoutSyncSheet> {
     if (firstValue.isNotEmpty) return firstValue;
     final secondValue = second?.trim() ?? '';
     return secondValue.isEmpty ? null : secondValue;
+  }
+}
+
+class _ManualSyncError extends StatelessWidget {
+  const _ManualSyncError({
+    required this.message,
+    this.responseBody,
+    this.httpStatus,
+    required this.onCopy,
+  });
+
+  final String message;
+  final String? responseBody;
+  final int? httpStatus;
+  final VoidCallback onCopy;
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    return Container(
+      width: double.infinity,
+      constraints: const BoxConstraints(maxHeight: 220),
+      margin: const EdgeInsets.fromLTRB(16, 6, 16, 6),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: colorScheme.errorContainer.withValues(alpha: 0.35),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: colorScheme.error.withValues(alpha: 0.45)),
+      ),
+      child: SingleChildScrollView(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(message, style: TextStyle(color: colorScheme.error)),
+            if (responseBody != null) ...[
+              const SizedBox(height: 10),
+              Text(
+                'Ответ сервера:',
+                style: Theme.of(
+                  context,
+                ).textTheme.labelLarge?.copyWith(fontWeight: FontWeight.w700),
+              ),
+              const SizedBox(height: 4),
+              SelectableText(
+                responseBody!,
+                style: Theme.of(
+                  context,
+                ).textTheme.bodySmall?.copyWith(fontFamily: 'monospace'),
+              ),
+            ],
+            if (httpStatus != null) ...[
+              const SizedBox(height: 10),
+              TextButton.icon(
+                onPressed: onCopy,
+                icon: const Icon(Icons.copy_outlined, size: 18),
+                label: const Text('Скопировать ошибку'),
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
   }
 }
 

@@ -34,12 +34,18 @@ class SyncRunResult {
     this.succeeded = 0,
     this.failed = 0,
     this.stopReason,
+    this.errorMessage,
+    this.httpStatus,
+    this.responseBody,
   });
 
   final SyncRunStatus status;
   final int succeeded;
   final int failed;
   final SyncRunStopReason? stopReason;
+  final String? errorMessage;
+  final int? httpStatus;
+  final String? responseBody;
 }
 
 enum SingleSyncStatus { success, failure, notConfigured, notFound }
@@ -50,6 +56,7 @@ class SingleSyncResult {
     required this.message,
     this.httpStatus,
     this.recordId,
+    this.responseBody,
     this.queueTaskDeleted = false,
   });
 
@@ -57,5 +64,6 @@ class SingleSyncResult {
   final String message;
   final int? httpStatus;
   final String? recordId;
+  final String? responseBody;
   final bool queueTaskDeleted;
 }

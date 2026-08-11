@@ -89,12 +89,10 @@ class SyncService {
       );
     }
 
-    final isPermanent = result.resolvedFailureKind == SyncFailureKind.permanent;
-    if (isPermanent) {
-      await _db.markSyncTaskAsPermanentFailure(task.id, result.message);
-    } else {
-      await _db.markSyncTaskForRetry(task.id, result.message);
-    }
+    // A manual send must never remove or permanently sideline the selected
+    // workout. Keep it pending so it can be retried after the server-side
+    // validation or contract issue has been resolved.
+    await _db.markSyncTaskForRetry(task.id, result.message);
     await _writeLogSafely(
       task: task,
       result: SyncLogResults.error,
@@ -105,6 +103,7 @@ class SyncService {
       status: SingleSyncStatus.failure,
       message: result.message,
       httpStatus: result.httpStatus,
+      responseBody: result.responseBody,
     );
   }
 
@@ -121,6 +120,9 @@ class SyncService {
     var succeeded = 0;
     var failed = 0;
     SyncRunStopReason? stopReason;
+    String? errorMessage;
+    int? httpStatus;
+    String? responseBody;
     onProgress?.call(SyncProgress(sent: 0, total: total));
 
     while (true) {
@@ -149,6 +151,7 @@ class SyncService {
         );
         failed++;
         stopReason = SyncRunStopReason.permanentFailure;
+        errorMessage = message;
         break;
       }
 
@@ -165,6 +168,7 @@ class SyncService {
         );
         failed++;
         stopReason = SyncRunStopReason.transientFailure;
+        errorMessage = message;
         break;
       }
 
@@ -198,6 +202,9 @@ class SyncService {
         httpStatus: result.httpStatus,
       );
       failed++;
+      errorMessage = result.message;
+      httpStatus = result.httpStatus;
+      responseBody = result.responseBody;
       stopReason = isPermanent
           ? SyncRunStopReason.permanentFailure
           : SyncRunStopReason.transientFailure;
@@ -209,6 +216,9 @@ class SyncService {
       succeeded: succeeded,
       failed: failed,
       stopReason: stopReason,
+      errorMessage: errorMessage,
+      httpStatus: httpStatus,
+      responseBody: responseBody,
     );
   }
 

@@ -301,6 +301,90 @@ class PendingWorkoutSyncTaskVm {
   }
 }
 
+class WorkoutSyncQueueConflictSession {
+  const WorkoutSyncQueueConflictSession({
+    required this.sessionId,
+    required this.workoutExternalId,
+    required this.performedAt,
+  });
+
+  final int sessionId;
+  final String workoutExternalId;
+  final DateTime performedAt;
+}
+
+class WorkoutSyncQueueConflict {
+  const WorkoutSyncQueueConflict({
+    required this.clientId,
+    required this.clientName,
+    required this.calendarDate,
+    required this.templateIdx,
+    required this.planInstance,
+    required this.sessions,
+  });
+
+  final String clientId;
+  final String clientName;
+  final DateTime calendarDate;
+  final int templateIdx;
+  final int planInstance;
+  final List<WorkoutSyncQueueConflictSession> sessions;
+}
+
+class WorkoutSyncQueueRebuildPreview {
+  const WorkoutSyncQueueRebuildPreview._({
+    required this.totalSessions,
+    required this.emptySessions,
+    required this.missingClients,
+    required this.missingWorkoutExternalIds,
+    required this.payloadErrors,
+    required this.conflicts,
+    required List<_PreparedWorkoutSyncTask> tasks,
+  }) : _tasks = tasks;
+
+  final int totalSessions;
+  final int emptySessions;
+  final int missingClients;
+  final int missingWorkoutExternalIds;
+  final int payloadErrors;
+  final List<WorkoutSyncQueueConflict> conflicts;
+  final List<_PreparedWorkoutSyncTask> _tasks;
+
+  int get tasksToCreate => _tasks.length;
+  int get conflictSessions =>
+      conflicts.fold(0, (total, conflict) => total + conflict.sessions.length);
+}
+
+class WorkoutSyncQueueRebuildResult {
+  const WorkoutSyncQueueRebuildResult({
+    required this.createdTasks,
+    required this.emptySessions,
+    required this.missingClients,
+    required this.missingWorkoutExternalIds,
+    required this.conflictSessions,
+    required this.payloadErrors,
+  });
+
+  final int createdTasks;
+  final int emptySessions;
+  final int missingClients;
+  final int missingWorkoutExternalIds;
+  final int conflictSessions;
+  final int payloadErrors;
+}
+
+class _PreparedWorkoutSyncTask {
+  const _PreparedWorkoutSyncTask({
+    required this.workoutExternalId,
+    required this.payload,
+    required this.performedAt,
+  });
+
+  final String workoutExternalId;
+  final String payload;
+  final DateTime performedAt;
+}
+
 class WorkoutExerciseVm {
   final int templateExerciseId;
 
@@ -1236,13 +1320,191 @@ class AppDb extends _$AppDb {
         remainingSessions: remainingSessions,
         workoutExternalId: normalizedId,
         performedAt: session.performedAt,
-        templateIndex: session.templateIdx,
-        dayLabel: template?.label,
-        dayTitle: template?.title,
-        planInstance: session.planInstance,
+        workoutName: template == null
+            ? null
+            : (template.title.trim().isNotEmpty
+                  ? template.title.trim()
+                  : (template.label.trim().isEmpty
+                        ? null
+                        : template.label.trim())),
         exercises: exercises,
       ),
     );
+  }
+
+  Future<WorkoutSyncQueueRebuildPreview>
+  analyzeWorkoutSyncQueueRebuild() async {
+    final sessions =
+        await (select(workoutSessions)..orderBy([
+              (row) => OrderingTerm.asc(row.performedAt),
+              (row) => OrderingTerm.asc(row.id),
+            ]))
+            .get();
+    final clientRows = await select(clients).get();
+    final clientsById = {for (final client in clientRows) client.id: client};
+    final resultCountRows = await customSelect(
+      '''
+      SELECT session_id, COUNT(*) AS result_count
+      FROM workout_exercise_results
+      GROUP BY session_id
+      ''',
+      readsFrom: {workoutExerciseResults},
+    ).get();
+    final resultCounts = {
+      for (final row in resultCountRows)
+        row.read<int>('session_id'): row.read<int>('result_count'),
+    };
+
+    var emptySessions = 0;
+    var missingClients = 0;
+    var missingWorkoutExternalIds = 0;
+    var payloadErrors = 0;
+    final nonEmptySessions = <WorkoutSession>[];
+
+    for (final session in sessions) {
+      if ((resultCounts[session.id] ?? 0) == 0) {
+        emptySessions++;
+        continue;
+      }
+      nonEmptySessions.add(session);
+    }
+
+    final conflictGroups =
+        <(String, int, int, int, int, int), List<WorkoutSession>>{};
+    for (final session in nonEmptySessions) {
+      final localDate = session.performedAt.toLocal();
+      final key = (
+        session.clientId,
+        localDate.year,
+        localDate.month,
+        localDate.day,
+        session.templateIdx,
+        session.planInstance,
+      );
+      conflictGroups.putIfAbsent(key, () => []).add(session);
+    }
+
+    final conflictSessionIds = <int>{};
+    final conflicts = <WorkoutSyncQueueConflict>[];
+    for (final entry in conflictGroups.entries) {
+      if (entry.value.length < 2) continue;
+      final first = entry.value.first;
+      final sessionsInConflict = [
+        for (final session in entry.value)
+          WorkoutSyncQueueConflictSession(
+            sessionId: session.id,
+            workoutExternalId: session.externalId?.trim() ?? '',
+            performedAt: session.performedAt,
+          ),
+      ];
+      conflictSessionIds.addAll(
+        sessionsInConflict.map((session) => session.sessionId),
+      );
+      conflicts.add(
+        WorkoutSyncQueueConflict(
+          clientId: first.clientId,
+          clientName: clientsById[first.clientId]?.name ?? 'Удалённый клиент',
+          calendarDate: DateTime(entry.key.$2, entry.key.$3, entry.key.$4),
+          templateIdx: first.templateIdx,
+          planInstance: first.planInstance,
+          sessions: List.unmodifiable(sessionsInConflict),
+        ),
+      );
+    }
+
+    final preparedByWorkoutUuid = <String, _PreparedWorkoutSyncTask>{};
+    for (final session in nonEmptySessions) {
+      final client = clientsById[session.clientId];
+      if (client == null) {
+        missingClients++;
+        continue;
+      }
+      if ((session.externalId?.trim() ?? '').isEmpty) {
+        missingWorkoutExternalIds++;
+        continue;
+      }
+      if (conflictSessionIds.contains(session.id)) continue;
+      final workoutExternalId = session.externalId!.trim();
+      try {
+        final payload = await buildWorkoutSyncPayload(workoutExternalId);
+        if (payload == null) {
+          payloadErrors++;
+          continue;
+        }
+        preparedByWorkoutUuid.putIfAbsent(
+          workoutExternalId,
+          () => _PreparedWorkoutSyncTask(
+            workoutExternalId: workoutExternalId,
+            payload: payload.encode(),
+            performedAt: session.performedAt,
+          ),
+        );
+      } on StateError {
+        payloadErrors++;
+      } on FormatException {
+        payloadErrors++;
+      }
+    }
+
+    final tasks = preparedByWorkoutUuid.values.toList()
+      ..sort((a, b) {
+        final byDate = a.performedAt.compareTo(b.performedAt);
+        return byDate != 0
+            ? byDate
+            : a.workoutExternalId.compareTo(b.workoutExternalId);
+      });
+    conflicts.sort((a, b) {
+      final byDate = a.calendarDate.compareTo(b.calendarDate);
+      return byDate != 0 ? byDate : a.clientName.compareTo(b.clientName);
+    });
+
+    return WorkoutSyncQueueRebuildPreview._(
+      totalSessions: sessions.length,
+      emptySessions: emptySessions,
+      missingClients: missingClients,
+      missingWorkoutExternalIds: missingWorkoutExternalIds,
+      payloadErrors: payloadErrors,
+      conflicts: List.unmodifiable(conflicts),
+      tasks: List.unmodifiable(tasks),
+    );
+  }
+
+  Future<WorkoutSyncQueueRebuildResult> rebuildWorkoutSyncQueue(
+    WorkoutSyncQueueRebuildPreview preview,
+  ) {
+    return transaction(() async {
+      await (delete(
+        syncQueue,
+      )..where((row) => row.entityType.equals(SyncEntityTypes.workout))).go();
+
+      final rebuiltAt = DateTime.now();
+      for (final task in preview._tasks) {
+        await into(syncQueue).insert(
+          SyncQueueCompanion.insert(
+            entityType: SyncEntityTypes.workout,
+            entityExternalId: task.workoutExternalId,
+            operation: SyncOperations.workoutUpsert,
+            payload: task.payload,
+            status: const Value(SyncQueueStatuses.pending),
+            attempts: const Value(0),
+            createdAt: Value(task.performedAt),
+            updatedAt: Value(rebuiltAt),
+            lastAttemptAt: const Value(null),
+            nextAttemptAt: const Value(null),
+            lastError: const Value(null),
+          ),
+        );
+      }
+
+      return WorkoutSyncQueueRebuildResult(
+        createdTasks: preview.tasksToCreate,
+        emptySessions: preview.emptySessions,
+        missingClients: preview.missingClients,
+        missingWorkoutExternalIds: preview.missingWorkoutExternalIds,
+        conflictSessions: preview.conflictSessions,
+        payloadErrors: preview.payloadErrors,
+      );
+    });
   }
 
   Future<SyncQueueEntry> enqueueWorkoutSync(String workoutExternalId) async {

@@ -25,6 +25,7 @@ class _SyncScreenState extends State<SyncScreen> {
   bool _loading = true;
   bool _syncing = false;
   bool _checkingConnection = false;
+  bool _rebuildingQueue = false;
   int _syncSent = 0;
   int _syncTotal = 0;
   int _pendingCount = 0;
@@ -41,11 +42,9 @@ class _SyncScreenState extends State<SyncScreen> {
     final db = AppDbScope.of(context);
     if (identical(_db, db)) return;
     _db = db;
-    _service = SyncService(db: db, transport: const DisabledSyncTransport());
-    _manualService = SyncService(
-      db: db,
-      transport: HttpSyncTransport.fromEnvironment(),
-    );
+    final transport = HttpSyncTransport.fromEnvironment();
+    _service = SyncService(db: db, transport: transport);
+    _manualService = SyncService(db: db, transport: transport);
     _load();
   }
 
@@ -78,7 +77,12 @@ class _SyncScreenState extends State<SyncScreen> {
 
   Future<void> _syncNow() async {
     final service = _service;
-    if (service == null || _syncing || _checkingConnection) return;
+    if (service == null ||
+        _syncing ||
+        _checkingConnection ||
+        _rebuildingQueue) {
+      return;
+    }
     setState(() {
       _syncing = true;
       _syncSent = 0;
@@ -95,28 +99,75 @@ class _SyncScreenState extends State<SyncScreen> {
         },
       );
       if (!mounted) return;
-      final message = switch ((result.status, result.stopReason)) {
-        (SyncRunStatus.notConfigured, _) =>
-          'Сервер синхронизации пока не настроен',
-        (_, SyncRunStopReason.transientFailure) =>
-          'Отправлено: ${result.succeeded}. '
-              'Проход остановлен: сервер или сеть недоступны',
-        (_, SyncRunStopReason.permanentFailure) =>
-          'Отправлено: ${result.succeeded}. '
-              'Проход остановлен: ошибка контракта сервера',
-        _ => 'Отправлено: ${result.succeeded}, ошибок: ${result.failed}',
-      };
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text(message)));
+      await _showSyncResult(result);
       await _load();
     } finally {
       if (mounted) setState(() => _syncing = false);
     }
   }
 
+  Future<void> _showSyncResult(SyncRunResult result) async {
+    if (result.status == SyncRunStatus.notConfigured) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Токен сервера не настроен.')),
+      );
+      return;
+    }
+    if (result.stopReason == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'Синхронизация завершена\nОтправлено: ${result.succeeded}',
+          ),
+        ),
+      );
+      return;
+    }
+
+    final httpError = result.httpStatus == null
+        ? result.errorMessage ?? 'Не удалось подключиться к серверу.'
+        : 'HTTP ${result.httpStatus}';
+    await showDialog<void>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Синхронизация остановлена'),
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text('Успешно отправлено: ${result.succeeded}'),
+              const SizedBox(height: 8),
+              Text('Ошибка: $httpError'),
+              if (result.responseBody != null) ...[
+                const SizedBox(height: 12),
+                const Text(
+                  'Ответ сервера:',
+                  style: TextStyle(fontWeight: FontWeight.w700),
+                ),
+                const SizedBox(height: 4),
+                SelectableText(
+                  result.responseBody!,
+                  style: Theme.of(
+                    dialogContext,
+                  ).textTheme.bodySmall?.copyWith(fontFamily: 'monospace'),
+                ),
+              ],
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(),
+            child: const Text('Закрыть'),
+          ),
+        ],
+      ),
+    );
+  }
+
   Future<void> _checkConnection() async {
-    if (_checkingConnection || _syncing) return;
+    if (_checkingConnection || _syncing || _rebuildingQueue) return;
     setState(() => _checkingConnection = true);
     try {
       final result = await _connectionTestService.run();
@@ -142,7 +193,11 @@ class _SyncScreenState extends State<SyncScreen> {
   Future<void> _openManualSend() async {
     final db = _db;
     final service = _manualService;
-    if (db == null || service == null || _syncing || _checkingConnection) {
+    if (db == null ||
+        service == null ||
+        _syncing ||
+        _checkingConnection ||
+        _rebuildingQueue) {
       return;
     }
     final outcome = await showModalBottomSheet<ManualWorkoutSendOutcome>(
@@ -156,6 +211,82 @@ class _SyncScreenState extends State<SyncScreen> {
     ScaffoldMessenger.of(
       context,
     ).showSnackBar(SnackBar(content: Text(outcome.message)));
+  }
+
+  Future<void> _rebuildQueue() async {
+    final db = _db;
+    if (db == null || _syncing || _checkingConnection || _rebuildingQueue) {
+      return;
+    }
+
+    setState(() => _rebuildingQueue = true);
+    try {
+      final preview = await db.analyzeWorkoutSyncQueueRebuild();
+      if (!mounted) return;
+      final confirmed = await showDialog<bool>(
+        context: context,
+        builder: (dialogContext) => AlertDialog(
+          title: const Text('Пересобрать очередь?'),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'Очередь синхронизации будет заново сформирована из '
+                  'локальной истории тренировок. Сами тренировки и '
+                  'результаты изменены не будут.',
+                ),
+                const SizedBox(height: 16),
+                Text('Всего workout_sessions: ${preview.totalSessions}'),
+                Text('Будет добавлено в очередь: ${preview.tasksToCreate}'),
+                Text('Исключено пустых: ${preview.emptySessions}'),
+                Text('Исключено удалённых клиентов: ${preview.missingClients}'),
+                Text(
+                  'Исключено без workout UUID: '
+                  '${preview.missingWorkoutExternalIds}',
+                ),
+                Text('Конфликтных тренировок: ${preview.conflictSessions}'),
+                Text('Ошибок payload: ${preview.payloadErrors}'),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(false),
+              child: const Text('Отмена'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.of(dialogContext).pop(true),
+              child: const Text('Пересобрать'),
+            ),
+          ],
+        ),
+      );
+      if (confirmed != true) return;
+
+      final result = await db.rebuildWorkoutSyncQueue(preview);
+      await _load();
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'Очередь пересобрана\n'
+            'Задач создано: ${result.createdTasks}\n'
+            'Пустых пропущено: ${result.emptySessions}\n'
+            'Отсутствующих клиентов пропущено: ${result.missingClients}\n'
+            'Конфликтных пропущено: ${result.conflictSessions}',
+          ),
+        ),
+      );
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Не удалось пересобрать очередь: $error')),
+      );
+    } finally {
+      if (mounted) setState(() => _rebuildingQueue = false);
+    }
   }
 
   String _formatDate(DateTime? value) {
@@ -225,7 +356,10 @@ class _SyncScreenState extends State<SyncScreen> {
                           SizedBox(
                             width: double.infinity,
                             child: FilledButton.icon(
-                              onPressed: _syncing || _checkingConnection
+                              onPressed:
+                                  _syncing ||
+                                      _checkingConnection ||
+                                      _rebuildingQueue
                                   ? null
                                   : _syncNow,
                               icon: _syncing
@@ -244,7 +378,10 @@ class _SyncScreenState extends State<SyncScreen> {
                           SizedBox(
                             width: double.infinity,
                             child: OutlinedButton.icon(
-                              onPressed: _syncing || _checkingConnection
+                              onPressed:
+                                  _syncing ||
+                                      _checkingConnection ||
+                                      _rebuildingQueue
                                   ? null
                                   : _checkConnection,
                               icon: _checkingConnection
@@ -257,6 +394,28 @@ class _SyncScreenState extends State<SyncScreen> {
                                     )
                                   : const Icon(Icons.wifi_tethering_outlined),
                               label: const Text('Проверить соединение'),
+                            ),
+                          ),
+                          const SizedBox(height: 10),
+                          SizedBox(
+                            width: double.infinity,
+                            child: OutlinedButton.icon(
+                              onPressed:
+                                  _syncing ||
+                                      _checkingConnection ||
+                                      _rebuildingQueue
+                                  ? null
+                                  : _rebuildQueue,
+                              icon: _rebuildingQueue
+                                  ? const SizedBox(
+                                      width: 18,
+                                      height: 18,
+                                      child: CircularProgressIndicator(
+                                        strokeWidth: 2,
+                                      ),
+                                    )
+                                  : const Icon(Icons.replay_circle_filled),
+                              label: const Text('Пересобрать очередь'),
                             ),
                           ),
                           const SizedBox(height: 8),
@@ -302,7 +461,10 @@ class _SyncScreenState extends State<SyncScreen> {
                           SizedBox(
                             width: double.infinity,
                             child: FilledButton.tonalIcon(
-                              onPressed: _syncing || _checkingConnection
+                              onPressed:
+                                  _syncing ||
+                                      _checkingConnection ||
+                                      _rebuildingQueue
                                   ? null
                                   : _openManualSend,
                               icon: const Icon(Icons.fitness_center),
