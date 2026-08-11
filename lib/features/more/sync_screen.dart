@@ -3,12 +3,15 @@ import 'package:intl/intl.dart';
 
 import '../../app/app_db_scope.dart';
 import '../../db/app_db.dart';
+import '../../sync/connection_test_service.dart';
 import '../../sync/sync_models.dart';
 import '../../sync/sync_service.dart';
 import '../../sync/sync_transport.dart';
 
 class SyncScreen extends StatefulWidget {
-  const SyncScreen({super.key});
+  const SyncScreen({super.key, this.connectionTestService});
+
+  final ConnectionTestService? connectionTestService;
 
   @override
   State<SyncScreen> createState() => _SyncScreenState();
@@ -19,12 +22,16 @@ class _SyncScreenState extends State<SyncScreen> {
   SyncService? _service;
   bool _loading = true;
   bool _syncing = false;
+  bool _checkingConnection = false;
   int _syncSent = 0;
   int _syncTotal = 0;
   int _pendingCount = 0;
   DateTime? _lastSuccessAt;
   List<SyncLogEntry> _logs = const [];
   Object? _error;
+
+  late final ConnectionTestService _connectionTestService =
+      widget.connectionTestService ?? ConnectionTestService.fromEnvironment();
 
   @override
   void didChangeDependencies() {
@@ -65,7 +72,7 @@ class _SyncScreenState extends State<SyncScreen> {
 
   Future<void> _syncNow() async {
     final service = _service;
-    if (service == null || _syncing) return;
+    if (service == null || _syncing || _checkingConnection) return;
     setState(() {
       _syncing = true;
       _syncSent = 0;
@@ -99,6 +106,30 @@ class _SyncScreenState extends State<SyncScreen> {
       await _load();
     } finally {
       if (mounted) setState(() => _syncing = false);
+    }
+  }
+
+  Future<void> _checkConnection() async {
+    if (_checkingConnection || _syncing) return;
+    setState(() => _checkingConnection = true);
+    try {
+      final result = await _connectionTestService.run();
+      if (!mounted) return;
+      final message = switch (result.status) {
+        ConnectionTestStatus.success =>
+          'Сервер доступен. Тестовые данные успешно отправлены.'
+              '${result.recordId == null ? '' : ' ID записи: ${result.recordId}'}',
+        ConnectionTestStatus.httpError =>
+          'Сервер вернул ошибку: HTTP ${result.httpStatus}',
+        ConnectionTestStatus.connectionError =>
+          'Не удалось подключиться к серверу.',
+        ConnectionTestStatus.notConfigured => 'Токен сервера не настроен.',
+      };
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(message)));
+    } finally {
+      if (mounted) setState(() => _checkingConnection = false);
     }
   }
 
@@ -169,7 +200,9 @@ class _SyncScreenState extends State<SyncScreen> {
                           SizedBox(
                             width: double.infinity,
                             child: FilledButton.icon(
-                              onPressed: _syncing ? null : _syncNow,
+                              onPressed: _syncing || _checkingConnection
+                                  ? null
+                                  : _syncNow,
                               icon: _syncing
                                   ? const SizedBox(
                                       width: 18,
@@ -180,6 +213,25 @@ class _SyncScreenState extends State<SyncScreen> {
                                     )
                                   : const Icon(Icons.sync),
                               label: const Text('Синхронизировать сейчас'),
+                            ),
+                          ),
+                          const SizedBox(height: 10),
+                          SizedBox(
+                            width: double.infinity,
+                            child: OutlinedButton.icon(
+                              onPressed: _syncing || _checkingConnection
+                                  ? null
+                                  : _checkConnection,
+                              icon: _checkingConnection
+                                  ? const SizedBox(
+                                      width: 18,
+                                      height: 18,
+                                      child: CircularProgressIndicator(
+                                        strokeWidth: 2,
+                                      ),
+                                    )
+                                  : const Icon(Icons.wifi_tethering_outlined),
+                              label: const Text('Проверить соединение'),
                             ),
                           ),
                           const SizedBox(height: 8),
