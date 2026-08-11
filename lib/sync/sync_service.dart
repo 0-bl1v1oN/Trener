@@ -15,6 +15,99 @@ class SyncService {
 
   bool get isConfigured => _transport.isConfigured;
 
+  Future<SingleSyncResult> syncTaskById(int taskId) async {
+    if (!_transport.isConfigured) {
+      return const SingleSyncResult(
+        status: SingleSyncStatus.notConfigured,
+        message: 'Токен сервера не настроен.',
+      );
+    }
+
+    final queued = await _db.getPendingWorkoutSyncTask(taskId);
+    if (queued == null) {
+      return const SingleSyncResult(
+        status: SingleSyncStatus.notFound,
+        message: 'Тренировка уже не ожидает отправки.',
+      );
+    }
+    final task = await _db.beginSyncAttempt(queued.id);
+    if (task == null) {
+      return const SingleSyncResult(
+        status: SingleSyncStatus.notFound,
+        message: 'Тренировка уже не ожидает отправки.',
+      );
+    }
+
+    WorkoutSyncPayload payload;
+    try {
+      final rebuilt = await _db.buildWorkoutSyncPayload(task.entityExternalId);
+      if (rebuilt == null) {
+        throw StateError('Завершённая тренировка не найдена');
+      }
+      payload = rebuilt;
+    } catch (error) {
+      final message = 'Не удалось подготовить тренировку: $error';
+      await _db.markSyncTaskAsPermanentFailure(task.id, message);
+      await _writeLogSafely(
+        task: task,
+        result: SyncLogResults.error,
+        message: message,
+      );
+      return SingleSyncResult(
+        status: SingleSyncStatus.failure,
+        message: message,
+      );
+    }
+
+    SyncTransportResult result;
+    try {
+      result = await _transport.sendWorkout(payload);
+    } catch (_) {
+      result = const SyncTransportResult.failure(
+        message: 'Не удалось подключиться к серверу.',
+        failureKind: SyncFailureKind.transient,
+      );
+    }
+
+    if (result.isSuccess) {
+      final deleted = await _db.deleteSyncTaskAfterSuccess(
+        id: task.id,
+        sentPayload: task.payload,
+      );
+      await _writeLogSafely(
+        task: task,
+        result: SyncLogResults.success,
+        message: result.message,
+        httpStatus: result.httpStatus,
+      );
+      return SingleSyncResult(
+        status: SingleSyncStatus.success,
+        message: 'Тренировка успешно отправлена',
+        httpStatus: result.httpStatus,
+        recordId: result.recordId,
+        queueTaskDeleted: deleted,
+      );
+    }
+
+    final isPermanent = result.resolvedFailureKind == SyncFailureKind.permanent;
+    if (isPermanent) {
+      await _db.markSyncTaskAsPermanentFailure(task.id, result.message);
+    } else {
+      await _db.markSyncTaskForRetry(task.id, result.message);
+    }
+    await _writeLogSafely(
+      task: task,
+      result: SyncLogResults.error,
+      message: result.message,
+      httpStatus: result.httpStatus,
+    );
+    return SingleSyncResult(
+      status: SingleSyncStatus.failure,
+      message: result.message,
+      httpStatus: result.httpStatus,
+    );
+  }
+
   Future<SyncRunResult> syncPending({
     void Function(SyncProgress progress)? onProgress,
   }) async {

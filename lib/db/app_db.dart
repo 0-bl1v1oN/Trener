@@ -263,6 +263,43 @@ class WorkoutDayInfo {
   });
 }
 
+class PendingWorkoutSyncClientVm {
+  const PendingWorkoutSyncClientVm({
+    required this.clientId,
+    required this.name,
+    required this.pendingWorkoutCount,
+  });
+
+  final String clientId;
+  final String name;
+  final int pendingWorkoutCount;
+}
+
+class PendingWorkoutSyncTaskVm {
+  const PendingWorkoutSyncTaskVm({
+    required this.taskId,
+    required this.workoutExternalId,
+    required this.performedAt,
+    required this.dayLabel,
+    required this.dayTitle,
+    required this.exerciseCount,
+  });
+
+  final int taskId;
+  final String workoutExternalId;
+  final DateTime performedAt;
+  final String? dayLabel;
+  final String? dayTitle;
+  final int exerciseCount;
+
+  String? get displayName {
+    final title = dayTitle?.trim() ?? '';
+    if (title.isNotEmpty) return title;
+    final label = dayLabel?.trim() ?? '';
+    return label.isEmpty ? null : label;
+  }
+}
+
 class WorkoutExerciseVm {
   final int templateExerciseId;
 
@@ -1095,6 +1132,17 @@ class AppDb extends _$AppDb {
     if (client == null || clientExternalId.isEmpty) {
       throw StateError('У тренировки отсутствует внешний UUID клиента');
     }
+    final programState = await getProgramStateForClient(client.id);
+    final parsedPlanSize = _parsePlanSize(client.plan);
+    final subscriptionSize = const {4, 8, 12}.contains(parsedPlanSize)
+        ? parsedPlanSize
+        : null;
+    final remainingSessions = subscriptionSize == null || programState == null
+        ? null
+        : _remainingSessions(
+            planSize: subscriptionSize,
+            completedInPlan: programState.completedInPlan,
+          );
 
     final template =
         await (select(workoutTemplates)
@@ -1145,6 +1193,15 @@ class AppDb extends _$AppDb {
       WorkoutSyncSource(
         clientExternalId: clientExternalId,
         clientName: client.name,
+        clientGender: switch (client.gender?.trim()) {
+          'М' => 'male',
+          'Ж' => 'female',
+          _ => null,
+        },
+        subscriptionSize: subscriptionSize,
+        subscriptionStart: client.planStart,
+        subscriptionEnd: client.planEnd,
+        remainingSessions: remainingSessions,
         workoutExternalId: normalizedId,
         performedAt: session.performedAt,
         templateIndex: session.templateIdx,
@@ -1285,6 +1342,102 @@ class AppDb extends _$AppDb {
       readsFrom: {syncQueue},
     ).getSingle();
     return row.read<int>('c');
+  }
+
+  Future<List<PendingWorkoutSyncClientVm>>
+  getPendingWorkoutSyncClients() async {
+    final rows = await customSelect(
+      '''
+      SELECT c.id AS client_id, c.name AS client_name, COUNT(q.id) AS task_count
+      FROM sync_queue q
+      INNER JOIN workout_sessions w ON w.external_id = q.entity_external_id
+      INNER JOIN clients c ON c.id = w.client_id
+      WHERE q.entity_type = ?
+        AND q.operation = ?
+        AND q.status IN (?, ?)
+      GROUP BY c.id, c.name
+      ORDER BY c.name COLLATE NOCASE ASC
+      ''',
+      variables: [
+        Variable.withString(SyncEntityTypes.workout),
+        Variable.withString(SyncOperations.workoutUpsert),
+        Variable.withString(SyncQueueStatuses.pending),
+        Variable.withString(SyncQueueStatuses.failed),
+      ],
+      readsFrom: {syncQueue, workoutSessions, clients},
+    ).get();
+    return [
+      for (final row in rows)
+        PendingWorkoutSyncClientVm(
+          clientId: row.read<String>('client_id'),
+          name: row.read<String>('client_name'),
+          pendingWorkoutCount: row.read<int>('task_count'),
+        ),
+    ];
+  }
+
+  Future<List<PendingWorkoutSyncTaskVm>> getPendingWorkoutSyncTasksForClient(
+    String clientId,
+  ) async {
+    final rows = await customSelect(
+      '''
+      SELECT q.id AS task_id,
+             q.entity_external_id AS workout_external_id,
+             w.performed_at AS performed_at,
+             t.label AS day_label,
+             t.title AS day_title,
+             COUNT(r.id) AS exercise_count
+      FROM sync_queue q
+      INNER JOIN workout_sessions w ON w.external_id = q.entity_external_id
+      LEFT JOIN workout_templates t
+        ON t.gender = w.gender AND t.idx = w.template_idx
+      LEFT JOIN workout_exercise_results r ON r.session_id = w.id
+      WHERE q.entity_type = ?
+        AND q.operation = ?
+        AND q.status IN (?, ?)
+        AND w.client_id = ?
+      GROUP BY q.id, q.entity_external_id, w.performed_at, t.label, t.title
+      ORDER BY w.performed_at DESC, q.id DESC
+      ''',
+      variables: [
+        Variable.withString(SyncEntityTypes.workout),
+        Variable.withString(SyncOperations.workoutUpsert),
+        Variable.withString(SyncQueueStatuses.pending),
+        Variable.withString(SyncQueueStatuses.failed),
+        Variable.withString(clientId),
+      ],
+      readsFrom: {
+        syncQueue,
+        workoutSessions,
+        workoutTemplates,
+        workoutExerciseResults,
+      },
+    ).get();
+    return [
+      for (final row in rows)
+        PendingWorkoutSyncTaskVm(
+          taskId: row.read<int>('task_id'),
+          workoutExternalId: row.read<String>('workout_external_id'),
+          performedAt: row.read<DateTime>('performed_at'),
+          dayLabel: row.readNullable<String>('day_label'),
+          dayTitle: row.readNullable<String>('day_title'),
+          exerciseCount: row.read<int>('exercise_count'),
+        ),
+    ];
+  }
+
+  Future<SyncQueueEntry?> getPendingWorkoutSyncTask(int taskId) {
+    return (select(syncQueue)
+          ..where(
+            (row) =>
+                row.id.equals(taskId) &
+                row.entityType.equals(SyncEntityTypes.workout) &
+                row.operation.equals(SyncOperations.workoutUpsert) &
+                (row.status.equals(SyncQueueStatuses.pending) |
+                    row.status.equals(SyncQueueStatuses.failed)),
+          )
+          ..limit(1))
+        .getSingleOrNull();
   }
 
   Future<void> recoverInterruptedSyncTasks() async {
@@ -2730,6 +2883,16 @@ class AppDb extends _$AppDb {
 
     if (n == 4 || n == 8 || n == 12) return n;
     return 0;
+  }
+
+  int _remainingSessions({
+    required int planSize,
+    required int completedInPlan,
+  }) {
+    if (planSize <= 0) return 0;
+    final completedInBundle = completedInPlan % planSize;
+    if (completedInBundle == 0 && completedInPlan > 0) return 0;
+    return planSize - completedInBundle;
   }
 
   int _groupShiftByGender(String gender) {

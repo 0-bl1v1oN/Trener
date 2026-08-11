@@ -41,3 +41,21 @@ class SyncRunResult {
   final int failed;
   final SyncRunStopReason? stopReason;
 }
+
+enum SingleSyncStatus { success, failure, notConfigured, notFound }
+
+class SingleSyncResult {
+  const SingleSyncResult({
+    required this.status,
+    required this.message,
+    this.httpStatus,
+    this.recordId,
+    this.queueTaskDeleted = false,
+  });
+
+  final SingleSyncStatus status;
+  final String message;
+  final int? httpStatus;
+  final String? recordId;
+  final bool queueTaskDeleted;
+}

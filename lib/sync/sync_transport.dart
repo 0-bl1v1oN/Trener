@@ -1,9 +1,11 @@
 import 'workout_sync_payload.dart';
+import 'sync_connection_config.dart';
+import 'sync_http_client.dart';
 
 enum SyncFailureKind { transient, permanent }
 
 class SyncTransportResult {
-  const SyncTransportResult.success({this.httpStatus})
+  const SyncTransportResult.success({this.httpStatus, this.recordId})
     : isSuccess = true,
       message = 'Синхронизировано',
       failureKind = null;
@@ -12,10 +14,12 @@ class SyncTransportResult {
     required this.message,
     this.httpStatus,
     this.failureKind,
-  }) : isSuccess = false;
+  }) : isSuccess = false,
+       recordId = null;
 
   final bool isSuccess;
   final int? httpStatus;
+  final String? recordId;
   final String message;
   final SyncFailureKind? failureKind;
 
@@ -49,5 +53,49 @@ class DisabledSyncTransport implements SyncTransport {
     return const SyncTransportResult.failure(
       message: 'Сервер пока не настроен',
     );
+  }
+}
+
+class HttpSyncTransport implements SyncTransport {
+  HttpSyncTransport({
+    required SyncConnectionConfig config,
+    SyncHttpClient? client,
+  }) : _client = client ?? SyncHttpClient(config: config);
+
+  factory HttpSyncTransport.fromEnvironment() {
+    final config = SyncConnectionConfig.fromEnvironment();
+    return HttpSyncTransport(config: config);
+  }
+
+  final SyncHttpClient _client;
+
+  @override
+  bool get isConfigured => _client.isConfigured;
+
+  @override
+  Future<SyncTransportResult> sendWorkout(WorkoutSyncPayload payload) async {
+    if (!isConfigured) {
+      return const SyncTransportResult.failure(
+        message: 'Токен сервера не настроен.',
+      );
+    }
+    try {
+      final response = await _client.postJson(payload.encode());
+      if (response.statusCode == 201) {
+        return SyncTransportResult.success(
+          httpStatus: response.statusCode,
+          recordId: SyncHttpClient.readRecordId(response.body),
+        );
+      }
+      return SyncTransportResult.failure(
+        message: 'Сервер вернул ошибку: HTTP ${response.statusCode}',
+        httpStatus: response.statusCode,
+      );
+    } catch (_) {
+      return const SyncTransportResult.failure(
+        message: 'Не удалось подключиться к серверу.',
+        failureKind: SyncFailureKind.transient,
+      );
+    }
   }
 }

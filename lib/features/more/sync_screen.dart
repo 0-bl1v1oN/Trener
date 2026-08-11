@@ -7,6 +7,7 @@ import '../../sync/connection_test_service.dart';
 import '../../sync/sync_models.dart';
 import '../../sync/sync_service.dart';
 import '../../sync/sync_transport.dart';
+import 'manual_workout_sync_sheet.dart';
 
 class SyncScreen extends StatefulWidget {
   const SyncScreen({super.key, this.connectionTestService});
@@ -20,6 +21,7 @@ class SyncScreen extends StatefulWidget {
 class _SyncScreenState extends State<SyncScreen> {
   AppDb? _db;
   SyncService? _service;
+  SyncService? _manualService;
   bool _loading = true;
   bool _syncing = false;
   bool _checkingConnection = false;
@@ -40,6 +42,10 @@ class _SyncScreenState extends State<SyncScreen> {
     if (identical(_db, db)) return;
     _db = db;
     _service = SyncService(db: db, transport: const DisabledSyncTransport());
+    _manualService = SyncService(
+      db: db,
+      transport: HttpSyncTransport.fromEnvironment(),
+    );
     _load();
   }
 
@@ -133,6 +139,25 @@ class _SyncScreenState extends State<SyncScreen> {
     }
   }
 
+  Future<void> _openManualSend() async {
+    final db = _db;
+    final service = _manualService;
+    if (db == null || service == null || _syncing || _checkingConnection) {
+      return;
+    }
+    final outcome = await showModalBottomSheet<ManualWorkoutSendOutcome>(
+      context: context,
+      isScrollControlled: true,
+      builder: (context) => ManualWorkoutSyncSheet(db: db, service: service),
+    );
+    if (!mounted || outcome == null) return;
+    await _load();
+    if (!mounted) return;
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text(outcome.message)));
+  }
+
   String _formatDate(DateTime? value) {
     if (value == null) return '—';
     return DateFormat('dd.MM.yyyy HH:mm', 'ru_RU').format(value.toLocal());
@@ -168,12 +193,12 @@ class _SyncScreenState extends State<SyncScreen> {
                           Row(
                             children: [
                               Icon(
-                                Icons.cloud_off_outlined,
+                                Icons.cloud_queue_outlined,
                                 color: colors.primary,
                               ),
                               const SizedBox(width: 10),
                               Text(
-                                'Сервер не настроен',
+                                'Очередь синхронизации',
                                 style: Theme.of(context).textTheme.titleMedium
                                     ?.copyWith(fontWeight: FontWeight.w700),
                               ),
@@ -240,6 +265,49 @@ class _SyncScreenState extends State<SyncScreen> {
                             'Ожидающие задачи сохраняются на устройстве.',
                             style: Theme.of(context).textTheme.bodySmall
                                 ?.copyWith(color: colors.onSurfaceVariant),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  Card(
+                    elevation: 0,
+                    child: Padding(
+                      padding: const EdgeInsets.all(16),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            children: [
+                              Icon(
+                                Icons.touch_app_outlined,
+                                color: colors.primary,
+                              ),
+                              const SizedBox(width: 10),
+                              Text(
+                                'Ручная отправка',
+                                style: Theme.of(context).textTheme.titleMedium
+                                    ?.copyWith(fontWeight: FontWeight.w700),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 8),
+                          Text(
+                            'Выберите клиента и одну конкретную тренировку из очереди.',
+                            style: Theme.of(context).textTheme.bodySmall
+                                ?.copyWith(color: colors.onSurfaceVariant),
+                          ),
+                          const SizedBox(height: 14),
+                          SizedBox(
+                            width: double.infinity,
+                            child: FilledButton.tonalIcon(
+                              onPressed: _syncing || _checkingConnection
+                                  ? null
+                                  : _openManualSend,
+                              icon: const Icon(Icons.fitness_center),
+                              label: const Text('Выбрать тренировку'),
+                            ),
                           ),
                         ],
                       ),
