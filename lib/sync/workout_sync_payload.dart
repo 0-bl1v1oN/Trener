@@ -108,6 +108,7 @@ class WorkoutSyncPayload {
   static Map<String, dynamic> _serialize(WorkoutSyncSource source) {
     final workoutName = _nonEmpty(source.workoutName);
     return {
+      'type': 'workout',
       'client': {
         'client_id': source.clientExternalId,
         'name': source.clientName,
@@ -147,6 +148,7 @@ class WorkoutSyncPayload {
     );
 
     return {
+      'type': 'workout',
       'client': {
         'client_id': client['client_id'] ?? client['uuid'],
         'name': client['name'],

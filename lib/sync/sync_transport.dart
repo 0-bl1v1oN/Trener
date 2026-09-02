@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:flutter/foundation.dart';
 
 import 'workout_sync_payload.dart';
+import 'schedule_sync_payload.dart';
 import 'sync_connection_config.dart';
 import 'sync_http_client.dart';
 
@@ -49,6 +50,8 @@ abstract interface class SyncTransport {
   // A concrete HTTP transport owns base URL, endpoint, auth, timeout and
   // success/error body parsing, then reports the classified result here.
   Future<SyncTransportResult> sendWorkout(WorkoutSyncPayload payload);
+
+  Future<SyncTransportResult> sendSchedule(ScheduleSyncPayload payload);
 }
 
 class DisabledSyncTransport implements SyncTransport {
@@ -59,6 +62,13 @@ class DisabledSyncTransport implements SyncTransport {
 
   @override
   Future<SyncTransportResult> sendWorkout(WorkoutSyncPayload payload) async {
+    return const SyncTransportResult.failure(
+      message: 'Сервер пока не настроен',
+    );
+  }
+
+  @override
+  Future<SyncTransportResult> sendSchedule(ScheduleSyncPayload payload) async {
     return const SyncTransportResult.failure(
       message: 'Сервер пока не настроен',
     );
@@ -85,13 +95,25 @@ class HttpSyncTransport implements SyncTransport {
 
   @override
   Future<SyncTransportResult> sendWorkout(WorkoutSyncPayload payload) async {
+    return _sendJson(payload.encode(), logLabel: 'WorkoutSync');
+  }
+
+  @override
+  Future<SyncTransportResult> sendSchedule(ScheduleSyncPayload payload) async {
+    return _sendJson(payload.encode(), logLabel: 'ScheduleSync');
+  }
+
+  Future<SyncTransportResult> _sendJson(
+    String body, {
+    required String logLabel,
+  }) async {
     if (!isConfigured) {
       return const SyncTransportResult.failure(
         message: 'Токен сервера не настроен.',
       );
     }
     try {
-      final response = await _client.postJson(payload.encode());
+      final response = await _client.postJson(body);
       if (response.statusCode == 201) {
         return SyncTransportResult.success(
           httpStatus: response.statusCode,
@@ -103,7 +125,7 @@ class HttpSyncTransport implements SyncTransport {
         secretToken: _token,
       );
       debugPrint(
-        'WorkoutSync HTTP ${response.statusCode}: '
+        '$logLabel HTTP ${response.statusCode}: '
         '${responseBody ?? '<empty response body>'}',
       );
       return SyncTransportResult.failure(

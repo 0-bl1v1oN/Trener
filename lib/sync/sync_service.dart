@@ -1,5 +1,3 @@
-import 'dart:convert';
-
 import '../db/app_db.dart';
 import 'sync_models.dart';
 import 'sync_transport.dart';
@@ -131,16 +129,32 @@ class SyncService {
       final task = await _db.beginSyncAttempt(queued.id);
       if (task == null) continue;
 
-      WorkoutSyncPayload payload;
+      late Future<SyncTransportResult> Function() send;
       try {
-        if (task.operation != SyncOperations.workoutUpsert) {
-          throw StateError('Неподдерживаемая sync-операция: ${task.operation}');
+        if (task.entityType == SyncEntityTypes.workout &&
+            task.operation == SyncOperations.workoutUpsert) {
+          final payload = await _db.buildWorkoutSyncPayload(
+            task.entityExternalId,
+          );
+          if (payload == null) {
+            throw StateError('Завершённая тренировка не найдена');
+          }
+          send = () => _transport.sendWorkout(payload);
+        } else if (task.entityType == SyncEntityTypes.client &&
+            task.operation == SyncOperations.scheduleUpsert) {
+          final payload = await _db.buildScheduleSyncPayload(
+            task.entityExternalId,
+          );
+          if (payload == null) {
+            throw StateError('Клиент для синхронизации расписания не найден');
+          }
+          send = () => _transport.sendSchedule(payload);
+        } else {
+          throw StateError(
+            'Неподдерживаемая sync-задача: '
+            '${task.entityType}/${task.operation}',
+          );
         }
-        final decoded = jsonDecode(task.payload);
-        if (decoded is! Map<String, dynamic>) {
-          throw const FormatException('Некорректный payload очереди');
-        }
-        payload = WorkoutSyncPayload.fromJson(decoded);
       } catch (error) {
         final message = 'Ошибка синхронизации: $error';
         await _db.markSyncTaskAsPermanentFailure(task.id, message);
@@ -157,7 +171,7 @@ class SyncService {
 
       SyncTransportResult result;
       try {
-        result = await _transport.sendWorkout(payload);
+        result = await send();
       } catch (error) {
         final message = 'Ошибка сети: $error';
         await _db.markSyncTaskForRetry(task.id, message);

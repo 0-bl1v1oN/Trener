@@ -289,14 +289,6 @@ class _ClientDetailScreenState extends State<ClientDetailScreen> {
     );
   }
 
-  DateTime _recordsWeekStart(DateTime now) {
-    final day = DateTime(now.year, now.month, now.day);
-    if (day.weekday == DateTime.sunday) {
-      return day.add(const Duration(days: 1));
-    }
-    return day.subtract(Duration(days: day.weekday - DateTime.monday));
-  }
-
   String _weekdayShortRu(int weekday) {
     const map = {
       DateTime.monday: 'Пн',
@@ -311,9 +303,13 @@ class _ClientDetailScreenState extends State<ClientDetailScreen> {
 
   Widget _buildWeekRecordsCard(ColorScheme colors) {
     final now = DateTime.now();
-    final weekStart = _recordsWeekStart(now);
-    final weekEndExclusive = weekStart.add(const Duration(days: 6));
-    final days = List.generate(6, (i) => weekStart.add(Duration(days: i)));
+    final weekRange = clientAppointmentsWeekRange(now);
+    final weekStart = weekRange.fromInclusive;
+    final weekEndExclusive = weekRange.toExclusive;
+    final days = List.generate(
+      6,
+      (i) => DateTime(weekStart.year, weekStart.month, weekStart.day + i),
+    );
 
     final titleRange =
         '${_fmtDate(weekStart)} — ${_fmtDate(weekEndExclusive.subtract(const Duration(days: 1)))}';

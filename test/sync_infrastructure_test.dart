@@ -11,6 +11,7 @@ import 'package:myfitness/db/app_db.dart';
 import 'package:myfitness/sync/sync_connection_config.dart';
 import 'package:myfitness/sync/sync_http_client.dart';
 import 'package:myfitness/sync/sync_models.dart';
+import 'package:myfitness/sync/schedule_sync_payload.dart';
 import 'package:myfitness/sync/sync_service.dart';
 import 'package:myfitness/sync/sync_transport.dart';
 import 'package:myfitness/sync/workout_sync_payload.dart';
@@ -114,6 +115,90 @@ void main() {
       expect(firstPayload.containsKey('trainer_uuid'), isFalse);
       expect(workout.containsKey('duration'), isFalse);
       expect(workout.containsKey('volume'), isFalse);
+      expect(firstPayload['type'], 'workout');
+      expect(firstPayload.containsKey('schedule'), isFalse);
+    });
+
+    test(
+      'payload contains the sorted Monday-Saturday schedule snapshot',
+      () async {
+        final fixture = await _createFixture();
+        addTearDown(fixture.db.close);
+        await _saveCompletedResult(fixture, weight: 40, reps: 10);
+        final range = clientAppointmentsWeekRange(DateTime.now());
+
+        await fixture.db.addAppointment(
+          clientId: fixture.client.id,
+          startAt: range.fromInclusive.add(const Duration(days: 2, hours: 18)),
+        );
+        await fixture.db.addAppointment(
+          clientId: fixture.client.id,
+          startAt: range.fromInclusive.add(
+            const Duration(hours: 9, minutes: 5),
+          ),
+        );
+        await fixture.db.addAppointment(
+          clientId: fixture.client.id,
+          startAt: range.fromInclusive.add(const Duration(days: 5, hours: 8)),
+        );
+        await fixture.db.addAppointment(
+          clientId: fixture.client.id,
+          startAt: range.toExclusive,
+        );
+
+        final payload = await fixture.db.buildScheduleSyncPayload(
+          fixture.client.externalId!,
+        );
+
+        expect(payload!.toJson(), {
+          'type': 'schedule',
+          'client': {'client_id': fixture.client.externalId},
+          'schedule': {
+            'from': _dateOnly(range.fromInclusive),
+            'to': _dateOnly(
+              DateTime(
+                range.toExclusive.year,
+                range.toExclusive.month,
+                range.toExclusive.day - 1,
+              ),
+            ),
+            'appointments': [
+              {'date': _dateOnly(range.fromInclusive), 'time': '09:05'},
+              {
+                'date': _dateOnly(
+                  range.fromInclusive.add(const Duration(days: 2)),
+                ),
+                'time': '18:00',
+              },
+              {
+                'date': _dateOnly(
+                  range.fromInclusive.add(const Duration(days: 5)),
+                ),
+                'time': '08:00',
+              },
+            ],
+          },
+        });
+      },
+    );
+
+    test('Sunday selects the following Monday-Saturday range', () {
+      final range = clientAppointmentsWeekRange(DateTime(2026, 9, 6, 21));
+      expect(range.fromInclusive, DateTime(2026, 9, 7));
+      expect(range.toExclusive, DateTime(2026, 9, 13));
+    });
+
+    test('empty schedule payload always contains appointments list', () async {
+      final fixture = await _createFixture();
+      addTearDown(fixture.db.close);
+
+      final payload = await fixture.db.buildScheduleSyncPayload(
+        fixture.client.externalId!,
+      );
+      final json = payload!.toJson();
+
+      expect(json['type'], 'schedule');
+      expect((json['schedule'] as Map)['appointments'], isEmpty);
     });
 
     test('legacy queued payload is normalized to compact contract', () {
@@ -135,6 +220,9 @@ void main() {
             'reps': 10,
           },
         ],
+        'schedule': [
+          {'date': '2026-08-05', 'time': '10:00'},
+        ],
       }).toJson();
 
       expect(payload['client'], {'client_id': 'client-uuid', 'name': 'Клиент'});
@@ -147,6 +235,101 @@ void main() {
         ((payload['exercises'] as List).single as Map)['exercise_id'],
         'exercise-uuid',
       );
+      expect(payload['type'], 'workout');
+      expect(payload.containsKey('schedule'), isFalse);
+    });
+
+    test('calendar mutations enqueue one deduplicated schedule task', () async {
+      final fixture = await _createFixture();
+      addTearDown(fixture.db.close);
+      await _saveCompletedResult(fixture, weight: 40, reps: 10);
+      final workoutId =
+          (await fixture.db.select(fixture.db.syncQueue).getSingle())
+              .entityExternalId;
+      await fixture.db.deleteWorkoutSyncTask(workoutId);
+      final range = clientAppointmentsWeekRange(DateTime.now());
+
+      await fixture.db.addAppointment(
+        clientId: fixture.client.id,
+        startAt: range.fromInclusive.add(const Duration(hours: 9)),
+      );
+      var appointment = await fixture.db
+          .select(fixture.db.appointments)
+          .getSingle();
+      await fixture.db.updateAppointmentTime(
+        id: appointment.id,
+        newStartAt: range.fromInclusive.add(const Duration(hours: 10)),
+      );
+      await fixture.db.updateAppointmentTime(
+        id: appointment.id,
+        newStartAt: range.fromInclusive.add(const Duration(hours: 11)),
+      );
+
+      final queue = await fixture.db.select(fixture.db.syncQueue).get();
+      expect(queue, hasLength(1));
+      expect(queue.single.entityType, SyncEntityTypes.client);
+      expect(queue.single.entityExternalId, fixture.client.externalId);
+      expect(queue.single.operation, SyncOperations.scheduleUpsert);
+      final json = jsonDecode(queue.single.payload) as Map;
+      expect((json['schedule'] as Map)['appointments'], [
+        {'date': _dateOnly(range.fromInclusive), 'time': '11:00'},
+      ]);
+      expect(queue.single.entityExternalId, isNot(workoutId));
+    });
+
+    test(
+      'client without completed workouts keeps calendar change locally',
+      () async {
+        final fixture = await _createFixture();
+        addTearDown(fixture.db.close);
+
+        await fixture.db.addAppointment(
+          clientId: fixture.client.id,
+          startAt: clientAppointmentsWeekRange(
+            DateTime.now(),
+          ).fromInclusive.add(const Duration(hours: 12)),
+        );
+
+        expect(
+          await fixture.db.select(fixture.db.appointments).get(),
+          hasLength(1),
+        );
+        final queue = await fixture.db.select(fixture.db.syncQueue).get();
+        expect(queue, hasLength(1));
+        expect(queue.single.entityType, SyncEntityTypes.client);
+        expect(queue.single.operation, SyncOperations.scheduleUpsert);
+        expect(
+          await fixture.db.select(fixture.db.workoutSessions).get(),
+          isEmpty,
+        );
+      },
+    );
+
+    test('different clients get separate schedule tasks', () async {
+      final db = AppDb.forTesting(NativeDatabase.memory());
+      addTearDown(db.close);
+      final first = await _createFixture(db: db);
+      final second = await _createFixture(db: db);
+      final start = clientAppointmentsWeekRange(
+        DateTime.now(),
+      ).fromInclusive.add(const Duration(hours: 10));
+
+      await db.addAppointment(clientId: first.client.id, startAt: start);
+      await db.addAppointment(
+        clientId: second.client.id,
+        startAt: start.add(const Duration(hours: 1)),
+      );
+
+      final queue =
+          await (db.select(db.syncQueue)..where(
+                (row) => row.operation.equals(SyncOperations.scheduleUpsert),
+              ))
+              .get();
+      expect(queue, hasLength(2));
+      expect(queue.map((item) => item.entityExternalId).toSet(), {
+        first.client.externalId,
+        second.client.externalId,
+      });
     });
 
     test(
@@ -231,6 +414,24 @@ void main() {
       expect(result.lastWeightKg, 90);
       expect(result.lastReps, 4);
     });
+
+    test('queue failure never rolls back a calendar mutation', () async {
+      final fixture = await _createFixture();
+      addTearDown(fixture.db.close);
+      await fixture.db.customStatement('DROP TABLE sync_queue');
+
+      await fixture.db.addAppointment(
+        clientId: fixture.client.id,
+        startAt: clientAppointmentsWeekRange(
+          DateTime.now(),
+        ).fromInclusive.add(const Duration(hours: 9)),
+      );
+
+      expect(
+        await fixture.db.select(fixture.db.appointments).get(),
+        hasLength(1),
+      );
+    });
   });
 
   group('sync log', () {
@@ -264,6 +465,39 @@ void main() {
   });
 
   group('SyncService', () {
+    test('HTTP transport posts the exact schedule contract', () async {
+      const config = SyncConnectionConfig(
+        endpoint: 'https://training.viro35.ru/api/ingest',
+        token: 'schedule-test-token',
+      );
+      late http.Request captured;
+      final client = MockClient((request) async {
+        captured = request;
+        return http.Response('{"message":"Stored.","id":91}', 201);
+      });
+      final transport = HttpSyncTransport(
+        config: config,
+        client: SyncHttpClient(config: config, client: client),
+      );
+      const payload = ScheduleSyncPayload(
+        clientExternalId: 'client-uuid',
+        from: '2026-08-31',
+        to: '2026-09-05',
+        appointments: [
+          ScheduleSyncAppointment(date: '2026-09-02', time: '11:00'),
+        ],
+      );
+
+      final result = await transport.sendSchedule(payload);
+
+      expect(result.isSuccess, isTrue);
+      expect(result.httpStatus, 201);
+      expect(captured.method, 'POST');
+      expect(captured.headers['authorization'], 'Bearer schedule-test-token');
+      expect(captured.headers['content-type'], 'application/json');
+      expect(jsonDecode(captured.body), payload.toJson());
+    });
+
     test(
       'real HTTP transport deletes 201 task then stops on HTTP error',
       () async {
@@ -455,6 +689,191 @@ void main() {
       },
     );
 
+    test('mass sync rebuilds a stale queued schedule before send', () async {
+      final fixture = await _createFixture();
+      addTearDown(fixture.db.close);
+      await _saveCompletedResult(fixture, weight: 50, reps: 8);
+      final range = clientAppointmentsWeekRange(DateTime.now());
+      await fixture.db.addAppointment(
+        clientId: fixture.client.id,
+        startAt: range.fromInclusive.add(const Duration(hours: 9)),
+      );
+      final appointment = await fixture.db
+          .select(fixture.db.appointments)
+          .getSingle();
+      final oldTask =
+          await (fixture.db.select(fixture.db.syncQueue)..where(
+                (row) => row.operation.equals(SyncOperations.scheduleUpsert),
+              ))
+              .getSingle();
+      final oldPayload = oldTask.payload;
+      await fixture.db.updateAppointmentTime(
+        id: appointment.id,
+        newStartAt: range.fromInclusive.add(
+          const Duration(hours: 11, minutes: 30),
+        ),
+      );
+      await (fixture.db.update(fixture.db.syncQueue)
+            ..where((row) => row.id.equals(oldTask.id)))
+          .write(SyncQueueCompanion(payload: Value(oldPayload)));
+      await fixture.db.deleteWorkoutSyncTask(
+        (await fixture.db.select(fixture.db.workoutSessions).getSingle())
+            .externalId,
+      );
+      final transport = _FakeTransport(
+        const SyncTransportResult.success(httpStatus: 201),
+      );
+
+      final result = await SyncService(
+        db: fixture.db,
+        transport: transport,
+      ).syncPending();
+
+      expect(result.succeeded, 1);
+      expect(
+        (transport.schedulePayloads.single.toJson()['schedule']
+            as Map)['appointments'],
+        [
+          {'date': _dateOnly(range.fromInclusive), 'time': '11:30'},
+        ],
+      );
+    });
+
+    test(
+      'deleted appointment is absent from the next schedule snapshot',
+      () async {
+        final fixture = await _createFixture();
+        addTearDown(fixture.db.close);
+        await _saveCompletedResult(fixture, weight: 50, reps: 8);
+        final range = clientAppointmentsWeekRange(DateTime.now());
+        await fixture.db.addAppointment(
+          clientId: fixture.client.id,
+          startAt: range.fromInclusive.add(const Duration(hours: 9)),
+        );
+        final appointment = await fixture.db
+            .select(fixture.db.appointments)
+            .getSingle();
+        final oldTask =
+            await (fixture.db.select(fixture.db.syncQueue)..where(
+                  (row) => row.operation.equals(SyncOperations.scheduleUpsert),
+                ))
+                .getSingle();
+        final oldPayload = oldTask.payload;
+        await fixture.db.deleteAppointmentById(appointment.id);
+        await (fixture.db.update(fixture.db.syncQueue)
+              ..where((row) => row.id.equals(oldTask.id)))
+            .write(SyncQueueCompanion(payload: Value(oldPayload)));
+        await fixture.db.deleteWorkoutSyncTask(
+          (await fixture.db.select(fixture.db.workoutSessions).getSingle())
+              .externalId,
+        );
+        final transport = _FakeTransport(
+          const SyncTransportResult.success(httpStatus: 201),
+        );
+
+        await SyncService(db: fixture.db, transport: transport).syncPending();
+
+        expect(
+          (transport.schedulePayloads.single.toJson()['schedule']
+              as Map)['appointments'],
+          isEmpty,
+        );
+      },
+    );
+
+    test('workout and schedule tasks are sent strictly sequentially', () async {
+      final fixture = await _createFixture();
+      addTearDown(fixture.db.close);
+      await _saveCompletedResult(fixture, weight: 50, reps: 8);
+      await fixture.db.addAppointment(
+        clientId: fixture.client.id,
+        startAt: clientAppointmentsWeekRange(
+          DateTime.now(),
+        ).fromInclusive.add(const Duration(hours: 10)),
+      );
+      final transport = _ControlledTransport(2);
+
+      final run = SyncService(
+        db: fixture.db,
+        transport: transport,
+      ).syncPending();
+      await transport.started[0].future;
+      await Future<void>.delayed(Duration.zero);
+      expect(transport.calls, ['schedule']);
+
+      transport.responses[0].complete(
+        const SyncTransportResult.success(httpStatus: 201),
+      );
+      await transport.started[1].future;
+      expect(transport.calls, ['schedule', 'workout']);
+      transport.responses[1].complete(
+        const SyncTransportResult.success(httpStatus: 201),
+      );
+
+      final result = await run;
+      expect(result.succeeded, 2);
+      expect(await fixture.db.getPendingSyncTaskCount(), 0);
+    });
+
+    test('schedule error keeps its task and stops the pass', () async {
+      final fixture = await _createFixture();
+      addTearDown(fixture.db.close);
+      await fixture.db.addAppointment(
+        clientId: fixture.client.id,
+        startAt: clientAppointmentsWeekRange(
+          DateTime.now(),
+        ).fromInclusive.add(const Duration(hours: 10)),
+      );
+      final transport = _FakeTransport(
+        const SyncTransportResult.failure(
+          message: 'Сервер недоступен',
+          httpStatus: 503,
+        ),
+      );
+
+      final result = await SyncService(
+        db: fixture.db,
+        transport: transport,
+      ).syncPending();
+
+      expect(result.failed, 1);
+      expect(transport.schedulePayloads, hasLength(1));
+      final task = await fixture.db.select(fixture.db.syncQueue).getSingle();
+      expect(task.operation, SyncOperations.scheduleUpsert);
+      expect(task.status, SyncQueueStatuses.pending);
+    });
+
+    test('schedule success deletes only schedule task', () async {
+      final fixture = await _createFixture();
+      addTearDown(fixture.db.close);
+      await _saveCompletedResult(fixture, weight: 50, reps: 8);
+      await fixture.db.addAppointment(
+        clientId: fixture.client.id,
+        startAt: clientAppointmentsWeekRange(
+          DateTime.now(),
+        ).fromInclusive.add(const Duration(hours: 10)),
+      );
+      final transport = _RoutingTransport(
+        scheduleResult: const SyncTransportResult.success(httpStatus: 201),
+        workoutResult: const SyncTransportResult.failure(
+          message: 'stop after schedule',
+          httpStatus: 503,
+        ),
+      );
+
+      final result = await SyncService(
+        db: fixture.db,
+        transport: transport,
+      ).syncPending();
+
+      expect(result.succeeded, 1);
+      expect(result.failed, 1);
+      expect(transport.calls, ['schedule', 'workout']);
+      final queue = await fixture.db.select(fixture.db.syncQueue).get();
+      expect(queue, hasLength(1));
+      expect(queue.single.operation, SyncOperations.workoutUpsert);
+    });
+
     test('a 2000 task backlog begins only one task before failure', () async {
       final db = AppDb.forTesting(NativeDatabase.memory());
       addTearDown(db.close);
@@ -491,7 +910,7 @@ void main() {
       ).syncPending();
 
       expect(result.failed, 1);
-      expect(transport.payloads, hasLength(1));
+      expect(transport.payloads, isEmpty);
       final attempted = await (db.select(
         db.syncQueue,
       )..where((task) => task.attempts.isBiggerThanValue(0))).get();
@@ -572,6 +991,11 @@ void main() {
   });
 }
 
+String _dateOnly(DateTime value) {
+  String twoDigits(int part) => part.toString().padLeft(2, '0');
+  return '${value.year}-${twoDigits(value.month)}-${twoDigits(value.day)}';
+}
+
 class _SyncFixture {
   const _SyncFixture({
     required this.db,
@@ -637,6 +1061,7 @@ class _FakeTransport implements SyncTransport {
 
   final SyncTransportResult result;
   final List<WorkoutSyncPayload> payloads = [];
+  final List<ScheduleSyncPayload> schedulePayloads = [];
 
   @override
   bool get isConfigured => true;
@@ -644,6 +1069,12 @@ class _FakeTransport implements SyncTransport {
   @override
   Future<SyncTransportResult> sendWorkout(WorkoutSyncPayload payload) async {
     payloads.add(payload);
+    return result;
+  }
+
+  @override
+  Future<SyncTransportResult> sendSchedule(ScheduleSyncPayload payload) async {
+    schedulePayloads.add(payload);
     return result;
   }
 }
@@ -659,15 +1090,53 @@ class _ControlledTransport implements SyncTransport {
   final List<Completer<void>> started;
   final List<Completer<SyncTransportResult>> responses;
   final List<WorkoutSyncPayload> payloads = [];
+  final List<ScheduleSyncPayload> schedulePayloads = [];
+  final List<String> calls = [];
 
   @override
   bool get isConfigured => true;
 
   @override
   Future<SyncTransportResult> sendWorkout(WorkoutSyncPayload payload) {
-    final index = payloads.length;
+    final index = calls.length;
     payloads.add(payload);
+    calls.add('workout');
     started[index].complete();
     return responses[index].future;
+  }
+
+  @override
+  Future<SyncTransportResult> sendSchedule(ScheduleSyncPayload payload) {
+    final index = calls.length;
+    schedulePayloads.add(payload);
+    calls.add('schedule');
+    started[index].complete();
+    return responses[index].future;
+  }
+}
+
+class _RoutingTransport implements SyncTransport {
+  _RoutingTransport({
+    required this.workoutResult,
+    required this.scheduleResult,
+  });
+
+  final SyncTransportResult workoutResult;
+  final SyncTransportResult scheduleResult;
+  final List<String> calls = [];
+
+  @override
+  bool get isConfigured => true;
+
+  @override
+  Future<SyncTransportResult> sendWorkout(WorkoutSyncPayload payload) async {
+    calls.add('workout');
+    return workoutResult;
+  }
+
+  @override
+  Future<SyncTransportResult> sendSchedule(ScheduleSyncPayload payload) async {
+    calls.add('schedule');
+    return scheduleResult;
   }
 }

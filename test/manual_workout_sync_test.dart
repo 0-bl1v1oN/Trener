@@ -123,6 +123,8 @@ void main() {
         expect(requests.single.headers['authorization'], 'Bearer $_token');
         expect(requests.single.headers['content-type'], 'application/json');
         final json = jsonDecode(requests.single.body) as Map<String, dynamic>;
+        expect(json['type'], 'workout');
+        expect(json.containsKey('schedule'), isFalse);
         final client = json['client'] as Map<String, dynamic>;
         final workout = json['workout'] as Map<String, dynamic>;
         final exercise =

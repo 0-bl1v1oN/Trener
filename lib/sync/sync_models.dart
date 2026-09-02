@@ -1,9 +1,11 @@
 class SyncEntityTypes {
   static const workout = 'WORKOUT';
+  static const client = 'CLIENT';
 }
 
 class SyncOperations {
   static const workoutUpsert = 'WORKOUT_UPSERT';
+  static const scheduleUpsert = 'SCHEDULE_UPSERT';
 }
 
 class SyncQueueStatuses {

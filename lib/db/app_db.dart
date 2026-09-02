@@ -5,6 +5,7 @@ import 'package:drift_flutter/drift_flutter.dart';
 import 'package:uuid/uuid.dart';
 
 import '../sync/sync_models.dart';
+import '../sync/schedule_sync_payload.dart';
 import '../sync/workout_sync_payload.dart';
 
 part 'app_db.g.dart';
@@ -230,6 +231,27 @@ class AppointmentWithClient {
   final Appointment appointment;
   final Client client;
   AppointmentWithClient(this.appointment, this.client);
+}
+
+class ClientAppointmentsWeekRange {
+  const ClientAppointmentsWeekRange({
+    required this.fromInclusive,
+    required this.toExclusive,
+  });
+
+  final DateTime fromInclusive;
+  final DateTime toExclusive;
+}
+
+ClientAppointmentsWeekRange clientAppointmentsWeekRange(DateTime now) {
+  final day = DateTime(now.year, now.month, now.day);
+  final monday = day.weekday == DateTime.sunday
+      ? day.add(const Duration(days: 1))
+      : day.subtract(Duration(days: day.weekday - DateTime.monday));
+  return ClientAppointmentsWeekRange(
+    fromInclusive: monday,
+    toExclusive: DateTime(monday.year, monday.month, monday.day + 6),
+  );
 }
 
 class PaymentReminderWithClient {
@@ -1332,6 +1354,32 @@ class AppDb extends _$AppDb {
     );
   }
 
+  Future<ScheduleSyncPayload?> buildScheduleSyncPayload(
+    String clientExternalId,
+  ) async {
+    final normalizedId = clientExternalId.trim();
+    if (normalizedId.isEmpty) return null;
+    final client =
+        await (select(clients)
+              ..where((row) => row.externalId.equals(normalizedId))
+              ..limit(1))
+            .getSingleOrNull();
+    if (client == null) return null;
+
+    final range = clientAppointmentsWeekRange(DateTime.now());
+    final appointments = await getAppointmentsForClientInRange(
+      clientId: client.id,
+      fromInclusive: range.fromInclusive,
+      toExclusive: range.toExclusive,
+    );
+    return ScheduleSyncPayload.fromRange(
+      clientExternalId: normalizedId,
+      fromInclusive: range.fromInclusive,
+      toExclusive: range.toExclusive,
+      appointmentStarts: [for (final item in appointments) item.startAt],
+    );
+  }
+
   Future<WorkoutSyncQueueRebuildPreview>
   analyzeWorkoutSyncQueueRebuild() async {
     final sessions =
@@ -1520,6 +1568,19 @@ class AppDb extends _$AppDb {
     );
   }
 
+  Future<SyncQueueEntry> enqueueScheduleSync(String clientExternalId) async {
+    final payload = await buildScheduleSyncPayload(clientExternalId);
+    if (payload == null) {
+      throw StateError('Клиент для синхронизации расписания не найден');
+    }
+    return upsertSyncQueueTask(
+      entityType: SyncEntityTypes.client,
+      entityExternalId: payload.clientExternalId,
+      operation: SyncOperations.scheduleUpsert,
+      payload: payload.encode(),
+    );
+  }
+
   Future<SyncQueueEntry> upsertSyncQueueTask({
     required String entityType,
     required String entityExternalId,
@@ -1578,6 +1639,22 @@ class AppDb extends _$AppDb {
     } catch (_) {
       // Локальная тренировка уже зафиксирована. Ошибка инфраструктуры sync
       // не должна отменять или скрывать её от пользователя.
+    }
+  }
+
+  Future<void> _enqueueScheduleForClientSafely(String clientId) async {
+    try {
+      final client =
+          await (select(clients)
+                ..where((row) => row.id.equals(clientId))
+                ..limit(1))
+              .getSingleOrNull();
+      final clientExternalId = client?.externalId?.trim();
+      if (clientExternalId == null || clientExternalId.isEmpty) return;
+      await enqueueScheduleSync(clientExternalId);
+    } catch (_) {
+      // Календарь остаётся offline-first: сбой sync-инфраструктуры не должен
+      // отменять уже выполненное локальное изменение расписания.
     }
   }
 
@@ -2641,6 +2718,22 @@ class AppDb extends _$AppDb {
     return q.watch();
   }
 
+  Future<List<Appointment>> getAppointmentsForClientInRange({
+    required String clientId,
+    required DateTime fromInclusive,
+    required DateTime toExclusive,
+  }) {
+    final q = select(appointments)
+      ..where(
+        (t) =>
+            t.clientId.equals(clientId) &
+            t.startAt.isBiggerOrEqualValue(fromInclusive) &
+            t.startAt.isSmallerThanValue(toExclusive),
+      )
+      ..orderBy([(t) => OrderingTerm.asc(t.startAt)]);
+    return q.get();
+  }
+
   Future<List<Appointment>> getAppointmentsForClientOnDay({
     required String clientId,
     required DateTime day,
@@ -2673,18 +2766,34 @@ class AppDb extends _$AppDb {
         note: note == null ? const Value.absent() : Value(note),
       ),
     );
+    await _enqueueScheduleForClientSafely(clientId);
   }
 
-  Future<int> deleteAppointmentById(String id) =>
-      (delete(appointments)..where((t) => t.id.equals(id))).go();
+  Future<int> deleteAppointmentById(String id) async {
+    final appointment = await (select(
+      appointments,
+    )..where((t) => t.id.equals(id))).getSingleOrNull();
+    final deleted = await (delete(
+      appointments,
+    )..where((t) => t.id.equals(id))).go();
+    if (deleted > 0 && appointment != null) {
+      await _enqueueScheduleForClientSafely(appointment.clientId);
+    }
+    return deleted;
+  }
 
   Future<void> updateAppointmentTime({
     required String id,
     required DateTime newStartAt,
   }) async {
-    await (update(appointments)..where((t) => t.id.equals(id))).write(
-      AppointmentsCompanion(startAt: Value(newStartAt)),
-    );
+    final appointment = await (select(
+      appointments,
+    )..where((t) => t.id.equals(id))).getSingleOrNull();
+    final updated = await (update(appointments)..where((t) => t.id.equals(id)))
+        .write(AppointmentsCompanion(startAt: Value(newStartAt)));
+    if (updated > 0 && appointment != null) {
+      await _enqueueScheduleForClientSafely(appointment.clientId);
+    }
   }
 
   Future<void> updateAppointmentNote({required String id, String? note}) async {
@@ -2858,13 +2967,18 @@ class AppDb extends _$AppDb {
   Future<int> deleteFutureAppointmentsForClient({
     required String clientId,
     required DateTime from,
-  }) {
-    return (delete(appointments)..where(
-          (t) =>
-              t.clientId.equals(clientId) &
-              t.startAt.isBiggerOrEqualValue(from),
-        ))
-        .go();
+  }) async {
+    final deleted =
+        await (delete(appointments)..where(
+              (t) =>
+                  t.clientId.equals(clientId) &
+                  t.startAt.isBiggerOrEqualValue(from),
+            ))
+            .go();
+    if (deleted > 0) {
+      await _enqueueScheduleForClientSafely(clientId);
+    }
+    return deleted;
   }
 
   Future<void> addAppointmentIfNotExists({
