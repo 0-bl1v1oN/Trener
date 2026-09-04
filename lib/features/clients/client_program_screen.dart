@@ -9,7 +9,7 @@ import 'package:share_plus/share_plus.dart';
 
 import '../../app/app_db_scope.dart';
 import '../../db/app_db.dart';
-import '../workouts/exercise_change_flow.dart';
+import '../exercises/exercise_selector_sheet.dart';
 import '../workouts/workout_screen.dart';
 
 class ClientProgramScreen extends StatefulWidget {
@@ -876,46 +876,13 @@ class _WorkoutPreviewSheetState extends State<WorkoutPreviewSheet> {
   }
 
   Future<void> _renameExercise(WorkoutExerciseVm e) async {
-    final ctrl = TextEditingController(text: e.name);
-    final next = await showDialog<String>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Переименовать упражнение'),
-        content: TextField(
-          controller: ctrl,
-          autofocus: true,
-          decoration: const InputDecoration(
-            labelText: 'Новое название',
-            border: OutlineInputBorder(),
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Отмена'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(context, ctrl.text.trim()),
-            child: const Text('Сохранить'),
-          ),
-        ],
-      ),
-    );
-
-    final normalized = next?.trim() ?? '';
-    if (normalized.isEmpty || normalized == e.name.trim()) return;
-
-    if (!mounted) return;
-    final kind = await showExerciseChangeDialog(context);
-    if (kind == null || !mounted) return;
-
     final db = AppDbScope.of(context);
-    await applyClientExerciseNameChange(
-      db: db,
+    final selected = await showExerciseSelector(context, database: db);
+    if (selected == null) return;
+    await db.setExerciseForClientSlot(
       clientId: widget.clientId,
       templateExerciseId: e.templateExerciseId,
-      newName: normalized,
-      kind: kind,
+      exerciseIdentityId: selected.id,
     );
     await _patchExercises((current) {
       return current
@@ -925,7 +892,7 @@ class _WorkoutPreviewSheetState extends State<WorkoutPreviewSheet> {
               templateExerciseId: item.templateExerciseId,
               templateId: item.templateId,
               orderIndex: item.orderIndex,
-              name: normalized,
+              name: selected.canonicalName,
               lastWeightKg: item.lastWeightKg,
               lastReps: item.lastReps,
               supersetGroup: item.supersetGroup,
@@ -977,35 +944,9 @@ class _WorkoutPreviewSheetState extends State<WorkoutPreviewSheet> {
   }
 
   Future<void> _addExercise(List<WorkoutExerciseVm> current) async {
-    final ctrl = TextEditingController();
-    final name = await showDialog<String>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Новое упражнение'),
-        content: TextField(
-          controller: ctrl,
-          autofocus: true,
-          decoration: const InputDecoration(
-            labelText: 'Название упражнения',
-            border: OutlineInputBorder(),
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Отмена'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(context, ctrl.text.trim()),
-            child: const Text('Добавить'),
-          ),
-        ],
-      ),
-    );
-
-    if (name == null || name.trim().isEmpty) return;
-
     final db = AppDbScope.of(context);
+    final selected = await showExerciseSelector(context, database: db);
+    if (selected == null) return;
     final templateId = current.isNotEmpty
         ? current.first.templateId
         : await db.getTemplateIdForClientTemplateIdx(
@@ -1024,7 +965,7 @@ class _WorkoutPreviewSheetState extends State<WorkoutPreviewSheet> {
     await db.addWorkoutExerciseForClient(
       clientId: widget.clientId,
       templateId: templateId,
-      name: name,
+      exerciseIdentityId: selected.id,
     );
     if (!mounted) return;
     await _refresh();

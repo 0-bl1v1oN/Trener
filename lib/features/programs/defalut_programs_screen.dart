@@ -3,7 +3,8 @@ import 'package:flutter/material.dart';
 
 import '../../app/app_db_scope.dart';
 import '../../db/app_db.dart';
-import '../workouts/exercise_change_flow.dart';
+import '../exercises/exercise_selector_sheet.dart';
+import 'exercise_catalog_screen.dart';
 
 class DefaultProgramsScreen extends StatefulWidget {
   const DefaultProgramsScreen({super.key});
@@ -12,10 +13,14 @@ class DefaultProgramsScreen extends StatefulWidget {
   State<DefaultProgramsScreen> createState() => _DefaultProgramsScreenState();
 }
 
-class _DefaultProgramsScreenState extends State<DefaultProgramsScreen> {
+class _DefaultProgramsScreenState extends State<DefaultProgramsScreen>
+    with SingleTickerProviderStateMixin {
   bool _loaded = false;
   late Future<List<WorkoutTemplate>> _maleFuture;
   late Future<List<WorkoutTemplate>> _femaleFuture;
+  late final TabController _tabController;
+  final ExerciseCatalogController _exerciseCatalogController =
+      ExerciseCatalogController();
 
   static const List<String> _trialExercises = [
     'Тяга верхнего блока параллельным хватом',
@@ -24,6 +29,25 @@ class _DefaultProgramsScreenState extends State<DefaultProgramsScreen> {
     'Жим ногами',
     'Выпады на месте',
   ];
+
+  @override
+  void initState() {
+    super.initState();
+    _tabController = TabController(length: 4, vsync: this)
+      ..addListener(_handleTabChange);
+  }
+
+  void _handleTabChange() {
+    if (mounted) setState(() {});
+  }
+
+  @override
+  void dispose() {
+    _tabController
+      ..removeListener(_handleTabChange)
+      ..dispose();
+    super.dispose();
+  }
 
   @override
   void didChangeDependencies() {
@@ -43,36 +67,37 @@ class _DefaultProgramsScreenState extends State<DefaultProgramsScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return DefaultTabController(
-      length: 3,
-      child: Scaffold(
-        appBar: AppBar(
-          title: const Text('Программа'),
-          actions: [
-            IconButton(
-              onPressed: _reload,
-              icon: const Icon(Icons.refresh),
-              tooltip: 'Обновить',
-            ),
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Программа'),
+        actions: [
+          if (_tabController.index == 3)
+            ExerciseCatalogTopActions(controller: _exerciseCatalogController),
+        ],
+        bottom: TabBar(
+          controller: _tabController,
+          tabs: const [
+            Tab(text: 'Мужчины'),
+            Tab(text: 'Женщины'),
+            Tab(text: 'Пробная'),
+            Tab(text: 'База упражнений'),
           ],
-          bottom: TabBar(
-            tabs: const [
-              Tab(text: 'Мужчины'),
-              Tab(text: 'Женщины'),
-              Tab(text: 'Пробная'),
-            ],
-            indicatorSize: TabBarIndicatorSize.tab,
-            indicatorWeight: 3,
-            labelStyle: const TextStyle(fontWeight: FontWeight.w700),
+          indicatorSize: TabBarIndicatorSize.tab,
+          indicatorWeight: 3,
+          labelStyle: const TextStyle(fontWeight: FontWeight.w700),
+        ),
+      ),
+      body: TabBarView(
+        controller: _tabController,
+        children: [
+          _ProgramTemplatesTab(future: _maleFuture),
+          _ProgramTemplatesTab(future: _femaleFuture),
+          const _TrialProgramTab(exercises: _trialExercises),
+          ExerciseCatalogScreen(
+            embedded: true,
+            controller: _exerciseCatalogController,
           ),
-        ),
-        body: TabBarView(
-          children: [
-            _ProgramTemplatesTab(future: _maleFuture),
-            _ProgramTemplatesTab(future: _femaleFuture),
-            const _TrialProgramTab(exercises: _trialExercises),
-          ],
-        ),
+        ],
       ),
     );
   }
@@ -162,10 +187,6 @@ class _EditableTemplateTileState extends State<_EditableTemplateTile> {
   late Future<List<WorkoutTemplateExercise>> _exFuture;
   AppDb? _db;
   bool _futureInitialized = false;
-  final Map<int, TextEditingController> _nameCtrls = {};
-  final Map<int, FocusNode> _nameFocusNodes = {};
-  final Map<int, String> _persistedExerciseNames = {};
-  final Set<int> _nameSaveInFlight = <int>{};
   List<WorkoutTemplateExercise> _lastExercises = const [];
 
   @override
@@ -204,171 +225,17 @@ class _EditableTemplateTileState extends State<_EditableTemplateTile> {
 
   @override
   void dispose() {
-    for (final c in _nameCtrls.values) {
-      c.dispose();
-    }
-    for (final f in _nameFocusNodes.values) {
-      f.dispose();
-    }
     super.dispose();
   }
 
-  TextEditingController _nameController(WorkoutTemplateExercise e) {
-    final id = e.id;
-    _persistedExerciseNames.putIfAbsent(id, () => e.name);
-
-    final controller = _nameCtrls.putIfAbsent(id, () {
-      return TextEditingController(text: e.name);
-    });
-
-    final focusNode = _nameFocusNodes.putIfAbsent(id, () {
-      final f = FocusNode();
-      f.addListener(() {
-        if (f.hasFocus) {
-          final c = _nameCtrls[id];
-          if (c == null) return;
-          c.selection = TextSelection(
-            baseOffset: 0,
-            extentOffset: c.text.length,
-          );
-          return;
-        }
-
-        unawaited(_saveExerciseName(id));
-
-        final c = _nameCtrls[id];
-        if (c == null) return;
-        final trimmed = c.text.trim();
-        if (trimmed.isNotEmpty) return;
-
-        final fallback = _persistedExerciseNames[id] ?? e.name;
-        if (c.text == fallback) return;
-        c.value = TextEditingValue(
-          text: fallback,
-          selection: TextSelection.collapsed(offset: fallback.length),
-        );
-      });
-      return f;
-    });
-
-    if (!focusNode.hasFocus && controller.text != e.name) {
-      controller.value = TextEditingValue(
-        text: e.name,
-        selection: TextSelection.collapsed(offset: e.name.length),
-      );
-      _persistedExerciseNames[id] = e.name;
-    }
-
-    return controller;
-  }
-
-  FocusNode _nameFocusNode(int templateExerciseId) {
-    return _nameFocusNodes.putIfAbsent(templateExerciseId, FocusNode.new);
-  }
-
-  Future<void> _saveExerciseName(int templateExerciseId) async {
-    if (!mounted) return;
-    final controller = _nameCtrls[templateExerciseId];
-    if (controller == null) return;
-
-    final nextName = controller.text.trim();
-    if (nextName.isEmpty) return;
-
-    final savedName = _persistedExerciseNames[templateExerciseId];
-    if (nextName == savedName?.trim()) return;
-    if (_nameSaveInFlight.contains(templateExerciseId)) return;
-
-    _nameSaveInFlight.add(templateExerciseId);
-    try {
-      final db = AppDbScope.of(context);
-      final kind = await showExerciseChangeDialog(context);
-      if (!mounted) return;
-      if (kind == null) {
-        _restoreExerciseName(templateExerciseId, savedName);
-        return;
-      }
-      await applyTemplateExerciseNameChange(
-        db: db,
-        templateExerciseId: templateExerciseId,
-        newName: nextName,
-        kind: kind,
-      );
-      _persistedExerciseNames[templateExerciseId] = nextName;
-    } finally {
-      _nameSaveInFlight.remove(templateExerciseId);
-    }
-  }
-
-  void _restoreExerciseName(int templateExerciseId, String? savedName) {
-    final controller = _nameCtrls[templateExerciseId];
-    if (controller == null || savedName == null) return;
-    controller.value = TextEditingValue(
-      text: savedName,
-      selection: TextSelection.collapsed(offset: savedName.length),
-    );
-  }
-
   Future<void> _replaceExerciseNameByGender(WorkoutTemplateExercise e) async {
-    final fromController = TextEditingController(text: e.name);
-    final toController = TextEditingController();
-
-    final next = await showDialog<String>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Заменить упражнение'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            TextField(
-              controller: fromController,
-              readOnly: true,
-              decoration: const InputDecoration(
-                labelText: 'Заменяем',
-                border: OutlineInputBorder(),
-              ),
-            ),
-            const SizedBox(height: 10),
-            TextField(
-              controller: toController,
-              autofocus: true,
-              decoration: const InputDecoration(
-                labelText: 'На что заменить',
-                border: OutlineInputBorder(),
-              ),
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Отмена'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(context, toController.text.trim()),
-            child: const Text('Заменить'),
-          ),
-        ],
-      ),
-    );
-
-    final replacement = next?.trim() ?? '';
-    if (replacement.isEmpty || replacement == e.name.trim()) return;
-
-    if (!mounted) return;
-    final kind = await showExerciseChangeDialog(context);
-    if (kind == null || !mounted) return;
-
     final db = AppDbScope.of(context);
-    if (kind == ExerciseChangeKind.newExercise) {
-      await db.replaceTemplateExerciseIdentitiesByGenderName(
-        gender: widget.template.gender,
-        exerciseName: e.name,
-      );
-    }
-    final changed = await db.replaceTemplateExerciseNameByGender(
+    final selected = await showExerciseSelector(context, database: db);
+    if (selected == null || selected.canonicalName == e.name) return;
+    final changed = await db.replaceTemplateExerciseSlotsByGenderName(
       gender: widget.template.gender,
       oldName: e.name,
-      newName: replacement,
+      exerciseIdentityId: selected.id,
     );
 
     if (!mounted) return;
@@ -421,38 +288,12 @@ class _EditableTemplateTileState extends State<_EditableTemplateTile> {
   }
 
   Future<void> _addExercise() async {
-    final ctrl = TextEditingController();
-    final name = await showDialog<String>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Новое упражнение'),
-        content: TextField(
-          controller: ctrl,
-          autofocus: true,
-          decoration: const InputDecoration(
-            labelText: 'Название упражнения',
-            border: OutlineInputBorder(),
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Отмена'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(context, ctrl.text.trim()),
-            child: const Text('Добавить'),
-          ),
-        ],
-      ),
-    );
-
-    if (name == null || name.trim().isEmpty) return;
-
     final db = AppDbScope.of(context);
+    final selected = await showExerciseSelector(context, database: db);
+    if (selected == null) return;
     await db.addWorkoutTemplateExercise(
       templateId: widget.template.id,
-      name: name,
+      exerciseIdentityId: selected.id,
     );
 
     if (!mounted) return;
@@ -555,17 +396,34 @@ class _EditableTemplateTileState extends State<_EditableTemplateTile> {
                             Row(
                               children: [
                                 Expanded(
-                                  child: TextField(
-                                    controller: _nameController(e),
-                                    focusNode: _nameFocusNode(e.id),
-
-                                    decoration: const InputDecoration(
-                                      border: InputBorder.none,
-                                      isDense: true,
-                                      contentPadding: EdgeInsets.zero,
-                                    ),
-                                    style: theme.textTheme.titleSmall?.copyWith(
-                                      fontWeight: FontWeight.w700,
+                                  child: InkWell(
+                                    borderRadius: BorderRadius.circular(8),
+                                    onTap: () async {
+                                      final selected =
+                                          await showExerciseSelector(
+                                            context,
+                                            database: AppDbScope.of(context),
+                                          );
+                                      if (selected == null) return;
+                                      await AppDbScope.of(
+                                        context,
+                                      ).setExerciseForTemplateSlot(
+                                        templateExerciseId: e.id,
+                                        exerciseIdentityId: selected.id,
+                                      );
+                                      if (mounted) await _refreshExercises();
+                                    },
+                                    child: Padding(
+                                      padding: const EdgeInsets.symmetric(
+                                        vertical: 6,
+                                      ),
+                                      child: Text(
+                                        e.name,
+                                        style: theme.textTheme.titleSmall
+                                            ?.copyWith(
+                                              fontWeight: FontWeight.w700,
+                                            ),
+                                      ),
                                     ),
                                   ),
                                 ),

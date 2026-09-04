@@ -74,7 +74,7 @@ void main() {
         final version = await db
             .customSelect('PRAGMA user_version')
             .getSingle();
-        expect(version.read<int>('user_version'), 11);
+        expect(version.read<int>('user_version'), 13);
       },
     );
 
@@ -92,7 +92,7 @@ void main() {
       addTearDown(db.close);
 
       final version = await db.customSelect('PRAGMA user_version').getSingle();
-      expect(version.read<int>('user_version'), 11);
+      expect(version.read<int>('user_version'), 13);
       expect(await _count(db, 'clients'), 2);
       expect(await _count(db, 'workout_sessions'), 2);
       expect(await _count(db, 'workout_exercise_results'), 2);
@@ -104,6 +104,89 @@ void main() {
         '44444444-4444-4444-8444-444444444444',
       });
       expect(await db.select(db.syncLog).get(), isEmpty);
+    });
+
+    test('schema 12 to 13 only adds merge infrastructure', () async {
+      final temp = await Directory.systemTemp.createTemp(
+        'trener-v12-merge-migration-',
+      );
+      addTearDown(() => temp.delete(recursive: true));
+      final file = File(
+        '${temp.path}${Platform.pathSeparator}schema-v12.sqlite',
+      );
+
+      var db = AppDb.forTesting(NativeDatabase(file));
+      await db.getActiveExercises();
+      await db
+          .into(db.exerciseIdentities)
+          .insert(
+            ExerciseIdentitiesCompanion.insert(
+              externalId: 'aaaa0000-0000-4000-8000-000000000001',
+              canonicalName: const Value('Legacy duplicate'),
+              normalizedName: const Value('legacy duplicate'),
+            ),
+          );
+      await db
+          .into(db.exerciseIdentities)
+          .insert(
+            ExerciseIdentitiesCompanion.insert(
+              externalId: 'aaaa0000-0000-4000-8000-000000000002',
+              canonicalName: const Value('Legacy duplicate'),
+              normalizedName: const Value('legacy duplicate'),
+            ),
+          );
+      final countBefore = await _count(db, 'exercise_identities');
+      await db.close();
+
+      final sqliteDb = sqlite.sqlite3.open(file.path);
+      try {
+        sqliteDb.execute('DROP TABLE exercise_identity_aliases');
+        sqliteDb.execute(
+          'ALTER TABLE exercise_identities RENAME TO exercise_identities_v13',
+        );
+        sqliteDb.execute('''
+          CREATE TABLE exercise_identities (
+            id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+            external_id TEXT NOT NULL,
+            canonical_name TEXT NOT NULL DEFAULT '',
+            normalized_name TEXT NOT NULL DEFAULT '',
+            status TEXT NOT NULL DEFAULT 'ACTIVE',
+            created_at INTEGER NOT NULL DEFAULT (strftime('%s', CURRENT_TIMESTAMP)),
+            updated_at INTEGER,
+            archived_at INTEGER
+          )
+        ''');
+        sqliteDb.execute('''
+          INSERT INTO exercise_identities
+            (id, external_id, canonical_name, normalized_name, status,
+             created_at, updated_at, archived_at)
+          SELECT id, external_id, canonical_name, normalized_name, status,
+                 created_at, updated_at, archived_at
+          FROM exercise_identities_v13
+        ''');
+        sqliteDb.execute('DROP TABLE exercise_identities_v13');
+        sqliteDb.execute('PRAGMA user_version = 12');
+      } finally {
+        sqliteDb.dispose();
+      }
+
+      db = AppDb.forTesting(NativeDatabase(file));
+      addTearDown(db.close);
+      final version = await db.customSelect('PRAGMA user_version').getSingle();
+      expect(version.read<int>('user_version'), 13);
+      expect(await _count(db, 'exercise_identities'), countBefore);
+      expect(await db.select(db.exerciseIdentityAliases).get(), isEmpty);
+      final duplicates = (await db.getExerciseDuplicateGroups()).where(
+        (group) => group.normalizedName == 'legacy duplicate',
+      );
+      expect(duplicates, hasLength(1));
+      expect(duplicates.single.items, hasLength(2));
+      expect(
+        duplicates.single.items.every(
+          (item) => item.exercise.mergedIntoIdentityId == null,
+        ),
+        isTrue,
+      );
     });
 
     test(

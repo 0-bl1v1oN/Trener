@@ -2480,6 +2480,16 @@ class $WorkoutTemplateExercisesTable extends WorkoutTemplateExercises
     type: DriftSqlType.string,
     requiredDuringInsert: true,
   );
+  static const VerificationMeta _exerciseIdentityIdMeta =
+      const VerificationMeta('exerciseIdentityId');
+  @override
+  late final GeneratedColumn<int> exerciseIdentityId = GeneratedColumn<int>(
+    'exercise_identity_id',
+    aliasedName,
+    true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+  );
   @override
   List<GeneratedColumn> get $columns => [
     id,
@@ -2487,6 +2497,7 @@ class $WorkoutTemplateExercisesTable extends WorkoutTemplateExercises
     orderIndex,
     groupId,
     name,
+    exerciseIdentityId,
   ];
   @override
   String get aliasedName => _alias ?? actualTableName;
@@ -2533,6 +2544,15 @@ class $WorkoutTemplateExercisesTable extends WorkoutTemplateExercises
     } else if (isInserting) {
       context.missing(_nameMeta);
     }
+    if (data.containsKey('exercise_identity_id')) {
+      context.handle(
+        _exerciseIdentityIdMeta,
+        exerciseIdentityId.isAcceptableOrUnknown(
+          data['exercise_identity_id']!,
+          _exerciseIdentityIdMeta,
+        ),
+      );
+    }
     return context;
   }
 
@@ -2569,6 +2589,10 @@ class $WorkoutTemplateExercisesTable extends WorkoutTemplateExercises
         DriftSqlType.string,
         data['${effectivePrefix}name'],
       )!,
+      exerciseIdentityId: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}exercise_identity_id'],
+      ),
     );
   }
 
@@ -2585,12 +2609,14 @@ class WorkoutTemplateExercise extends DataClass
   final int orderIndex;
   final int? groupId;
   final String name;
+  final int? exerciseIdentityId;
   const WorkoutTemplateExercise({
     required this.id,
     required this.templateId,
     required this.orderIndex,
     this.groupId,
     required this.name,
+    this.exerciseIdentityId,
   });
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
@@ -2602,6 +2628,9 @@ class WorkoutTemplateExercise extends DataClass
       map['group_id'] = Variable<int>(groupId);
     }
     map['name'] = Variable<String>(name);
+    if (!nullToAbsent || exerciseIdentityId != null) {
+      map['exercise_identity_id'] = Variable<int>(exerciseIdentityId);
+    }
     return map;
   }
 
@@ -2614,6 +2643,9 @@ class WorkoutTemplateExercise extends DataClass
           ? const Value.absent()
           : Value(groupId),
       name: Value(name),
+      exerciseIdentityId: exerciseIdentityId == null && nullToAbsent
+          ? const Value.absent()
+          : Value(exerciseIdentityId),
     );
   }
 
@@ -2628,6 +2660,7 @@ class WorkoutTemplateExercise extends DataClass
       orderIndex: serializer.fromJson<int>(json['orderIndex']),
       groupId: serializer.fromJson<int?>(json['groupId']),
       name: serializer.fromJson<String>(json['name']),
+      exerciseIdentityId: serializer.fromJson<int?>(json['exerciseIdentityId']),
     );
   }
   @override
@@ -2639,6 +2672,7 @@ class WorkoutTemplateExercise extends DataClass
       'orderIndex': serializer.toJson<int>(orderIndex),
       'groupId': serializer.toJson<int?>(groupId),
       'name': serializer.toJson<String>(name),
+      'exerciseIdentityId': serializer.toJson<int?>(exerciseIdentityId),
     };
   }
 
@@ -2648,12 +2682,16 @@ class WorkoutTemplateExercise extends DataClass
     int? orderIndex,
     Value<int?> groupId = const Value.absent(),
     String? name,
+    Value<int?> exerciseIdentityId = const Value.absent(),
   }) => WorkoutTemplateExercise(
     id: id ?? this.id,
     templateId: templateId ?? this.templateId,
     orderIndex: orderIndex ?? this.orderIndex,
     groupId: groupId.present ? groupId.value : this.groupId,
     name: name ?? this.name,
+    exerciseIdentityId: exerciseIdentityId.present
+        ? exerciseIdentityId.value
+        : this.exerciseIdentityId,
   );
   WorkoutTemplateExercise copyWithCompanion(
     WorkoutTemplateExercisesCompanion data,
@@ -2668,6 +2706,9 @@ class WorkoutTemplateExercise extends DataClass
           : this.orderIndex,
       groupId: data.groupId.present ? data.groupId.value : this.groupId,
       name: data.name.present ? data.name.value : this.name,
+      exerciseIdentityId: data.exerciseIdentityId.present
+          ? data.exerciseIdentityId.value
+          : this.exerciseIdentityId,
     );
   }
 
@@ -2678,13 +2719,21 @@ class WorkoutTemplateExercise extends DataClass
           ..write('templateId: $templateId, ')
           ..write('orderIndex: $orderIndex, ')
           ..write('groupId: $groupId, ')
-          ..write('name: $name')
+          ..write('name: $name, ')
+          ..write('exerciseIdentityId: $exerciseIdentityId')
           ..write(')'))
         .toString();
   }
 
   @override
-  int get hashCode => Object.hash(id, templateId, orderIndex, groupId, name);
+  int get hashCode => Object.hash(
+    id,
+    templateId,
+    orderIndex,
+    groupId,
+    name,
+    exerciseIdentityId,
+  );
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
@@ -2693,7 +2742,8 @@ class WorkoutTemplateExercise extends DataClass
           other.templateId == this.templateId &&
           other.orderIndex == this.orderIndex &&
           other.groupId == this.groupId &&
-          other.name == this.name);
+          other.name == this.name &&
+          other.exerciseIdentityId == this.exerciseIdentityId);
 }
 
 class WorkoutTemplateExercisesCompanion
@@ -2703,12 +2753,14 @@ class WorkoutTemplateExercisesCompanion
   final Value<int> orderIndex;
   final Value<int?> groupId;
   final Value<String> name;
+  final Value<int?> exerciseIdentityId;
   const WorkoutTemplateExercisesCompanion({
     this.id = const Value.absent(),
     this.templateId = const Value.absent(),
     this.orderIndex = const Value.absent(),
     this.groupId = const Value.absent(),
     this.name = const Value.absent(),
+    this.exerciseIdentityId = const Value.absent(),
   });
   WorkoutTemplateExercisesCompanion.insert({
     this.id = const Value.absent(),
@@ -2716,6 +2768,7 @@ class WorkoutTemplateExercisesCompanion
     required int orderIndex,
     this.groupId = const Value.absent(),
     required String name,
+    this.exerciseIdentityId = const Value.absent(),
   }) : templateId = Value(templateId),
        orderIndex = Value(orderIndex),
        name = Value(name);
@@ -2725,6 +2778,7 @@ class WorkoutTemplateExercisesCompanion
     Expression<int>? orderIndex,
     Expression<int>? groupId,
     Expression<String>? name,
+    Expression<int>? exerciseIdentityId,
   }) {
     return RawValuesInsertable({
       if (id != null) 'id': id,
@@ -2732,6 +2786,8 @@ class WorkoutTemplateExercisesCompanion
       if (orderIndex != null) 'order_index': orderIndex,
       if (groupId != null) 'group_id': groupId,
       if (name != null) 'name': name,
+      if (exerciseIdentityId != null)
+        'exercise_identity_id': exerciseIdentityId,
     });
   }
 
@@ -2741,6 +2797,7 @@ class WorkoutTemplateExercisesCompanion
     Value<int>? orderIndex,
     Value<int?>? groupId,
     Value<String>? name,
+    Value<int?>? exerciseIdentityId,
   }) {
     return WorkoutTemplateExercisesCompanion(
       id: id ?? this.id,
@@ -2748,6 +2805,7 @@ class WorkoutTemplateExercisesCompanion
       orderIndex: orderIndex ?? this.orderIndex,
       groupId: groupId ?? this.groupId,
       name: name ?? this.name,
+      exerciseIdentityId: exerciseIdentityId ?? this.exerciseIdentityId,
     );
   }
 
@@ -2769,6 +2827,9 @@ class WorkoutTemplateExercisesCompanion
     if (name.present) {
       map['name'] = Variable<String>(name.value);
     }
+    if (exerciseIdentityId.present) {
+      map['exercise_identity_id'] = Variable<int>(exerciseIdentityId.value);
+    }
     return map;
   }
 
@@ -2779,7 +2840,8 @@ class WorkoutTemplateExercisesCompanion
           ..write('templateId: $templateId, ')
           ..write('orderIndex: $orderIndex, ')
           ..write('groupId: $groupId, ')
-          ..write('name: $name')
+          ..write('name: $name, ')
+          ..write('exerciseIdentityId: $exerciseIdentityId')
           ..write(')'))
         .toString();
   }
@@ -3853,12 +3915,23 @@ class $ClientTemplateExerciseOverridesTable
     type: DriftSqlType.int,
     requiredDuringInsert: false,
   );
+  static const VerificationMeta _exerciseIdentityIdMeta =
+      const VerificationMeta('exerciseIdentityId');
+  @override
+  late final GeneratedColumn<int> exerciseIdentityId = GeneratedColumn<int>(
+    'exercise_identity_id',
+    aliasedName,
+    true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+  );
   @override
   List<GeneratedColumn> get $columns => [
     id,
     clientId,
     templateExerciseId,
     supersetGroup,
+    exerciseIdentityId,
   ];
   @override
   String get aliasedName => _alias ?? actualTableName;
@@ -3903,6 +3976,15 @@ class $ClientTemplateExerciseOverridesTable
         ),
       );
     }
+    if (data.containsKey('exercise_identity_id')) {
+      context.handle(
+        _exerciseIdentityIdMeta,
+        exerciseIdentityId.isAcceptableOrUnknown(
+          data['exercise_identity_id']!,
+          _exerciseIdentityIdMeta,
+        ),
+      );
+    }
     return context;
   }
 
@@ -3935,6 +4017,10 @@ class $ClientTemplateExerciseOverridesTable
         DriftSqlType.int,
         data['${effectivePrefix}superset_group'],
       ),
+      exerciseIdentityId: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}exercise_identity_id'],
+      ),
     );
   }
 
@@ -3950,11 +4036,13 @@ class ClientTemplateExerciseOverride extends DataClass
   final String clientId;
   final int templateExerciseId;
   final int? supersetGroup;
+  final int? exerciseIdentityId;
   const ClientTemplateExerciseOverride({
     required this.id,
     required this.clientId,
     required this.templateExerciseId,
     this.supersetGroup,
+    this.exerciseIdentityId,
   });
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
@@ -3964,6 +4052,9 @@ class ClientTemplateExerciseOverride extends DataClass
     map['template_exercise_id'] = Variable<int>(templateExerciseId);
     if (!nullToAbsent || supersetGroup != null) {
       map['superset_group'] = Variable<int>(supersetGroup);
+    }
+    if (!nullToAbsent || exerciseIdentityId != null) {
+      map['exercise_identity_id'] = Variable<int>(exerciseIdentityId);
     }
     return map;
   }
@@ -3976,6 +4067,9 @@ class ClientTemplateExerciseOverride extends DataClass
       supersetGroup: supersetGroup == null && nullToAbsent
           ? const Value.absent()
           : Value(supersetGroup),
+      exerciseIdentityId: exerciseIdentityId == null && nullToAbsent
+          ? const Value.absent()
+          : Value(exerciseIdentityId),
     );
   }
 
@@ -3989,6 +4083,7 @@ class ClientTemplateExerciseOverride extends DataClass
       clientId: serializer.fromJson<String>(json['clientId']),
       templateExerciseId: serializer.fromJson<int>(json['templateExerciseId']),
       supersetGroup: serializer.fromJson<int?>(json['supersetGroup']),
+      exerciseIdentityId: serializer.fromJson<int?>(json['exerciseIdentityId']),
     );
   }
   @override
@@ -3999,6 +4094,7 @@ class ClientTemplateExerciseOverride extends DataClass
       'clientId': serializer.toJson<String>(clientId),
       'templateExerciseId': serializer.toJson<int>(templateExerciseId),
       'supersetGroup': serializer.toJson<int?>(supersetGroup),
+      'exerciseIdentityId': serializer.toJson<int?>(exerciseIdentityId),
     };
   }
 
@@ -4007,6 +4103,7 @@ class ClientTemplateExerciseOverride extends DataClass
     String? clientId,
     int? templateExerciseId,
     Value<int?> supersetGroup = const Value.absent(),
+    Value<int?> exerciseIdentityId = const Value.absent(),
   }) => ClientTemplateExerciseOverride(
     id: id ?? this.id,
     clientId: clientId ?? this.clientId,
@@ -4014,6 +4111,9 @@ class ClientTemplateExerciseOverride extends DataClass
     supersetGroup: supersetGroup.present
         ? supersetGroup.value
         : this.supersetGroup,
+    exerciseIdentityId: exerciseIdentityId.present
+        ? exerciseIdentityId.value
+        : this.exerciseIdentityId,
   );
   ClientTemplateExerciseOverride copyWithCompanion(
     ClientTemplateExerciseOverridesCompanion data,
@@ -4027,6 +4127,9 @@ class ClientTemplateExerciseOverride extends DataClass
       supersetGroup: data.supersetGroup.present
           ? data.supersetGroup.value
           : this.supersetGroup,
+      exerciseIdentityId: data.exerciseIdentityId.present
+          ? data.exerciseIdentityId.value
+          : this.exerciseIdentityId,
     );
   }
 
@@ -4036,14 +4139,20 @@ class ClientTemplateExerciseOverride extends DataClass
           ..write('id: $id, ')
           ..write('clientId: $clientId, ')
           ..write('templateExerciseId: $templateExerciseId, ')
-          ..write('supersetGroup: $supersetGroup')
+          ..write('supersetGroup: $supersetGroup, ')
+          ..write('exerciseIdentityId: $exerciseIdentityId')
           ..write(')'))
         .toString();
   }
 
   @override
-  int get hashCode =>
-      Object.hash(id, clientId, templateExerciseId, supersetGroup);
+  int get hashCode => Object.hash(
+    id,
+    clientId,
+    templateExerciseId,
+    supersetGroup,
+    exerciseIdentityId,
+  );
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
@@ -4051,7 +4160,8 @@ class ClientTemplateExerciseOverride extends DataClass
           other.id == this.id &&
           other.clientId == this.clientId &&
           other.templateExerciseId == this.templateExerciseId &&
-          other.supersetGroup == this.supersetGroup);
+          other.supersetGroup == this.supersetGroup &&
+          other.exerciseIdentityId == this.exerciseIdentityId);
 }
 
 class ClientTemplateExerciseOverridesCompanion
@@ -4060,17 +4170,20 @@ class ClientTemplateExerciseOverridesCompanion
   final Value<String> clientId;
   final Value<int> templateExerciseId;
   final Value<int?> supersetGroup;
+  final Value<int?> exerciseIdentityId;
   const ClientTemplateExerciseOverridesCompanion({
     this.id = const Value.absent(),
     this.clientId = const Value.absent(),
     this.templateExerciseId = const Value.absent(),
     this.supersetGroup = const Value.absent(),
+    this.exerciseIdentityId = const Value.absent(),
   });
   ClientTemplateExerciseOverridesCompanion.insert({
     this.id = const Value.absent(),
     required String clientId,
     required int templateExerciseId,
     this.supersetGroup = const Value.absent(),
+    this.exerciseIdentityId = const Value.absent(),
   }) : clientId = Value(clientId),
        templateExerciseId = Value(templateExerciseId);
   static Insertable<ClientTemplateExerciseOverride> custom({
@@ -4078,6 +4191,7 @@ class ClientTemplateExerciseOverridesCompanion
     Expression<String>? clientId,
     Expression<int>? templateExerciseId,
     Expression<int>? supersetGroup,
+    Expression<int>? exerciseIdentityId,
   }) {
     return RawValuesInsertable({
       if (id != null) 'id': id,
@@ -4085,6 +4199,8 @@ class ClientTemplateExerciseOverridesCompanion
       if (templateExerciseId != null)
         'template_exercise_id': templateExerciseId,
       if (supersetGroup != null) 'superset_group': supersetGroup,
+      if (exerciseIdentityId != null)
+        'exercise_identity_id': exerciseIdentityId,
     });
   }
 
@@ -4093,12 +4209,14 @@ class ClientTemplateExerciseOverridesCompanion
     Value<String>? clientId,
     Value<int>? templateExerciseId,
     Value<int?>? supersetGroup,
+    Value<int?>? exerciseIdentityId,
   }) {
     return ClientTemplateExerciseOverridesCompanion(
       id: id ?? this.id,
       clientId: clientId ?? this.clientId,
       templateExerciseId: templateExerciseId ?? this.templateExerciseId,
       supersetGroup: supersetGroup ?? this.supersetGroup,
+      exerciseIdentityId: exerciseIdentityId ?? this.exerciseIdentityId,
     );
   }
 
@@ -4117,6 +4235,9 @@ class ClientTemplateExerciseOverridesCompanion
     if (supersetGroup.present) {
       map['superset_group'] = Variable<int>(supersetGroup.value);
     }
+    if (exerciseIdentityId.present) {
+      map['exercise_identity_id'] = Variable<int>(exerciseIdentityId.value);
+    }
     return map;
   }
 
@@ -4126,7 +4247,8 @@ class ClientTemplateExerciseOverridesCompanion
           ..write('id: $id, ')
           ..write('clientId: $clientId, ')
           ..write('templateExerciseId: $templateExerciseId, ')
-          ..write('supersetGroup: $supersetGroup')
+          ..write('supersetGroup: $supersetGroup, ')
+          ..write('exerciseIdentityId: $exerciseIdentityId')
           ..write(')'))
         .toString();
   }
@@ -4162,6 +4284,40 @@ class $ExerciseIdentitiesTable extends ExerciseIdentities
     type: DriftSqlType.string,
     requiredDuringInsert: true,
   );
+  static const VerificationMeta _canonicalNameMeta = const VerificationMeta(
+    'canonicalName',
+  );
+  @override
+  late final GeneratedColumn<String> canonicalName = GeneratedColumn<String>(
+    'canonical_name',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(''),
+  );
+  static const VerificationMeta _normalizedNameMeta = const VerificationMeta(
+    'normalizedName',
+  );
+  @override
+  late final GeneratedColumn<String> normalizedName = GeneratedColumn<String>(
+    'normalized_name',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(''),
+  );
+  static const VerificationMeta _statusMeta = const VerificationMeta('status');
+  @override
+  late final GeneratedColumn<String> status = GeneratedColumn<String>(
+    'status',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+    defaultValue: const Constant('ACTIVE'),
+  );
   static const VerificationMeta _createdAtMeta = const VerificationMeta(
     'createdAt',
   );
@@ -4174,8 +4330,50 @@ class $ExerciseIdentitiesTable extends ExerciseIdentities
     requiredDuringInsert: false,
     defaultValue: currentDateAndTime,
   );
+  static const VerificationMeta _updatedAtMeta = const VerificationMeta(
+    'updatedAt',
+  );
   @override
-  List<GeneratedColumn> get $columns => [id, externalId, createdAt];
+  late final GeneratedColumn<DateTime> updatedAt = GeneratedColumn<DateTime>(
+    'updated_at',
+    aliasedName,
+    true,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _archivedAtMeta = const VerificationMeta(
+    'archivedAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> archivedAt = GeneratedColumn<DateTime>(
+    'archived_at',
+    aliasedName,
+    true,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _mergedIntoIdentityIdMeta =
+      const VerificationMeta('mergedIntoIdentityId');
+  @override
+  late final GeneratedColumn<int> mergedIntoIdentityId = GeneratedColumn<int>(
+    'merged_into_identity_id',
+    aliasedName,
+    true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+  );
+  @override
+  List<GeneratedColumn> get $columns => [
+    id,
+    externalId,
+    canonicalName,
+    normalizedName,
+    status,
+    createdAt,
+    updatedAt,
+    archivedAt,
+    mergedIntoIdentityId,
+  ];
   @override
   String get aliasedName => _alias ?? actualTableName;
   @override
@@ -4199,10 +4397,55 @@ class $ExerciseIdentitiesTable extends ExerciseIdentities
     } else if (isInserting) {
       context.missing(_externalIdMeta);
     }
+    if (data.containsKey('canonical_name')) {
+      context.handle(
+        _canonicalNameMeta,
+        canonicalName.isAcceptableOrUnknown(
+          data['canonical_name']!,
+          _canonicalNameMeta,
+        ),
+      );
+    }
+    if (data.containsKey('normalized_name')) {
+      context.handle(
+        _normalizedNameMeta,
+        normalizedName.isAcceptableOrUnknown(
+          data['normalized_name']!,
+          _normalizedNameMeta,
+        ),
+      );
+    }
+    if (data.containsKey('status')) {
+      context.handle(
+        _statusMeta,
+        status.isAcceptableOrUnknown(data['status']!, _statusMeta),
+      );
+    }
     if (data.containsKey('created_at')) {
       context.handle(
         _createdAtMeta,
         createdAt.isAcceptableOrUnknown(data['created_at']!, _createdAtMeta),
+      );
+    }
+    if (data.containsKey('updated_at')) {
+      context.handle(
+        _updatedAtMeta,
+        updatedAt.isAcceptableOrUnknown(data['updated_at']!, _updatedAtMeta),
+      );
+    }
+    if (data.containsKey('archived_at')) {
+      context.handle(
+        _archivedAtMeta,
+        archivedAt.isAcceptableOrUnknown(data['archived_at']!, _archivedAtMeta),
+      );
+    }
+    if (data.containsKey('merged_into_identity_id')) {
+      context.handle(
+        _mergedIntoIdentityIdMeta,
+        mergedIntoIdentityId.isAcceptableOrUnknown(
+          data['merged_into_identity_id']!,
+          _mergedIntoIdentityIdMeta,
+        ),
       );
     }
     return context;
@@ -4222,10 +4465,34 @@ class $ExerciseIdentitiesTable extends ExerciseIdentities
         DriftSqlType.string,
         data['${effectivePrefix}external_id'],
       )!,
+      canonicalName: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}canonical_name'],
+      )!,
+      normalizedName: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}normalized_name'],
+      )!,
+      status: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}status'],
+      )!,
       createdAt: attachedDatabase.typeMapping.read(
         DriftSqlType.dateTime,
         data['${effectivePrefix}created_at'],
       )!,
+      updatedAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}updated_at'],
+      ),
+      archivedAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}archived_at'],
+      ),
+      mergedIntoIdentityId: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}merged_into_identity_id'],
+      ),
     );
   }
 
@@ -4239,18 +4506,42 @@ class ExerciseIdentity extends DataClass
     implements Insertable<ExerciseIdentity> {
   final int id;
   final String externalId;
+  final String canonicalName;
+  final String normalizedName;
+  final String status;
   final DateTime createdAt;
+  final DateTime? updatedAt;
+  final DateTime? archivedAt;
+  final int? mergedIntoIdentityId;
   const ExerciseIdentity({
     required this.id,
     required this.externalId,
+    required this.canonicalName,
+    required this.normalizedName,
+    required this.status,
     required this.createdAt,
+    this.updatedAt,
+    this.archivedAt,
+    this.mergedIntoIdentityId,
   });
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
     final map = <String, Expression>{};
     map['id'] = Variable<int>(id);
     map['external_id'] = Variable<String>(externalId);
+    map['canonical_name'] = Variable<String>(canonicalName);
+    map['normalized_name'] = Variable<String>(normalizedName);
+    map['status'] = Variable<String>(status);
     map['created_at'] = Variable<DateTime>(createdAt);
+    if (!nullToAbsent || updatedAt != null) {
+      map['updated_at'] = Variable<DateTime>(updatedAt);
+    }
+    if (!nullToAbsent || archivedAt != null) {
+      map['archived_at'] = Variable<DateTime>(archivedAt);
+    }
+    if (!nullToAbsent || mergedIntoIdentityId != null) {
+      map['merged_into_identity_id'] = Variable<int>(mergedIntoIdentityId);
+    }
     return map;
   }
 
@@ -4258,7 +4549,19 @@ class ExerciseIdentity extends DataClass
     return ExerciseIdentitiesCompanion(
       id: Value(id),
       externalId: Value(externalId),
+      canonicalName: Value(canonicalName),
+      normalizedName: Value(normalizedName),
+      status: Value(status),
       createdAt: Value(createdAt),
+      updatedAt: updatedAt == null && nullToAbsent
+          ? const Value.absent()
+          : Value(updatedAt),
+      archivedAt: archivedAt == null && nullToAbsent
+          ? const Value.absent()
+          : Value(archivedAt),
+      mergedIntoIdentityId: mergedIntoIdentityId == null && nullToAbsent
+          ? const Value.absent()
+          : Value(mergedIntoIdentityId),
     );
   }
 
@@ -4270,7 +4573,15 @@ class ExerciseIdentity extends DataClass
     return ExerciseIdentity(
       id: serializer.fromJson<int>(json['id']),
       externalId: serializer.fromJson<String>(json['externalId']),
+      canonicalName: serializer.fromJson<String>(json['canonicalName']),
+      normalizedName: serializer.fromJson<String>(json['normalizedName']),
+      status: serializer.fromJson<String>(json['status']),
       createdAt: serializer.fromJson<DateTime>(json['createdAt']),
+      updatedAt: serializer.fromJson<DateTime?>(json['updatedAt']),
+      archivedAt: serializer.fromJson<DateTime?>(json['archivedAt']),
+      mergedIntoIdentityId: serializer.fromJson<int?>(
+        json['mergedIntoIdentityId'],
+      ),
     );
   }
   @override
@@ -4279,18 +4590,38 @@ class ExerciseIdentity extends DataClass
     return <String, dynamic>{
       'id': serializer.toJson<int>(id),
       'externalId': serializer.toJson<String>(externalId),
+      'canonicalName': serializer.toJson<String>(canonicalName),
+      'normalizedName': serializer.toJson<String>(normalizedName),
+      'status': serializer.toJson<String>(status),
       'createdAt': serializer.toJson<DateTime>(createdAt),
+      'updatedAt': serializer.toJson<DateTime?>(updatedAt),
+      'archivedAt': serializer.toJson<DateTime?>(archivedAt),
+      'mergedIntoIdentityId': serializer.toJson<int?>(mergedIntoIdentityId),
     };
   }
 
   ExerciseIdentity copyWith({
     int? id,
     String? externalId,
+    String? canonicalName,
+    String? normalizedName,
+    String? status,
     DateTime? createdAt,
+    Value<DateTime?> updatedAt = const Value.absent(),
+    Value<DateTime?> archivedAt = const Value.absent(),
+    Value<int?> mergedIntoIdentityId = const Value.absent(),
   }) => ExerciseIdentity(
     id: id ?? this.id,
     externalId: externalId ?? this.externalId,
+    canonicalName: canonicalName ?? this.canonicalName,
+    normalizedName: normalizedName ?? this.normalizedName,
+    status: status ?? this.status,
     createdAt: createdAt ?? this.createdAt,
+    updatedAt: updatedAt.present ? updatedAt.value : this.updatedAt,
+    archivedAt: archivedAt.present ? archivedAt.value : this.archivedAt,
+    mergedIntoIdentityId: mergedIntoIdentityId.present
+        ? mergedIntoIdentityId.value
+        : this.mergedIntoIdentityId,
   );
   ExerciseIdentity copyWithCompanion(ExerciseIdentitiesCompanion data) {
     return ExerciseIdentity(
@@ -4298,7 +4629,21 @@ class ExerciseIdentity extends DataClass
       externalId: data.externalId.present
           ? data.externalId.value
           : this.externalId,
+      canonicalName: data.canonicalName.present
+          ? data.canonicalName.value
+          : this.canonicalName,
+      normalizedName: data.normalizedName.present
+          ? data.normalizedName.value
+          : this.normalizedName,
+      status: data.status.present ? data.status.value : this.status,
       createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
+      updatedAt: data.updatedAt.present ? data.updatedAt.value : this.updatedAt,
+      archivedAt: data.archivedAt.present
+          ? data.archivedAt.value
+          : this.archivedAt,
+      mergedIntoIdentityId: data.mergedIntoIdentityId.present
+          ? data.mergedIntoIdentityId.value
+          : this.mergedIntoIdentityId,
     );
   }
 
@@ -4307,57 +4652,122 @@ class ExerciseIdentity extends DataClass
     return (StringBuffer('ExerciseIdentity(')
           ..write('id: $id, ')
           ..write('externalId: $externalId, ')
-          ..write('createdAt: $createdAt')
+          ..write('canonicalName: $canonicalName, ')
+          ..write('normalizedName: $normalizedName, ')
+          ..write('status: $status, ')
+          ..write('createdAt: $createdAt, ')
+          ..write('updatedAt: $updatedAt, ')
+          ..write('archivedAt: $archivedAt, ')
+          ..write('mergedIntoIdentityId: $mergedIntoIdentityId')
           ..write(')'))
         .toString();
   }
 
   @override
-  int get hashCode => Object.hash(id, externalId, createdAt);
+  int get hashCode => Object.hash(
+    id,
+    externalId,
+    canonicalName,
+    normalizedName,
+    status,
+    createdAt,
+    updatedAt,
+    archivedAt,
+    mergedIntoIdentityId,
+  );
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
       (other is ExerciseIdentity &&
           other.id == this.id &&
           other.externalId == this.externalId &&
-          other.createdAt == this.createdAt);
+          other.canonicalName == this.canonicalName &&
+          other.normalizedName == this.normalizedName &&
+          other.status == this.status &&
+          other.createdAt == this.createdAt &&
+          other.updatedAt == this.updatedAt &&
+          other.archivedAt == this.archivedAt &&
+          other.mergedIntoIdentityId == this.mergedIntoIdentityId);
 }
 
 class ExerciseIdentitiesCompanion extends UpdateCompanion<ExerciseIdentity> {
   final Value<int> id;
   final Value<String> externalId;
+  final Value<String> canonicalName;
+  final Value<String> normalizedName;
+  final Value<String> status;
   final Value<DateTime> createdAt;
+  final Value<DateTime?> updatedAt;
+  final Value<DateTime?> archivedAt;
+  final Value<int?> mergedIntoIdentityId;
   const ExerciseIdentitiesCompanion({
     this.id = const Value.absent(),
     this.externalId = const Value.absent(),
+    this.canonicalName = const Value.absent(),
+    this.normalizedName = const Value.absent(),
+    this.status = const Value.absent(),
     this.createdAt = const Value.absent(),
+    this.updatedAt = const Value.absent(),
+    this.archivedAt = const Value.absent(),
+    this.mergedIntoIdentityId = const Value.absent(),
   });
   ExerciseIdentitiesCompanion.insert({
     this.id = const Value.absent(),
     required String externalId,
+    this.canonicalName = const Value.absent(),
+    this.normalizedName = const Value.absent(),
+    this.status = const Value.absent(),
     this.createdAt = const Value.absent(),
+    this.updatedAt = const Value.absent(),
+    this.archivedAt = const Value.absent(),
+    this.mergedIntoIdentityId = const Value.absent(),
   }) : externalId = Value(externalId);
   static Insertable<ExerciseIdentity> custom({
     Expression<int>? id,
     Expression<String>? externalId,
+    Expression<String>? canonicalName,
+    Expression<String>? normalizedName,
+    Expression<String>? status,
     Expression<DateTime>? createdAt,
+    Expression<DateTime>? updatedAt,
+    Expression<DateTime>? archivedAt,
+    Expression<int>? mergedIntoIdentityId,
   }) {
     return RawValuesInsertable({
       if (id != null) 'id': id,
       if (externalId != null) 'external_id': externalId,
+      if (canonicalName != null) 'canonical_name': canonicalName,
+      if (normalizedName != null) 'normalized_name': normalizedName,
+      if (status != null) 'status': status,
       if (createdAt != null) 'created_at': createdAt,
+      if (updatedAt != null) 'updated_at': updatedAt,
+      if (archivedAt != null) 'archived_at': archivedAt,
+      if (mergedIntoIdentityId != null)
+        'merged_into_identity_id': mergedIntoIdentityId,
     });
   }
 
   ExerciseIdentitiesCompanion copyWith({
     Value<int>? id,
     Value<String>? externalId,
+    Value<String>? canonicalName,
+    Value<String>? normalizedName,
+    Value<String>? status,
     Value<DateTime>? createdAt,
+    Value<DateTime?>? updatedAt,
+    Value<DateTime?>? archivedAt,
+    Value<int?>? mergedIntoIdentityId,
   }) {
     return ExerciseIdentitiesCompanion(
       id: id ?? this.id,
       externalId: externalId ?? this.externalId,
+      canonicalName: canonicalName ?? this.canonicalName,
+      normalizedName: normalizedName ?? this.normalizedName,
+      status: status ?? this.status,
       createdAt: createdAt ?? this.createdAt,
+      updatedAt: updatedAt ?? this.updatedAt,
+      archivedAt: archivedAt ?? this.archivedAt,
+      mergedIntoIdentityId: mergedIntoIdentityId ?? this.mergedIntoIdentityId,
     );
   }
 
@@ -4370,8 +4780,28 @@ class ExerciseIdentitiesCompanion extends UpdateCompanion<ExerciseIdentity> {
     if (externalId.present) {
       map['external_id'] = Variable<String>(externalId.value);
     }
+    if (canonicalName.present) {
+      map['canonical_name'] = Variable<String>(canonicalName.value);
+    }
+    if (normalizedName.present) {
+      map['normalized_name'] = Variable<String>(normalizedName.value);
+    }
+    if (status.present) {
+      map['status'] = Variable<String>(status.value);
+    }
     if (createdAt.present) {
       map['created_at'] = Variable<DateTime>(createdAt.value);
+    }
+    if (updatedAt.present) {
+      map['updated_at'] = Variable<DateTime>(updatedAt.value);
+    }
+    if (archivedAt.present) {
+      map['archived_at'] = Variable<DateTime>(archivedAt.value);
+    }
+    if (mergedIntoIdentityId.present) {
+      map['merged_into_identity_id'] = Variable<int>(
+        mergedIntoIdentityId.value,
+      );
     }
     return map;
   }
@@ -4381,6 +4811,336 @@ class ExerciseIdentitiesCompanion extends UpdateCompanion<ExerciseIdentity> {
     return (StringBuffer('ExerciseIdentitiesCompanion(')
           ..write('id: $id, ')
           ..write('externalId: $externalId, ')
+          ..write('canonicalName: $canonicalName, ')
+          ..write('normalizedName: $normalizedName, ')
+          ..write('status: $status, ')
+          ..write('createdAt: $createdAt, ')
+          ..write('updatedAt: $updatedAt, ')
+          ..write('archivedAt: $archivedAt, ')
+          ..write('mergedIntoIdentityId: $mergedIntoIdentityId')
+          ..write(')'))
+        .toString();
+  }
+}
+
+class $ExerciseIdentityAliasesTable extends ExerciseIdentityAliases
+    with TableInfo<$ExerciseIdentityAliasesTable, ExerciseIdentityAliase> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $ExerciseIdentityAliasesTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _idMeta = const VerificationMeta('id');
+  @override
+  late final GeneratedColumn<int> id = GeneratedColumn<int>(
+    'id',
+    aliasedName,
+    false,
+    hasAutoIncrement: true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'PRIMARY KEY AUTOINCREMENT',
+    ),
+  );
+  static const VerificationMeta _oldExternalIdMeta = const VerificationMeta(
+    'oldExternalId',
+  );
+  @override
+  late final GeneratedColumn<String> oldExternalId = GeneratedColumn<String>(
+    'old_external_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _canonicalIdentityIdMeta =
+      const VerificationMeta('canonicalIdentityId');
+  @override
+  late final GeneratedColumn<int> canonicalIdentityId = GeneratedColumn<int>(
+    'canonical_identity_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _createdAtMeta = const VerificationMeta(
+    'createdAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> createdAt = GeneratedColumn<DateTime>(
+    'created_at',
+    aliasedName,
+    false,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: false,
+    defaultValue: currentDateAndTime,
+  );
+  @override
+  List<GeneratedColumn> get $columns => [
+    id,
+    oldExternalId,
+    canonicalIdentityId,
+    createdAt,
+  ];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'exercise_identity_aliases';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<ExerciseIdentityAliase> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('id')) {
+      context.handle(_idMeta, id.isAcceptableOrUnknown(data['id']!, _idMeta));
+    }
+    if (data.containsKey('old_external_id')) {
+      context.handle(
+        _oldExternalIdMeta,
+        oldExternalId.isAcceptableOrUnknown(
+          data['old_external_id']!,
+          _oldExternalIdMeta,
+        ),
+      );
+    } else if (isInserting) {
+      context.missing(_oldExternalIdMeta);
+    }
+    if (data.containsKey('canonical_identity_id')) {
+      context.handle(
+        _canonicalIdentityIdMeta,
+        canonicalIdentityId.isAcceptableOrUnknown(
+          data['canonical_identity_id']!,
+          _canonicalIdentityIdMeta,
+        ),
+      );
+    } else if (isInserting) {
+      context.missing(_canonicalIdentityIdMeta);
+    }
+    if (data.containsKey('created_at')) {
+      context.handle(
+        _createdAtMeta,
+        createdAt.isAcceptableOrUnknown(data['created_at']!, _createdAtMeta),
+      );
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {id};
+  @override
+  List<Set<GeneratedColumn>> get uniqueKeys => [
+    {oldExternalId},
+  ];
+  @override
+  ExerciseIdentityAliase map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return ExerciseIdentityAliase(
+      id: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}id'],
+      )!,
+      oldExternalId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}old_external_id'],
+      )!,
+      canonicalIdentityId: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}canonical_identity_id'],
+      )!,
+      createdAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}created_at'],
+      )!,
+    );
+  }
+
+  @override
+  $ExerciseIdentityAliasesTable createAlias(String alias) {
+    return $ExerciseIdentityAliasesTable(attachedDatabase, alias);
+  }
+}
+
+class ExerciseIdentityAliase extends DataClass
+    implements Insertable<ExerciseIdentityAliase> {
+  final int id;
+  final String oldExternalId;
+  final int canonicalIdentityId;
+  final DateTime createdAt;
+  const ExerciseIdentityAliase({
+    required this.id,
+    required this.oldExternalId,
+    required this.canonicalIdentityId,
+    required this.createdAt,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['id'] = Variable<int>(id);
+    map['old_external_id'] = Variable<String>(oldExternalId);
+    map['canonical_identity_id'] = Variable<int>(canonicalIdentityId);
+    map['created_at'] = Variable<DateTime>(createdAt);
+    return map;
+  }
+
+  ExerciseIdentityAliasesCompanion toCompanion(bool nullToAbsent) {
+    return ExerciseIdentityAliasesCompanion(
+      id: Value(id),
+      oldExternalId: Value(oldExternalId),
+      canonicalIdentityId: Value(canonicalIdentityId),
+      createdAt: Value(createdAt),
+    );
+  }
+
+  factory ExerciseIdentityAliase.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return ExerciseIdentityAliase(
+      id: serializer.fromJson<int>(json['id']),
+      oldExternalId: serializer.fromJson<String>(json['oldExternalId']),
+      canonicalIdentityId: serializer.fromJson<int>(
+        json['canonicalIdentityId'],
+      ),
+      createdAt: serializer.fromJson<DateTime>(json['createdAt']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'id': serializer.toJson<int>(id),
+      'oldExternalId': serializer.toJson<String>(oldExternalId),
+      'canonicalIdentityId': serializer.toJson<int>(canonicalIdentityId),
+      'createdAt': serializer.toJson<DateTime>(createdAt),
+    };
+  }
+
+  ExerciseIdentityAliase copyWith({
+    int? id,
+    String? oldExternalId,
+    int? canonicalIdentityId,
+    DateTime? createdAt,
+  }) => ExerciseIdentityAliase(
+    id: id ?? this.id,
+    oldExternalId: oldExternalId ?? this.oldExternalId,
+    canonicalIdentityId: canonicalIdentityId ?? this.canonicalIdentityId,
+    createdAt: createdAt ?? this.createdAt,
+  );
+  ExerciseIdentityAliase copyWithCompanion(
+    ExerciseIdentityAliasesCompanion data,
+  ) {
+    return ExerciseIdentityAliase(
+      id: data.id.present ? data.id.value : this.id,
+      oldExternalId: data.oldExternalId.present
+          ? data.oldExternalId.value
+          : this.oldExternalId,
+      canonicalIdentityId: data.canonicalIdentityId.present
+          ? data.canonicalIdentityId.value
+          : this.canonicalIdentityId,
+      createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('ExerciseIdentityAliase(')
+          ..write('id: $id, ')
+          ..write('oldExternalId: $oldExternalId, ')
+          ..write('canonicalIdentityId: $canonicalIdentityId, ')
+          ..write('createdAt: $createdAt')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode =>
+      Object.hash(id, oldExternalId, canonicalIdentityId, createdAt);
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is ExerciseIdentityAliase &&
+          other.id == this.id &&
+          other.oldExternalId == this.oldExternalId &&
+          other.canonicalIdentityId == this.canonicalIdentityId &&
+          other.createdAt == this.createdAt);
+}
+
+class ExerciseIdentityAliasesCompanion
+    extends UpdateCompanion<ExerciseIdentityAliase> {
+  final Value<int> id;
+  final Value<String> oldExternalId;
+  final Value<int> canonicalIdentityId;
+  final Value<DateTime> createdAt;
+  const ExerciseIdentityAliasesCompanion({
+    this.id = const Value.absent(),
+    this.oldExternalId = const Value.absent(),
+    this.canonicalIdentityId = const Value.absent(),
+    this.createdAt = const Value.absent(),
+  });
+  ExerciseIdentityAliasesCompanion.insert({
+    this.id = const Value.absent(),
+    required String oldExternalId,
+    required int canonicalIdentityId,
+    this.createdAt = const Value.absent(),
+  }) : oldExternalId = Value(oldExternalId),
+       canonicalIdentityId = Value(canonicalIdentityId);
+  static Insertable<ExerciseIdentityAliase> custom({
+    Expression<int>? id,
+    Expression<String>? oldExternalId,
+    Expression<int>? canonicalIdentityId,
+    Expression<DateTime>? createdAt,
+  }) {
+    return RawValuesInsertable({
+      if (id != null) 'id': id,
+      if (oldExternalId != null) 'old_external_id': oldExternalId,
+      if (canonicalIdentityId != null)
+        'canonical_identity_id': canonicalIdentityId,
+      if (createdAt != null) 'created_at': createdAt,
+    });
+  }
+
+  ExerciseIdentityAliasesCompanion copyWith({
+    Value<int>? id,
+    Value<String>? oldExternalId,
+    Value<int>? canonicalIdentityId,
+    Value<DateTime>? createdAt,
+  }) {
+    return ExerciseIdentityAliasesCompanion(
+      id: id ?? this.id,
+      oldExternalId: oldExternalId ?? this.oldExternalId,
+      canonicalIdentityId: canonicalIdentityId ?? this.canonicalIdentityId,
+      createdAt: createdAt ?? this.createdAt,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (id.present) {
+      map['id'] = Variable<int>(id.value);
+    }
+    if (oldExternalId.present) {
+      map['old_external_id'] = Variable<String>(oldExternalId.value);
+    }
+    if (canonicalIdentityId.present) {
+      map['canonical_identity_id'] = Variable<int>(canonicalIdentityId.value);
+    }
+    if (createdAt.present) {
+      map['created_at'] = Variable<DateTime>(createdAt.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('ExerciseIdentityAliasesCompanion(')
+          ..write('id: $id, ')
+          ..write('oldExternalId: $oldExternalId, ')
+          ..write('canonicalIdentityId: $canonicalIdentityId, ')
           ..write('createdAt: $createdAt')
           ..write(')'))
         .toString();
@@ -6375,6 +7135,8 @@ abstract class _$AppDb extends GeneratedDatabase {
   clientTemplateExerciseOverrides = $ClientTemplateExerciseOverridesTable(this);
   late final $ExerciseIdentitiesTable exerciseIdentities =
       $ExerciseIdentitiesTable(this);
+  late final $ExerciseIdentityAliasesTable exerciseIdentityAliases =
+      $ExerciseIdentityAliasesTable(this);
   late final $ExerciseIdentityBindingsTable exerciseIdentityBindings =
       $ExerciseIdentityBindingsTable(this);
   late final $AppSettingsTable appSettings = $AppSettingsTable(this);
@@ -6395,6 +7157,7 @@ abstract class _$AppDb extends GeneratedDatabase {
     workoutDrafts,
     clientTemplateExerciseOverrides,
     exerciseIdentities,
+    exerciseIdentityAliases,
     exerciseIdentityBindings,
     appSettings,
     syncQueue,
@@ -7650,6 +8413,7 @@ typedef $$WorkoutTemplateExercisesTableCreateCompanionBuilder =
       required int orderIndex,
       Value<int?> groupId,
       required String name,
+      Value<int?> exerciseIdentityId,
     });
 typedef $$WorkoutTemplateExercisesTableUpdateCompanionBuilder =
     WorkoutTemplateExercisesCompanion Function({
@@ -7658,6 +8422,7 @@ typedef $$WorkoutTemplateExercisesTableUpdateCompanionBuilder =
       Value<int> orderIndex,
       Value<int?> groupId,
       Value<String> name,
+      Value<int?> exerciseIdentityId,
     });
 
 class $$WorkoutTemplateExercisesTableFilterComposer
@@ -7691,6 +8456,11 @@ class $$WorkoutTemplateExercisesTableFilterComposer
 
   ColumnFilters<String> get name => $composableBuilder(
     column: $table.name,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get exerciseIdentityId => $composableBuilder(
+    column: $table.exerciseIdentityId,
     builder: (column) => ColumnFilters(column),
   );
 }
@@ -7728,6 +8498,11 @@ class $$WorkoutTemplateExercisesTableOrderingComposer
     column: $table.name,
     builder: (column) => ColumnOrderings(column),
   );
+
+  ColumnOrderings<int> get exerciseIdentityId => $composableBuilder(
+    column: $table.exerciseIdentityId,
+    builder: (column) => ColumnOrderings(column),
+  );
 }
 
 class $$WorkoutTemplateExercisesTableAnnotationComposer
@@ -7757,6 +8532,11 @@ class $$WorkoutTemplateExercisesTableAnnotationComposer
 
   GeneratedColumn<String> get name =>
       $composableBuilder(column: $table.name, builder: (column) => column);
+
+  GeneratedColumn<int> get exerciseIdentityId => $composableBuilder(
+    column: $table.exerciseIdentityId,
+    builder: (column) => column,
+  );
 }
 
 class $$WorkoutTemplateExercisesTableTableManager
@@ -7810,12 +8590,14 @@ class $$WorkoutTemplateExercisesTableTableManager
                 Value<int> orderIndex = const Value.absent(),
                 Value<int?> groupId = const Value.absent(),
                 Value<String> name = const Value.absent(),
+                Value<int?> exerciseIdentityId = const Value.absent(),
               }) => WorkoutTemplateExercisesCompanion(
                 id: id,
                 templateId: templateId,
                 orderIndex: orderIndex,
                 groupId: groupId,
                 name: name,
+                exerciseIdentityId: exerciseIdentityId,
               ),
           createCompanionCallback:
               ({
@@ -7824,12 +8606,14 @@ class $$WorkoutTemplateExercisesTableTableManager
                 required int orderIndex,
                 Value<int?> groupId = const Value.absent(),
                 required String name,
+                Value<int?> exerciseIdentityId = const Value.absent(),
               }) => WorkoutTemplateExercisesCompanion.insert(
                 id: id,
                 templateId: templateId,
                 orderIndex: orderIndex,
                 groupId: groupId,
                 name: name,
+                exerciseIdentityId: exerciseIdentityId,
               ),
           withReferenceMapper: (p0) => p0
               .map((e) => (e.readTable(table), BaseReferences(db, table, e)))
@@ -8382,6 +9166,7 @@ typedef $$ClientTemplateExerciseOverridesTableCreateCompanionBuilder =
       required String clientId,
       required int templateExerciseId,
       Value<int?> supersetGroup,
+      Value<int?> exerciseIdentityId,
     });
 typedef $$ClientTemplateExerciseOverridesTableUpdateCompanionBuilder =
     ClientTemplateExerciseOverridesCompanion Function({
@@ -8389,6 +9174,7 @@ typedef $$ClientTemplateExerciseOverridesTableUpdateCompanionBuilder =
       Value<String> clientId,
       Value<int> templateExerciseId,
       Value<int?> supersetGroup,
+      Value<int?> exerciseIdentityId,
     });
 
 class $$ClientTemplateExerciseOverridesTableFilterComposer
@@ -8417,6 +9203,11 @@ class $$ClientTemplateExerciseOverridesTableFilterComposer
 
   ColumnFilters<int> get supersetGroup => $composableBuilder(
     column: $table.supersetGroup,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get exerciseIdentityId => $composableBuilder(
+    column: $table.exerciseIdentityId,
     builder: (column) => ColumnFilters(column),
   );
 }
@@ -8449,6 +9240,11 @@ class $$ClientTemplateExerciseOverridesTableOrderingComposer
     column: $table.supersetGroup,
     builder: (column) => ColumnOrderings(column),
   );
+
+  ColumnOrderings<int> get exerciseIdentityId => $composableBuilder(
+    column: $table.exerciseIdentityId,
+    builder: (column) => ColumnOrderings(column),
+  );
 }
 
 class $$ClientTemplateExerciseOverridesTableAnnotationComposer
@@ -8473,6 +9269,11 @@ class $$ClientTemplateExerciseOverridesTableAnnotationComposer
 
   GeneratedColumn<int> get supersetGroup => $composableBuilder(
     column: $table.supersetGroup,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<int> get exerciseIdentityId => $composableBuilder(
+    column: $table.exerciseIdentityId,
     builder: (column) => column,
   );
 }
@@ -8527,11 +9328,13 @@ class $$ClientTemplateExerciseOverridesTableTableManager
                 Value<String> clientId = const Value.absent(),
                 Value<int> templateExerciseId = const Value.absent(),
                 Value<int?> supersetGroup = const Value.absent(),
+                Value<int?> exerciseIdentityId = const Value.absent(),
               }) => ClientTemplateExerciseOverridesCompanion(
                 id: id,
                 clientId: clientId,
                 templateExerciseId: templateExerciseId,
                 supersetGroup: supersetGroup,
+                exerciseIdentityId: exerciseIdentityId,
               ),
           createCompanionCallback:
               ({
@@ -8539,11 +9342,13 @@ class $$ClientTemplateExerciseOverridesTableTableManager
                 required String clientId,
                 required int templateExerciseId,
                 Value<int?> supersetGroup = const Value.absent(),
+                Value<int?> exerciseIdentityId = const Value.absent(),
               }) => ClientTemplateExerciseOverridesCompanion.insert(
                 id: id,
                 clientId: clientId,
                 templateExerciseId: templateExerciseId,
                 supersetGroup: supersetGroup,
+                exerciseIdentityId: exerciseIdentityId,
               ),
           withReferenceMapper: (p0) => p0
               .map((e) => (e.readTable(table), BaseReferences(db, table, e)))
@@ -8578,13 +9383,25 @@ typedef $$ExerciseIdentitiesTableCreateCompanionBuilder =
     ExerciseIdentitiesCompanion Function({
       Value<int> id,
       required String externalId,
+      Value<String> canonicalName,
+      Value<String> normalizedName,
+      Value<String> status,
       Value<DateTime> createdAt,
+      Value<DateTime?> updatedAt,
+      Value<DateTime?> archivedAt,
+      Value<int?> mergedIntoIdentityId,
     });
 typedef $$ExerciseIdentitiesTableUpdateCompanionBuilder =
     ExerciseIdentitiesCompanion Function({
       Value<int> id,
       Value<String> externalId,
+      Value<String> canonicalName,
+      Value<String> normalizedName,
+      Value<String> status,
       Value<DateTime> createdAt,
+      Value<DateTime?> updatedAt,
+      Value<DateTime?> archivedAt,
+      Value<int?> mergedIntoIdentityId,
     });
 
 class $$ExerciseIdentitiesTableFilterComposer
@@ -8606,8 +9423,38 @@ class $$ExerciseIdentitiesTableFilterComposer
     builder: (column) => ColumnFilters(column),
   );
 
+  ColumnFilters<String> get canonicalName => $composableBuilder(
+    column: $table.canonicalName,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get normalizedName => $composableBuilder(
+    column: $table.normalizedName,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get status => $composableBuilder(
+    column: $table.status,
+    builder: (column) => ColumnFilters(column),
+  );
+
   ColumnFilters<DateTime> get createdAt => $composableBuilder(
     column: $table.createdAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get updatedAt => $composableBuilder(
+    column: $table.updatedAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get archivedAt => $composableBuilder(
+    column: $table.archivedAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get mergedIntoIdentityId => $composableBuilder(
+    column: $table.mergedIntoIdentityId,
     builder: (column) => ColumnFilters(column),
   );
 }
@@ -8631,8 +9478,38 @@ class $$ExerciseIdentitiesTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<String> get canonicalName => $composableBuilder(
+    column: $table.canonicalName,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get normalizedName => $composableBuilder(
+    column: $table.normalizedName,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get status => $composableBuilder(
+    column: $table.status,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   ColumnOrderings<DateTime> get createdAt => $composableBuilder(
     column: $table.createdAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get updatedAt => $composableBuilder(
+    column: $table.updatedAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get archivedAt => $composableBuilder(
+    column: $table.archivedAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get mergedIntoIdentityId => $composableBuilder(
+    column: $table.mergedIntoIdentityId,
     builder: (column) => ColumnOrderings(column),
   );
 }
@@ -8654,8 +9531,34 @@ class $$ExerciseIdentitiesTableAnnotationComposer
     builder: (column) => column,
   );
 
+  GeneratedColumn<String> get canonicalName => $composableBuilder(
+    column: $table.canonicalName,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get normalizedName => $composableBuilder(
+    column: $table.normalizedName,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get status =>
+      $composableBuilder(column: $table.status, builder: (column) => column);
+
   GeneratedColumn<DateTime> get createdAt =>
       $composableBuilder(column: $table.createdAt, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get updatedAt =>
+      $composableBuilder(column: $table.updatedAt, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get archivedAt => $composableBuilder(
+    column: $table.archivedAt,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<int> get mergedIntoIdentityId => $composableBuilder(
+    column: $table.mergedIntoIdentityId,
+    builder: (column) => column,
+  );
 }
 
 class $$ExerciseIdentitiesTableTableManager
@@ -8696,21 +9599,45 @@ class $$ExerciseIdentitiesTableTableManager
               ({
                 Value<int> id = const Value.absent(),
                 Value<String> externalId = const Value.absent(),
+                Value<String> canonicalName = const Value.absent(),
+                Value<String> normalizedName = const Value.absent(),
+                Value<String> status = const Value.absent(),
                 Value<DateTime> createdAt = const Value.absent(),
+                Value<DateTime?> updatedAt = const Value.absent(),
+                Value<DateTime?> archivedAt = const Value.absent(),
+                Value<int?> mergedIntoIdentityId = const Value.absent(),
               }) => ExerciseIdentitiesCompanion(
                 id: id,
                 externalId: externalId,
+                canonicalName: canonicalName,
+                normalizedName: normalizedName,
+                status: status,
                 createdAt: createdAt,
+                updatedAt: updatedAt,
+                archivedAt: archivedAt,
+                mergedIntoIdentityId: mergedIntoIdentityId,
               ),
           createCompanionCallback:
               ({
                 Value<int> id = const Value.absent(),
                 required String externalId,
+                Value<String> canonicalName = const Value.absent(),
+                Value<String> normalizedName = const Value.absent(),
+                Value<String> status = const Value.absent(),
                 Value<DateTime> createdAt = const Value.absent(),
+                Value<DateTime?> updatedAt = const Value.absent(),
+                Value<DateTime?> archivedAt = const Value.absent(),
+                Value<int?> mergedIntoIdentityId = const Value.absent(),
               }) => ExerciseIdentitiesCompanion.insert(
                 id: id,
                 externalId: externalId,
+                canonicalName: canonicalName,
+                normalizedName: normalizedName,
+                status: status,
                 createdAt: createdAt,
+                updatedAt: updatedAt,
+                archivedAt: archivedAt,
+                mergedIntoIdentityId: mergedIntoIdentityId,
               ),
           withReferenceMapper: (p0) => p0
               .map((e) => (e.readTable(table), BaseReferences(db, table, e)))
@@ -8735,6 +9662,204 @@ typedef $$ExerciseIdentitiesTableProcessedTableManager =
         BaseReferences<_$AppDb, $ExerciseIdentitiesTable, ExerciseIdentity>,
       ),
       ExerciseIdentity,
+      PrefetchHooks Function()
+    >;
+typedef $$ExerciseIdentityAliasesTableCreateCompanionBuilder =
+    ExerciseIdentityAliasesCompanion Function({
+      Value<int> id,
+      required String oldExternalId,
+      required int canonicalIdentityId,
+      Value<DateTime> createdAt,
+    });
+typedef $$ExerciseIdentityAliasesTableUpdateCompanionBuilder =
+    ExerciseIdentityAliasesCompanion Function({
+      Value<int> id,
+      Value<String> oldExternalId,
+      Value<int> canonicalIdentityId,
+      Value<DateTime> createdAt,
+    });
+
+class $$ExerciseIdentityAliasesTableFilterComposer
+    extends Composer<_$AppDb, $ExerciseIdentityAliasesTable> {
+  $$ExerciseIdentityAliasesTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<int> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get oldExternalId => $composableBuilder(
+    column: $table.oldExternalId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get canonicalIdentityId => $composableBuilder(
+    column: $table.canonicalIdentityId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get createdAt => $composableBuilder(
+    column: $table.createdAt,
+    builder: (column) => ColumnFilters(column),
+  );
+}
+
+class $$ExerciseIdentityAliasesTableOrderingComposer
+    extends Composer<_$AppDb, $ExerciseIdentityAliasesTable> {
+  $$ExerciseIdentityAliasesTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<int> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get oldExternalId => $composableBuilder(
+    column: $table.oldExternalId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get canonicalIdentityId => $composableBuilder(
+    column: $table.canonicalIdentityId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get createdAt => $composableBuilder(
+    column: $table.createdAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+}
+
+class $$ExerciseIdentityAliasesTableAnnotationComposer
+    extends Composer<_$AppDb, $ExerciseIdentityAliasesTable> {
+  $$ExerciseIdentityAliasesTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<int> get id =>
+      $composableBuilder(column: $table.id, builder: (column) => column);
+
+  GeneratedColumn<String> get oldExternalId => $composableBuilder(
+    column: $table.oldExternalId,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<int> get canonicalIdentityId => $composableBuilder(
+    column: $table.canonicalIdentityId,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<DateTime> get createdAt =>
+      $composableBuilder(column: $table.createdAt, builder: (column) => column);
+}
+
+class $$ExerciseIdentityAliasesTableTableManager
+    extends
+        RootTableManager<
+          _$AppDb,
+          $ExerciseIdentityAliasesTable,
+          ExerciseIdentityAliase,
+          $$ExerciseIdentityAliasesTableFilterComposer,
+          $$ExerciseIdentityAliasesTableOrderingComposer,
+          $$ExerciseIdentityAliasesTableAnnotationComposer,
+          $$ExerciseIdentityAliasesTableCreateCompanionBuilder,
+          $$ExerciseIdentityAliasesTableUpdateCompanionBuilder,
+          (
+            ExerciseIdentityAliase,
+            BaseReferences<
+              _$AppDb,
+              $ExerciseIdentityAliasesTable,
+              ExerciseIdentityAliase
+            >,
+          ),
+          ExerciseIdentityAliase,
+          PrefetchHooks Function()
+        > {
+  $$ExerciseIdentityAliasesTableTableManager(
+    _$AppDb db,
+    $ExerciseIdentityAliasesTable table,
+  ) : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$ExerciseIdentityAliasesTableFilterComposer(
+                $db: db,
+                $table: table,
+              ),
+          createOrderingComposer: () =>
+              $$ExerciseIdentityAliasesTableOrderingComposer(
+                $db: db,
+                $table: table,
+              ),
+          createComputedFieldComposer: () =>
+              $$ExerciseIdentityAliasesTableAnnotationComposer(
+                $db: db,
+                $table: table,
+              ),
+          updateCompanionCallback:
+              ({
+                Value<int> id = const Value.absent(),
+                Value<String> oldExternalId = const Value.absent(),
+                Value<int> canonicalIdentityId = const Value.absent(),
+                Value<DateTime> createdAt = const Value.absent(),
+              }) => ExerciseIdentityAliasesCompanion(
+                id: id,
+                oldExternalId: oldExternalId,
+                canonicalIdentityId: canonicalIdentityId,
+                createdAt: createdAt,
+              ),
+          createCompanionCallback:
+              ({
+                Value<int> id = const Value.absent(),
+                required String oldExternalId,
+                required int canonicalIdentityId,
+                Value<DateTime> createdAt = const Value.absent(),
+              }) => ExerciseIdentityAliasesCompanion.insert(
+                id: id,
+                oldExternalId: oldExternalId,
+                canonicalIdentityId: canonicalIdentityId,
+                createdAt: createdAt,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map((e) => (e.readTable(table), BaseReferences(db, table, e)))
+              .toList(),
+          prefetchHooksCallback: null,
+        ),
+      );
+}
+
+typedef $$ExerciseIdentityAliasesTableProcessedTableManager =
+    ProcessedTableManager<
+      _$AppDb,
+      $ExerciseIdentityAliasesTable,
+      ExerciseIdentityAliase,
+      $$ExerciseIdentityAliasesTableFilterComposer,
+      $$ExerciseIdentityAliasesTableOrderingComposer,
+      $$ExerciseIdentityAliasesTableAnnotationComposer,
+      $$ExerciseIdentityAliasesTableCreateCompanionBuilder,
+      $$ExerciseIdentityAliasesTableUpdateCompanionBuilder,
+      (
+        ExerciseIdentityAliase,
+        BaseReferences<
+          _$AppDb,
+          $ExerciseIdentityAliasesTable,
+          ExerciseIdentityAliase
+        >,
+      ),
+      ExerciseIdentityAliase,
       PrefetchHooks Function()
     >;
 typedef $$ExerciseIdentityBindingsTableCreateCompanionBuilder =
@@ -9772,6 +10897,11 @@ class $AppDbManager {
       );
   $$ExerciseIdentitiesTableTableManager get exerciseIdentities =>
       $$ExerciseIdentitiesTableTableManager(_db, _db.exerciseIdentities);
+  $$ExerciseIdentityAliasesTableTableManager get exerciseIdentityAliases =>
+      $$ExerciseIdentityAliasesTableTableManager(
+        _db,
+        _db.exerciseIdentityAliases,
+      );
   $$ExerciseIdentityBindingsTableTableManager get exerciseIdentityBindings =>
       $$ExerciseIdentityBindingsTableTableManager(
         _db,

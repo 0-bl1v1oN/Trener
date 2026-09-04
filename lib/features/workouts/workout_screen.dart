@@ -3,7 +3,7 @@ import 'package:flutter/material.dart';
 
 import '../../app/app_db_scope.dart';
 import '../../db/app_db.dart';
-import 'exercise_change_flow.dart';
+import '../exercises/exercise_selector_sheet.dart';
 
 class WorkoutScreen extends StatefulWidget {
   final String clientId;
@@ -48,10 +48,6 @@ class _WorkoutScreenState extends State<WorkoutScreen> {
   // локальные значения ввода по templateExerciseId
   final Map<int, TextEditingController> _kgCtrls = {};
   final Map<int, TextEditingController> _repsCtrls = {};
-  final Map<int, TextEditingController> _nameCtrls = {};
-  final Map<int, FocusNode> _nameFocusNodes = {};
-  final Map<int, String> _persistedExerciseNames = {};
-  final Set<int> _nameSaveInFlight = <int>{};
 
   bool _saving = false;
   Timer? _draftAutosaveDebounce;
@@ -76,12 +72,6 @@ class _WorkoutScreenState extends State<WorkoutScreen> {
     }
     for (final c in _repsCtrls.values) {
       c.dispose();
-    }
-    for (final c in _nameCtrls.values) {
-      c.dispose();
-    }
-    for (final f in _nameFocusNodes.values) {
-      f.dispose();
     }
     _draftAutosaveDebounce?.cancel();
     super.dispose();
@@ -172,90 +162,17 @@ class _WorkoutScreenState extends State<WorkoutScreen> {
     return null;
   }
 
-  TextEditingController _nameController(WorkoutExerciseVm e) {
-    final id = e.templateExerciseId;
-    _persistedExerciseNames.putIfAbsent(id, () => e.name);
-
-    final controller = _nameCtrls.putIfAbsent(id, () {
-      return TextEditingController(text: e.name);
-    });
-
-    final focusNode = _nameFocusNodes.putIfAbsent(id, () {
-      final f = FocusNode();
-      f.addListener(() {
-        if (f.hasFocus) return;
-        unawaited(_saveExerciseName(id));
-
-        final trimmed = controller.text.trim();
-        if (trimmed.isNotEmpty) return;
-
-        final fallback = _persistedExerciseNames[id] ?? e.name;
-        if (controller.text == fallback) return;
-        controller.value = TextEditingValue(
-          text: fallback,
-          selection: TextSelection.collapsed(offset: fallback.length),
-        );
-      });
-      return f;
-    });
-
-    if (!focusNode.hasFocus && controller.text != e.name) {
-      controller.value = TextEditingValue(
-        text: e.name,
-        selection: TextSelection.collapsed(offset: e.name.length),
-      );
-      _persistedExerciseNames[id] = e.name;
-    }
-
-    return controller;
-  }
-
-  FocusNode _nameFocusNode(int templateExerciseId) {
-    return _nameFocusNodes.putIfAbsent(templateExerciseId, FocusNode.new);
-  }
-
   Future<void> _saveExerciseName(int templateExerciseId) async {
-    if (!mounted) return;
-    final controller = _nameCtrls[templateExerciseId];
-    if (controller == null) return;
-
-    final nextName = controller.text.trim();
-    if (nextName.isEmpty) return;
-
-    final savedName = _persistedExerciseNames[templateExerciseId];
-    if (nextName == savedName?.trim()) return;
-
-    if (_nameSaveInFlight.contains(templateExerciseId)) return;
-
-    _nameSaveInFlight.add(templateExerciseId);
-    try {
-      final kind = await showExerciseChangeDialog(context);
-      if (!mounted) return;
-      if (kind == null) {
-        _restoreExerciseName(templateExerciseId, savedName);
-        return;
-      }
-      await applyClientExerciseNameChange(
-        db: db,
-        clientId: widget.clientId,
-        templateExerciseId: templateExerciseId,
-        newName: nextName,
-        kind: kind,
-      );
-      _persistedExerciseNames[templateExerciseId] = nextName;
-      _scheduleDraftAutosave();
-    } finally {
-      _nameSaveInFlight.remove(templateExerciseId);
-    }
-  }
-
-  void _restoreExerciseName(int templateExerciseId, String? savedName) {
-    final controller = _nameCtrls[templateExerciseId];
-    if (controller == null || savedName == null) return;
-    controller.value = TextEditingValue(
-      text: savedName,
-      selection: TextSelection.collapsed(offset: savedName.length),
+    final selected = await showExerciseSelector(context, database: db);
+    if (selected == null) return;
+    await db.setExerciseForClientSlot(
+      clientId: widget.clientId,
+      templateExerciseId: templateExerciseId,
+      exerciseIdentityId: selected.id,
     );
+    if (!mounted) return;
+    await _reloadScreenData();
+    _scheduleDraftAutosave();
   }
 
   Future<void> _toggleSupersetForExercise(WorkoutExerciseVm e) async {
@@ -390,38 +307,13 @@ class _WorkoutScreenState extends State<WorkoutScreen> {
   }
 
   Future<void> _addExercise(int templateId) async {
-    final ctrl = TextEditingController();
-    final name = await showDialog<String>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Новое упражнение'),
-        content: TextField(
-          controller: ctrl,
-          autofocus: true,
-          decoration: const InputDecoration(
-            labelText: 'Название упражнения',
-            border: OutlineInputBorder(),
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Отмена'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(context, ctrl.text.trim()),
-            child: const Text('Добавить'),
-          ),
-        ],
-      ),
-    );
-
-    if (name == null || name.trim().isEmpty) return;
+    final selected = await showExerciseSelector(context, database: db);
+    if (selected == null) return;
 
     await db.addWorkoutExerciseForClient(
       clientId: widget.clientId,
       templateId: templateId,
-      name: name,
+      exerciseIdentityId: selected.id,
     );
     if (!mounted) return;
     await _reloadScreenData();
@@ -703,34 +595,38 @@ class _WorkoutScreenState extends State<WorkoutScreen> {
           ],
         ),
         const SizedBox(height: 8),
-        TextField(
-          controller: _nameController(e),
-          focusNode: _nameFocusNode(e.templateExerciseId),
-          textInputAction: TextInputAction.next,
-          style: Theme.of(context).textTheme.titleSmall?.copyWith(
-            fontWeight: FontWeight.w600,
-            height: 1.25,
-            letterSpacing: 0.1,
-          ),
-          decoration: InputDecoration(
-            prefixIcon: const _WorkoutAssetIcon(
-              'exercise_title_edit',
-              size: 14,
+        InkWell(
+          borderRadius: BorderRadius.circular(14),
+          onTap: () => _saveExerciseName(e.templateExerciseId),
+          child: InputDecorator(
+            decoration: InputDecoration(
+              prefixIcon: const _WorkoutAssetIcon(
+                'exercise_title_edit',
+                size: 14,
+              ),
+              labelText: 'Упражнение',
+              filled: true,
+              fillColor: colors.surfaceContainerHighest.withOpacity(0.35),
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(14),
+                borderSide: BorderSide(color: colors.outlineVariant),
+              ),
+              enabledBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(14),
+                borderSide: BorderSide(
+                  color: colors.outlineVariant.withOpacity(0.65),
+                ),
+              ),
+              isDense: true,
             ),
-            labelText: 'Название',
-            filled: true,
-            fillColor: colors.surfaceContainerHighest.withOpacity(0.35),
-            border: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(14),
-              borderSide: BorderSide(color: colors.outlineVariant),
-            ),
-            enabledBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(14),
-              borderSide: BorderSide(
-                color: colors.outlineVariant.withOpacity(0.65),
+            child: Text(
+              e.name,
+              style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                fontWeight: FontWeight.w600,
+                height: 1.25,
+                letterSpacing: 0.1,
               ),
             ),
-            isDense: true,
           ),
         ),
         const SizedBox(height: 10),

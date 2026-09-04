@@ -14,7 +14,7 @@ import 'package:video_thumbnail/video_thumbnail.dart';
 
 import '../../app/app_db_scope.dart';
 import '../../db/app_db.dart';
-import '../workouts/exercise_change_flow.dart';
+import '../exercises/exercise_selector_sheet.dart';
 import 'pult_store.dart';
 
 class _PultHeaderVideoWarmup {
@@ -548,15 +548,10 @@ class _PultWorkoutPageState extends State<_PultWorkoutPage>
 
   final Map<int, TextEditingController> _kgControllers =
       <int, TextEditingController>{};
-  final Map<int, TextEditingController> _nameControllers =
-      <int, TextEditingController>{};
   final Map<int, TextEditingController> _repsControllers =
       <int, TextEditingController>{};
   final Map<int, FocusNode> _kgFocusNodes = <int, FocusNode>{};
   final Map<int, FocusNode> _repsFocusNodes = <int, FocusNode>{};
-  final Map<int, FocusNode> _nameFocusNodes = <int, FocusNode>{};
-  final Map<int, Future<void>> _nameCommitFutures = <int, Future<void>>{};
-  final Map<int, String> _persistedExerciseNames = <int, String>{};
   final Map<int, GlobalKey> _exerciseKeys = <int, GlobalKey>{};
   final ScrollController _pageScrollController = ScrollController();
 
@@ -1091,15 +1086,10 @@ class _PultWorkoutPageState extends State<_PultWorkoutPage>
     for (final controller in [
       ..._kgControllers.values,
       ..._repsControllers.values,
-      ..._nameControllers.values,
     ]) {
       controller.dispose();
     }
-    for (final node in [
-      ..._kgFocusNodes.values,
-      ..._repsFocusNodes.values,
-      ..._nameFocusNodes.values,
-    ]) {
+    for (final node in [..._kgFocusNodes.values, ..._repsFocusNodes.values]) {
       node.dispose();
     }
     _headerVideoController?.dispose();
@@ -1159,10 +1149,6 @@ class _PultWorkoutPageState extends State<_PultWorkoutPage>
         _repsControllers[e.templateExerciseId] = TextEditingController(
           text: e.lastReps?.toString() ?? '',
         )..addListener(_handleInputChanged);
-        _nameControllers[e.templateExerciseId] = TextEditingController(
-          text: e.name,
-        );
-        _persistedExerciseNames[e.templateExerciseId] = e.name;
 
         _kgFocusNodes[e.templateExerciseId] = FocusNode()
           ..addListener(() {
@@ -1184,17 +1170,6 @@ class _PultWorkoutPageState extends State<_PultWorkoutPage>
               _scheduleBringIntoView(e.templateExerciseId);
             } else {
               unawaited(_commitDraftsNow());
-            }
-          });
-        _nameFocusNodes[e.templateExerciseId] = FocusNode()
-          ..addListener(() {
-            final node = _nameFocusNodes[e.templateExerciseId];
-            final controller = _nameControllers[e.templateExerciseId];
-            if (node?.hasFocus == true && controller != null) {
-              _scheduleSelectAll(controller);
-              _scheduleBringIntoView(e.templateExerciseId);
-            } else {
-              unawaited(_commitExerciseName(e.templateExerciseId));
             }
           });
       }
@@ -1222,15 +1197,10 @@ class _PultWorkoutPageState extends State<_PultWorkoutPage>
     for (final controller in [
       ..._kgControllers.values,
       ..._repsControllers.values,
-      ..._nameControllers.values,
     ]) {
       controller.dispose();
     }
-    for (final node in [
-      ..._kgFocusNodes.values,
-      ..._repsFocusNodes.values,
-      ..._nameFocusNodes.values,
-    ]) {
+    for (final node in [..._kgFocusNodes.values, ..._repsFocusNodes.values]) {
       node.dispose();
     }
 
@@ -1238,9 +1208,6 @@ class _PultWorkoutPageState extends State<_PultWorkoutPage>
     _repsControllers.clear();
     _kgFocusNodes.clear();
     _repsFocusNodes.clear();
-    _nameFocusNodes.clear();
-    _nameCommitFutures.clear();
-    _persistedExerciseNames.clear();
     _exerciseKeys.clear();
   }
 
@@ -1300,81 +1267,9 @@ class _PultWorkoutPageState extends State<_PultWorkoutPage>
     return future;
   }
 
-  Future<void> _commitExerciseName(int templateExerciseId) {
-    final current = _nameCommitFutures[templateExerciseId];
-    if (current != null) return current;
-
-    late final Future<void> future;
-    future = _saveExerciseName(templateExerciseId).whenComplete(() {
-      if (identical(_nameCommitFutures[templateExerciseId], future)) {
-        _nameCommitFutures.remove(templateExerciseId);
-      }
-    });
-    _nameCommitFutures[templateExerciseId] = future;
-    return future;
-  }
-
-  void _commitNameFromInteraction(int templateExerciseId) {
-    unawaited(_commitExerciseName(templateExerciseId));
-    _nameFocusNodes[templateExerciseId]?.unfocus();
-  }
-
   void _commitDraftsFromInteraction(FocusNode focusNode) {
     unawaited(_commitDraftsNow());
     focusNode.unfocus();
-  }
-
-  Future<String?> _showExerciseNameDialog({
-    required String title,
-    required String actionLabel,
-    String initialValue = '',
-  }) async {
-    final controller = TextEditingController(text: initialValue);
-    final focusNode = FocusNode();
-
-    final result = await showDialog<String>(
-      context: context,
-      builder: (dialogContext) {
-        WidgetsBinding.instance.addPostFrameCallback((_) {
-          if (!focusNode.hasFocus) {
-            focusNode.requestFocus();
-          }
-          controller.selection = TextSelection(
-            baseOffset: 0,
-            extentOffset: controller.text.length,
-          );
-        });
-
-        return AlertDialog(
-          title: Text(title),
-          content: TextField(
-            controller: controller,
-            focusNode: focusNode,
-            decoration: const InputDecoration(
-              labelText: 'Название упражнения',
-              border: OutlineInputBorder(),
-            ),
-            onSubmitted: (_) =>
-                Navigator.of(dialogContext).pop(controller.text.trim()),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(dialogContext).pop(),
-              child: const Text('Отмена'),
-            ),
-            FilledButton(
-              onPressed: () =>
-                  Navigator.of(dialogContext).pop(controller.text.trim()),
-              child: Text(actionLabel),
-            ),
-          ],
-        );
-      },
-    );
-
-    focusNode.dispose();
-    controller.dispose();
-    return result;
   }
 
   Future<void> _addExercise({WorkoutExerciseVm? afterExercise}) async {
@@ -1383,11 +1278,8 @@ class _PultWorkoutPageState extends State<_PultWorkoutPage>
 
     await _saveDrafts();
 
-    final name = await _showExerciseNameDialog(
-      title: 'Новое упражнение',
-      actionLabel: 'Добавить',
-    );
-    if (name == null || name.trim().isEmpty) return;
+    final selected = await showExerciseSelector(context, database: widget.db);
+    if (selected == null) return;
 
     int? templateId;
     if (data.exercises.isNotEmpty) {
@@ -1403,7 +1295,7 @@ class _PultWorkoutPageState extends State<_PultWorkoutPage>
     await widget.db.addWorkoutExerciseForClient(
       clientId: widget.tab.clientId,
       templateId: templateId,
-      name: name,
+      exerciseIdentityId: selected.id,
       insertAfterOrderIndex: afterExercise?.orderIndex,
     );
 
@@ -1492,9 +1384,6 @@ class _PultWorkoutPageState extends State<_PultWorkoutPage>
 
     try {
       FocusManager.instance.primaryFocus?.unfocus();
-      for (final exercise in _data!.exercises) {
-        await _commitExerciseName(exercise.templateExerciseId);
-      }
       await _commitDraftsNow();
 
       final results = <int, (double? kg, int? reps)>{};
@@ -1543,38 +1432,14 @@ class _PultWorkoutPageState extends State<_PultWorkoutPage>
   }
 
   Future<void> _saveExerciseName(int templateExerciseId) async {
-    final controller = _nameControllers[templateExerciseId];
-    if (controller == null) return;
-
-    final nextName = controller.text.trim();
-    if (nextName.isEmpty) return;
-
-    final persisted = _persistedExerciseNames[templateExerciseId];
-    if (persisted?.trim() == nextName) return;
-
-    final kind = await showExerciseChangeDialog(context);
-    if (!mounted) return;
-    if (kind == null) {
-      _restoreExerciseName(templateExerciseId, persisted);
-      return;
-    }
-    await applyClientExerciseNameChange(
-      db: widget.db,
+    final selected = await showExerciseSelector(context, database: widget.db);
+    if (selected == null) return;
+    await widget.db.setExerciseForClientSlot(
       clientId: widget.tab.clientId,
       templateExerciseId: templateExerciseId,
-      newName: nextName,
-      kind: kind,
+      exerciseIdentityId: selected.id,
     );
-    _persistedExerciseNames[templateExerciseId] = nextName;
-  }
-
-  void _restoreExerciseName(int templateExerciseId, String? persisted) {
-    final controller = _nameControllers[templateExerciseId];
-    if (controller == null || persisted == null) return;
-    controller.value = TextEditingValue(
-      text: persisted,
-      selection: TextSelection.collapsed(offset: persisted.length),
-    );
+    await _load();
   }
 
   void _scheduleSelectAll(TextEditingController controller) {
@@ -1662,16 +1527,14 @@ class _PultWorkoutPageState extends State<_PultWorkoutPage>
     required WorkoutExerciseVm exercise,
     required ThemeData theme,
   }) {
-    final controller = _nameControllers[exercise.templateExerciseId]!;
-    final focusNode = _nameFocusNodes[exercise.templateExerciseId]!;
     final colors = Theme.of(context).colorScheme;
     return SizedBox(
       height: 92,
       child: AnimatedBuilder(
-        animation: Listenable.merge([controller, focusNode]),
+        animation: const AlwaysStoppedAnimation<bool>(false),
         builder: (context, child) {
-          final highlighted = controller.text.trim().isNotEmpty;
-          final focused = focusNode.hasFocus;
+          final highlighted = exercise.name.trim().isNotEmpty;
+          const focused = false;
           final fieldStyle = theme.textTheme.titleMedium?.copyWith(
             fontWeight: FontWeight.w700,
             height: 1,
@@ -1679,9 +1542,9 @@ class _PultWorkoutPageState extends State<_PultWorkoutPage>
           );
           return LayoutBuilder(
             builder: (context, constraints) {
-              final probeText = controller.text.trim().isEmpty
+              final probeText = exercise.name.trim().isEmpty
                   ? 'Название упражнения'
-                  : controller.text;
+                  : exercise.name;
               final probePainter = TextPainter(
                 text: TextSpan(text: probeText, style: fieldStyle),
                 maxLines: 1,
@@ -1706,33 +1569,19 @@ class _PultWorkoutPageState extends State<_PultWorkoutPage>
                   child: Center(
                     child: SizedBox(
                       width: double.infinity,
-                      child: TextField(
-                        controller: controller,
-                        focusNode: focusNode,
-                        decoration: InputDecoration(
-                          isCollapsed: true,
-                          border: InputBorder.none,
-                          hintText: 'Название упражнения',
-                          hintStyle: TextStyle(
-                            color: colors.onSurfaceVariant.withValues(
-                              alpha: 0.58,
-                            ),
-                            fontWeight: FontWeight.w500,
-                          ),
+                      child: InkWell(
+                        borderRadius: BorderRadius.circular(10),
+                        onTap: () =>
+                            _saveExerciseName(exercise.templateExerciseId),
+                        child: Text(
+                          exercise.name.trim().isEmpty
+                              ? 'Выберите упражнение'
+                              : exercise.name,
+                          maxLines: isSingleLine ? 1 : 3,
+                          overflow: TextOverflow.ellipsis,
+                          textAlign: TextAlign.center,
+                          style: fieldStyle,
                         ),
-                        onTap: () => _scheduleSelectAll(controller),
-                        onSubmitted: (_) => _commitNameFromInteraction(
-                          exercise.templateExerciseId,
-                        ),
-                        onTapOutside: (_) => _commitNameFromInteraction(
-                          exercise.templateExerciseId,
-                        ),
-                        minLines: 1,
-                        maxLines: isSingleLine ? 1 : 3,
-                        keyboardType: TextInputType.text,
-                        textInputAction: TextInputAction.done,
-                        textAlign: TextAlign.center,
-                        style: fieldStyle,
                       ),
                     ),
                   ),
