@@ -249,4 +249,118 @@ void main() {
       expect(lastTile.hitTestable(), findsOneWidget);
     },
   );
+
+  testWidgets('catalog mutations preserve scroll offset and search query', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(700, 900);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    final db = await openDb();
+    addTearDown(db.close);
+    final exercises = <ExerciseIdentity>[];
+    for (var index = 0; index < 50; index++) {
+      exercises.add(
+        await db.createExercise(
+          'Позиция скролла ${index.toString().padLeft(2, '0')}',
+        ),
+      );
+    }
+    final target = exercises[35];
+
+    await tester.pumpWidget(app(db, const ExerciseCatalogScreen()));
+    await tester.pumpAndSettle();
+    final search = find.byType(TextField).first;
+    await tester.enterText(search, 'Позиция скролла');
+    await tester.pumpAndSettle();
+
+    Finder targetTile() => find.byKey(ValueKey('exercise_${target.id}'));
+    await tester.scrollUntilVisible(
+      targetTile(),
+      250,
+      scrollable: find.byType(Scrollable).last,
+    );
+    await Scrollable.ensureVisible(
+      tester.element(targetTile()),
+      alignment: 0.5,
+    );
+    await tester.pumpAndSettle();
+    final listView = tester.widget<ListView>(find.byType(ListView));
+    final controller = listView.controller!;
+    final offsetBeforeRename = controller.offset;
+    expect(offsetBeforeRename, greaterThan(0));
+
+    await tester.tap(
+      find.descendant(
+        of: targetTile(),
+        matching: find.byType(PopupMenuButton<String>),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Переименовать'));
+    await tester.pumpAndSettle();
+    final renameField = find.descendant(
+      of: find.byType(AlertDialog),
+      matching: find.byType(TextField),
+    );
+    await tester.enterText(renameField, 'Позиция скролла 35 изменено');
+    await tester.tap(find.text('Сохранить'));
+    await tester.pumpAndSettle();
+
+    expect(controller.offset, greaterThan(0));
+    expect((controller.offset - offsetBeforeRename).abs(), lessThan(2));
+    expect(
+      tester
+          .widget<EditableText>(find.byType(EditableText).first)
+          .controller
+          .text,
+      'Позиция скролла',
+    );
+
+    await tester.tap(
+      find.descendant(
+        of: targetTile(),
+        matching: find.byType(PopupMenuButton<String>),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('В архив'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('В архив'));
+    await tester.pumpAndSettle();
+    final offsetAfterArchive = controller.offset;
+    expect(offsetAfterArchive, greaterThan(0));
+    expect(
+      offsetAfterArchive,
+      lessThanOrEqualTo(controller.position.maxScrollExtent),
+    );
+    expect(
+      tester
+          .widget<EditableText>(find.byType(EditableText).first)
+          .controller
+          .text,
+      'Позиция скролла',
+    );
+
+    await db.restoreExercise(target.id);
+    await tester.tap(find.byKey(const Key('exercise_catalog_more')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Обновить'));
+    await tester.pumpAndSettle();
+
+    expect(controller.offset, greaterThan(0));
+    expect(
+      controller.offset,
+      lessThanOrEqualTo(controller.position.maxScrollExtent),
+    );
+    expect(targetTile(), findsOneWidget);
+    expect(
+      tester
+          .widget<EditableText>(find.byType(EditableText).first)
+          .controller
+          .text,
+      'Позиция скролла',
+    );
+  });
 }

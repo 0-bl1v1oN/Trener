@@ -91,6 +91,8 @@ class _ExerciseCatalogScreenState extends State<ExerciseCatalogScreen> {
   String _query = '';
   late Future<List<ExerciseIdentity>> _future;
   late final ExerciseCatalogController _localController;
+  final ScrollController _scrollController = ScrollController();
+  double? _pendingScrollOffset;
 
   @override
   void initState() {
@@ -112,6 +114,7 @@ class _ExerciseCatalogScreenState extends State<ExerciseCatalogScreen> {
   void dispose() {
     widget.controller?._detach(this);
     _localController._detach(this);
+    _scrollController.dispose();
     super.dispose();
   }
 
@@ -122,10 +125,29 @@ class _ExerciseCatalogScreenState extends State<ExerciseCatalogScreen> {
   }
 
   void _reload() {
+    if (_scrollController.hasClients) {
+      _pendingScrollOffset = _scrollController.offset;
+    }
     _future = AppDbScope.of(context).getExercises(
       includeArchived: _showArchived,
       includeMerged: _showArchived,
     );
+  }
+
+  void _restoreScrollOffsetAfterBuild() {
+    final requestedOffset = _pendingScrollOffset;
+    if (requestedOffset == null) return;
+    _pendingScrollOffset = null;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || !_scrollController.hasClients) return;
+      final position = _scrollController.position;
+      final target = requestedOffset
+          .clamp(position.minScrollExtent, position.maxScrollExtent)
+          .toDouble();
+      if ((_scrollController.offset - target).abs() > 0.5) {
+        _scrollController.jumpTo(target);
+      }
+    });
   }
 
   Future<void> _performAction(ExerciseCatalogAction action) async {
@@ -293,7 +315,10 @@ class _ExerciseCatalogScreenState extends State<ExerciseCatalogScreen> {
               if (items.isEmpty) {
                 return const Center(child: Text('Упражнений не найдено'));
               }
+              _restoreScrollOffsetAfterBuild();
               return ListView.separated(
+                key: const PageStorageKey<String>('exercise_catalog_list'),
+                controller: _scrollController,
                 itemCount: items.length,
                 separatorBuilder: (_, _) => const Divider(height: 1),
                 itemBuilder: (context, index) {
