@@ -5,6 +5,7 @@ import 'package:drift_flutter/drift_flutter.dart';
 import 'package:uuid/uuid.dart';
 
 import '../sync/sync_models.dart';
+import '../sync/sync_client_payload.dart';
 import '../sync/schedule_sync_payload.dart';
 import '../sync/workout_sync_payload.dart';
 
@@ -1252,23 +1253,10 @@ class AppDb extends _$AppDb {
   }
 
   // --- Offline-first sync infrastructure ---
-  Future<WorkoutSyncPayload?> buildWorkoutSyncPayload(
-    String workoutExternalId,
-  ) async {
-    final normalizedId = workoutExternalId.trim();
-    if (normalizedId.isEmpty) return null;
-
-    final session =
-        await (select(workoutSessions)
-              ..where((row) => row.externalId.equals(normalizedId))
-              ..limit(1))
-            .getSingleOrNull();
-    if (session == null) return null;
-
-    final client = await getClientById(session.clientId);
-    final clientExternalId = client?.externalId?.trim() ?? '';
-    if (client == null || clientExternalId.isEmpty) {
-      throw StateError('У тренировки отсутствует внешний UUID клиента');
+  Future<SyncClientPayload> _buildSyncClientPayload(Client client) async {
+    final clientExternalId = client.externalId?.trim() ?? '';
+    if (clientExternalId.isEmpty) {
+      throw StateError('У клиента отсутствует внешний UUID');
     }
     final programState = await getProgramStateForClient(client.id);
     final parsedPlanSize = _parsePlanSize(client.plan);
@@ -1281,6 +1269,46 @@ class AppDb extends _$AppDb {
             planSize: subscriptionSize,
             completedInPlan: programState.completedInPlan,
           );
+    return SyncClientPayload(
+      clientExternalId: clientExternalId,
+      name: client.name,
+      gender: switch (client.gender?.trim()) {
+        'М' => 'male',
+        'Ж' => 'female',
+        _ => null,
+      },
+      subscriptionSize: subscriptionSize,
+      subscriptionStart: client.planStart == null
+          ? null
+          : syncDateOnly(client.planStart!),
+      subscriptionEnd: client.planEnd == null
+          ? null
+          : syncDateOnly(client.planEnd!),
+      remainingSessions: remainingSessions,
+    );
+  }
+
+  bool _isTrialWorkoutSession(WorkoutSession session) => session.gender == 'П';
+
+  Future<WorkoutSyncPayload?> buildWorkoutSyncPayload(
+    String workoutExternalId,
+  ) async {
+    final normalizedId = workoutExternalId.trim();
+    if (normalizedId.isEmpty) return null;
+
+    final session =
+        await (select(workoutSessions)
+              ..where((row) => row.externalId.equals(normalizedId))
+              ..limit(1))
+            .getSingleOrNull();
+    if (session == null) return null;
+    if (_isTrialWorkoutSession(session)) return null;
+
+    final client = await getClientById(session.clientId);
+    if (client == null) {
+      throw StateError('У тренировки отсутствует клиент');
+    }
+    final syncClient = await _buildSyncClientPayload(client);
 
     final template =
         await (select(workoutTemplates)
@@ -1329,17 +1357,7 @@ class AppDb extends _$AppDb {
 
     return WorkoutSyncPayload.fromSource(
       WorkoutSyncSource(
-        clientExternalId: clientExternalId,
-        clientName: client.name,
-        clientGender: switch (client.gender?.trim()) {
-          'М' => 'male',
-          'Ж' => 'female',
-          _ => null,
-        },
-        subscriptionSize: subscriptionSize,
-        subscriptionStart: client.planStart,
-        subscriptionEnd: client.planEnd,
-        remainingSessions: remainingSessions,
+        client: syncClient,
         workoutExternalId: normalizedId,
         performedAt: session.performedAt,
         workoutName: template == null
@@ -1365,6 +1383,7 @@ class AppDb extends _$AppDb {
               ..limit(1))
             .getSingleOrNull();
     if (client == null) return null;
+    final syncClient = await _buildSyncClientPayload(client);
 
     final range = clientAppointmentsWeekRange(DateTime.now());
     final appointments = await getAppointmentsForClientInRange(
@@ -1373,7 +1392,7 @@ class AppDb extends _$AppDb {
       toExclusive: range.toExclusive,
     );
     return ScheduleSyncPayload.fromRange(
-      clientExternalId: normalizedId,
+      client: syncClient,
       fromInclusive: range.fromInclusive,
       toExclusive: range.toExclusive,
       appointmentStarts: [for (final item in appointments) item.startAt],
@@ -1410,6 +1429,7 @@ class AppDb extends _$AppDb {
     final nonEmptySessions = <WorkoutSession>[];
 
     for (final session in sessions) {
+      if (_isTrialWorkoutSession(session)) continue;
       if ((resultCounts[session.id] ?? 0) == 0) {
         emptySessions++;
         continue;
@@ -1568,6 +1588,28 @@ class AppDb extends _$AppDb {
     );
   }
 
+  Future<int> deleteQueuedTrialWorkoutSyncTasks() {
+    return customUpdate(
+      '''
+      DELETE FROM sync_queue
+      WHERE entity_type = ?
+        AND operation = ?
+        AND EXISTS (
+          SELECT 1
+          FROM workout_sessions w
+          WHERE w.external_id = sync_queue.entity_external_id
+            AND w.gender = 'П'
+        )
+      ''',
+      variables: [
+        Variable.withString(SyncEntityTypes.workout),
+        Variable.withString(SyncOperations.workoutUpsert),
+      ],
+      updates: {syncQueue},
+      updateKind: UpdateKind.delete,
+    );
+  }
+
   Future<SyncQueueEntry> enqueueScheduleSync(String clientExternalId) async {
     final payload = await buildScheduleSyncPayload(clientExternalId);
     if (payload == null) {
@@ -1661,7 +1703,10 @@ class AppDb extends _$AppDb {
   Future<void> _enqueueAllExistingWorkoutSessionsForSync() async {
     final sessions =
         await (select(workoutSessions)
-              ..where((row) => row.externalId.isNotNull())
+              ..where(
+                (row) =>
+                    row.externalId.isNotNull() & row.gender.equals('П').not(),
+              )
               ..orderBy([(row) => OrderingTerm.asc(row.id)]))
             .get();
     for (final session in sessions) {
@@ -1797,7 +1842,8 @@ class AppDb extends _$AppDb {
     ];
   }
 
-  Future<SyncQueueEntry?> getPendingWorkoutSyncTask(int taskId) {
+  Future<SyncQueueEntry?> getPendingWorkoutSyncTask(int taskId) async {
+    await deleteQueuedTrialWorkoutSyncTasks();
     return (select(syncQueue)
           ..where(
             (row) =>
@@ -1821,6 +1867,7 @@ class AppDb extends _$AppDb {
         lastError: const Value('Предыдущая попытка была прервана'),
       ),
     );
+    await deleteQueuedTrialWorkoutSyncTasks();
   }
 
   Future<SyncQueueEntry?> beginSyncAttempt(int id) {
@@ -4438,7 +4485,7 @@ class AppDb extends _$AppDb {
         );
       }
 
-      if (enqueueForSync) {
+      if (enqueueForSync && !_isTrialWorkoutSession(savedSession)) {
         await _enqueueWorkoutSyncSafely(savedSession.externalId);
       }
     });
@@ -6518,7 +6565,10 @@ class AppDb extends _$AppDb {
     return "'${text.replaceAll("'", "''")}'";
   }
 
-  Future<Map<String, dynamic>> buildBackupPayload() async {
+  Future<Map<String, dynamic>> buildBackupPayload({
+    required String appVersion,
+    required String buildNumber,
+  }) async {
     await ensureIncomeTables();
     await ensureContestTables();
     await getTrainerUuid();
@@ -6530,6 +6580,11 @@ class AppDb extends _$AppDb {
     final payload = <String, dynamic>{
       'schemaVersion': schemaVersion,
       'exportedAt': DateTime.now().toIso8601String(),
+      'backupMeta': <String, dynamic>{
+        'formatVersion': 1,
+        'appVersion': appVersion,
+        'buildNumber': buildNumber,
+      },
       'tables': <String, dynamic>{},
     };
 
@@ -6590,8 +6645,15 @@ class AppDb extends _$AppDb {
     }
   }
 
-  Future<void> exportBackupToFile(String filePath) async {
-    final payload = await buildBackupPayload();
+  Future<void> exportBackupToFile(
+    String filePath, {
+    required String appVersion,
+    required String buildNumber,
+  }) async {
+    final payload = await buildBackupPayload(
+      appVersion: appVersion,
+      buildNumber: buildNumber,
+    );
     final json = const JsonEncoder.withIndent('  ').convert(payload);
     await File(filePath).writeAsString(json);
   }

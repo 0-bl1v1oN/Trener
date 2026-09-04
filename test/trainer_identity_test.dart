@@ -38,7 +38,10 @@ void main() {
   test('backup contains and restores the trainer UUID', () async {
     final source = AppDb.forTesting(NativeDatabase.memory());
     final sourceUuid = await source.getTrainerUuid();
-    final backup = await source.buildBackupPayload();
+    final backup = await source.buildBackupPayload(
+      appVersion: '1.9.9',
+      buildNumber: '101',
+    );
     final tables = backup['tables'] as Map<String, dynamic>;
     final settings = tables[source.appSettings.actualTableName] as List;
 
@@ -56,7 +59,10 @@ void main() {
 
   test('old backup without trainer UUID gets one after restore', () async {
     final source = AppDb.forTesting(NativeDatabase.memory());
-    final backup = await source.buildBackupPayload();
+    final backup = await source.buildBackupPayload(
+      appVersion: '1.9.9',
+      buildNumber: '101',
+    );
     backup['schemaVersion'] = 9;
     final tables = backup['tables'] as Map<String, dynamic>;
     tables.remove(source.appSettings.actualTableName);

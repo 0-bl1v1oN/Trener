@@ -263,7 +263,10 @@ void main() {
                 (row) => row.id.equals(sourceResult.exerciseIdentityId!),
               ))
               .getSingle();
-      final payload = await source.buildBackupPayload();
+      final payload = await source.buildBackupPayload(
+        appVersion: '1.9.9',
+        buildNumber: '101',
+      );
       await source.close();
 
       final restored = AppDb.forTesting(NativeDatabase.memory());
@@ -305,7 +308,10 @@ void main() {
           source,
           clientId: 'old-backup-client',
         );
-        final modernPayload = await source.buildBackupPayload();
+        final modernPayload = await source.buildBackupPayload(
+          appVersion: '1.9.9',
+          buildNumber: '101',
+        );
         await source.close();
         final oldPayload =
             jsonDecode(jsonEncode(modernPayload)) as Map<String, dynamic>;
@@ -358,7 +364,10 @@ void main() {
       await db.upsertClient(
         ClientsCompanion.insert(id: 'protected-client', name: 'Не потерять'),
       );
-      final payload = await db.buildBackupPayload();
+      final payload = await db.buildBackupPayload(
+        appVersion: '1.9.9',
+        buildNumber: '101',
+      );
       final broken = jsonDecode(jsonEncode(payload)) as Map<String, dynamic>;
       final tables = broken['tables'] as Map<String, dynamic>;
       final clientRow =

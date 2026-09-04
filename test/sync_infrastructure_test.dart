@@ -9,6 +9,7 @@ import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:myfitness/db/app_db.dart';
 import 'package:myfitness/sync/sync_connection_config.dart';
+import 'package:myfitness/sync/sync_client_payload.dart';
 import 'package:myfitness/sync/sync_http_client.dart';
 import 'package:myfitness/sync/sync_models.dart';
 import 'package:myfitness/sync/schedule_sync_payload.dart';
@@ -41,6 +42,30 @@ void main() {
       expect(queue.single.status, SyncQueueStatuses.pending);
       expect(queue.single.operation, SyncOperations.workoutUpsert);
     });
+
+    test(
+      'trial workout is saved locally without a workout sync task',
+      () async {
+        final fixture = await _createTrialFixture();
+        addTearDown(fixture.db.close);
+
+        await _saveCompletedResult(fixture, weight: 25, reps: 12);
+
+        final session = await fixture.db
+            .select(fixture.db.workoutSessions)
+            .getSingle();
+        expect(session.gender, 'П');
+        expect(
+          await fixture.db.buildWorkoutSyncPayload(session.externalId!),
+          isNull,
+        );
+        expect(
+          await fixture.db.select(fixture.db.workoutExerciseResults).get(),
+          hasLength(1),
+        );
+        expect(await fixture.db.select(fixture.db.syncQueue).get(), isEmpty);
+      },
+    );
 
     test('upsert deduplicates a workout and keeps latest payload', () async {
       final fixture = await _createFixture();
@@ -152,7 +177,15 @@ void main() {
 
         expect(payload!.toJson(), {
           'type': 'schedule',
-          'client': {'client_id': fixture.client.externalId},
+          'client': {
+            'client_id': fixture.client.externalId,
+            'name': fixture.client.name,
+            'gender': 'male',
+            'subscription_size': 4,
+            'subscription_start': '2026-08-17',
+            'subscription_end': '2026-09-14',
+            'remaining_sessions': 3,
+          },
           'schedule': {
             'from': _dateOnly(range.fromInclusive),
             'to': _dateOnly(
@@ -199,6 +232,69 @@ void main() {
 
       expect(json['type'], 'schedule');
       expect((json['schedule'] as Map)['appointments'], isEmpty);
+    });
+
+    test('schedule and workout use the same full client block', () async {
+      final fixture = await _createFixture();
+      addTearDown(fixture.db.close);
+      await _saveCompletedResult(fixture, weight: 45, reps: 9);
+      final session = await fixture.db
+          .select(fixture.db.workoutSessions)
+          .getSingle();
+
+      final workout = await fixture.db.buildWorkoutSyncPayload(
+        session.externalId!,
+      );
+      final schedule = await fixture.db.buildScheduleSyncPayload(
+        fixture.client.externalId!,
+      );
+
+      expect(schedule!.toJson()['client'], workout!.toJson()['client']);
+      expect(schedule.toJson()['client'], {
+        'client_id': fixture.client.externalId,
+        'name': fixture.client.name,
+        'gender': 'male',
+        'subscription_size': 4,
+        'subscription_start': '2026-08-17',
+        'subscription_end': '2026-09-14',
+        'remaining_sessions': 3,
+      });
+    });
+
+    test(
+      'client without workouts builds a full schedule client block',
+      () async {
+        final fixture = await _createFixture();
+        addTearDown(fixture.db.close);
+
+        final schedule = await fixture.db.buildScheduleSyncPayload(
+          fixture.client.externalId!,
+        );
+
+        expect(schedule!.toJson()['client'], {
+          'client_id': fixture.client.externalId,
+          'name': fixture.client.name,
+          'gender': 'male',
+          'subscription_size': 4,
+          'subscription_start': '2026-08-17',
+          'subscription_end': '2026-09-14',
+          'remaining_sessions': 4,
+        });
+      },
+    );
+
+    test('legacy schedule payload with client_id only is readable', () {
+      final payload = ScheduleSyncPayload.fromJson({
+        'client': {'client_id': 'legacy-client-uuid'},
+        'schedule': {
+          'from': '2026-08-31',
+          'to': '2026-09-05',
+          'appointments': <Object?>[],
+        },
+      });
+
+      expect(payload.clientExternalId, 'legacy-client-uuid');
+      expect(payload.toJson()['client'], {'client_id': 'legacy-client-uuid'});
     });
 
     test('legacy queued payload is normalized to compact contract', () {
@@ -391,7 +487,10 @@ void main() {
         message: 'Не переносить',
       );
 
-      final backup = await fixture.db.buildBackupPayload();
+      final backup = await fixture.db.buildBackupPayload(
+        appVersion: '1.9.9',
+        buildNumber: '101',
+      );
       final tables = backup['tables'] as Map<String, dynamic>;
       expect(tables['sync_queue'], isNotEmpty);
       expect(tables.containsKey('sync_log'), isFalse);
@@ -480,7 +579,15 @@ void main() {
         client: SyncHttpClient(config: config, client: client),
       );
       const payload = ScheduleSyncPayload(
-        clientExternalId: 'client-uuid',
+        client: SyncClientPayload(
+          clientExternalId: 'client-uuid',
+          name: 'Клиент',
+          gender: 'male',
+          subscriptionSize: 8,
+          subscriptionStart: '2026-08-17',
+          subscriptionEnd: '2026-09-14',
+          remainingSessions: 4,
+        ),
         from: '2026-08-31',
         to: '2026-09-05',
         appointments: [
@@ -618,6 +725,38 @@ void main() {
       );
     });
 
+    test('old pending trial task is deleted without transport call', () async {
+      final fixture = await _createTrialFixture();
+      addTearDown(fixture.db.close);
+      await _saveCompletedResult(fixture, weight: 25, reps: 12);
+      final session = await fixture.db
+          .select(fixture.db.workoutSessions)
+          .getSingle();
+      await fixture.db.upsertSyncQueueTask(
+        entityType: SyncEntityTypes.workout,
+        entityExternalId: session.externalId!,
+        operation: SyncOperations.workoutUpsert,
+        payload: '{"legacy_trial":true}',
+      );
+      final transport = _FakeTransport(
+        const SyncTransportResult.success(httpStatus: 201),
+      );
+
+      final result = await SyncService(
+        db: fixture.db,
+        transport: transport,
+      ).syncPending();
+
+      expect(result.succeeded, 0);
+      expect(result.failed, 0);
+      expect(transport.payloads, isEmpty);
+      expect(await fixture.db.select(fixture.db.syncQueue).get(), isEmpty);
+      expect(
+        await fixture.db.select(fixture.db.workoutSessions).get(),
+        hasLength(1),
+      );
+    });
+
     test(
       '4xx is permanent for the pass and does not start the next task',
       () async {
@@ -706,16 +845,31 @@ void main() {
                 (row) => row.operation.equals(SyncOperations.scheduleUpsert),
               ))
               .getSingle();
-      final oldPayload = oldTask.payload;
       await fixture.db.updateAppointmentTime(
         id: appointment.id,
         newStartAt: range.fromInclusive.add(
           const Duration(hours: 11, minutes: 30),
         ),
       );
-      await (fixture.db.update(fixture.db.syncQueue)
-            ..where((row) => row.id.equals(oldTask.id)))
-          .write(SyncQueueCompanion(payload: Value(oldPayload)));
+      await (fixture.db.update(
+        fixture.db.syncQueue,
+      )..where((row) => row.id.equals(oldTask.id))).write(
+        SyncQueueCompanion(
+          payload: Value(
+            jsonEncode({
+              'type': 'schedule',
+              'client': {'client_id': fixture.client.externalId},
+              'schedule': {
+                'from': _dateOnly(range.fromInclusive),
+                'to': _dateOnly(
+                  range.toExclusive.subtract(const Duration(days: 1)),
+                ),
+                'appointments': <Object?>[],
+              },
+            }),
+          ),
+        ),
+      );
       await fixture.db.deleteWorkoutSyncTask(
         (await fixture.db.select(fixture.db.workoutSessions).getSingle())
             .externalId,
@@ -737,6 +891,15 @@ void main() {
           {'date': _dateOnly(range.fromInclusive), 'time': '11:30'},
         ],
       );
+      expect(transport.schedulePayloads.single.toJson()['client'], {
+        'client_id': fixture.client.externalId,
+        'name': fixture.client.name,
+        'gender': 'male',
+        'subscription_size': 4,
+        'subscription_start': '2026-08-17',
+        'subscription_end': '2026-09-14',
+        'remaining_sessions': 3,
+      });
     });
 
     test(
@@ -1021,6 +1184,8 @@ Future<_SyncFixture> _createFixture({AppDb? db, DateTime? day}) async {
       name: 'Клиент синхронизации',
       gender: const Value('М'),
       plan: const Value('4'),
+      planStart: Value(DateTime(2026, 8, 17)),
+      planEnd: Value(DateTime(2026, 9, 14)),
     ),
   );
   await database.ensureProgramStateForClient(clientId);
@@ -1040,6 +1205,37 @@ Future<_SyncFixture> _createFixture({AppDb? db, DateTime? day}) async {
     template: template,
     exercise: exercise,
     day: day ?? DateTime(2026, 8, 5, 12),
+  );
+}
+
+Future<_SyncFixture> _createTrialFixture() async {
+  final database = AppDb.forTesting(NativeDatabase.memory());
+  const clientId = 'trial-sync-client';
+  await database.upsertClient(
+    ClientsCompanion.insert(
+      id: clientId,
+      name: 'Пробный клиент',
+      gender: const Value('М'),
+      plan: const Value('Пробный'),
+    ),
+  );
+  await database.ensureProgramStateForClient(clientId);
+  final client = (await database.getClientById(clientId))!;
+  final template = await (database.select(
+    database.workoutTemplates,
+  )..where((row) => row.gender.equals('П') & row.idx.equals(0))).getSingle();
+  final exercise =
+      await (database.select(database.workoutTemplateExercises)
+            ..where((row) => row.templateId.equals(template.id))
+            ..orderBy([(row) => OrderingTerm.asc(row.orderIndex)])
+            ..limit(1))
+          .getSingle();
+  return _SyncFixture(
+    db: database,
+    client: client,
+    template: template,
+    exercise: exercise,
+    day: DateTime(2026, 9, 1, 12),
   );
 }
 

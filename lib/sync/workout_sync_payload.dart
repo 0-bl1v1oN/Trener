@@ -1,5 +1,7 @@
 import 'dart:convert';
 
+import 'sync_client_payload.dart';
+
 class WorkoutSyncExerciseSource {
   const WorkoutSyncExerciseSource({
     required this.exerciseExternalId,
@@ -16,26 +18,14 @@ class WorkoutSyncExerciseSource {
 
 class WorkoutSyncSource {
   const WorkoutSyncSource({
-    required this.clientExternalId,
-    required this.clientName,
-    this.clientGender,
-    this.subscriptionSize,
-    this.subscriptionStart,
-    this.subscriptionEnd,
-    this.remainingSessions,
+    required this.client,
     required this.workoutExternalId,
     required this.performedAt,
     required this.workoutName,
     required this.exercises,
   });
 
-  final String clientExternalId;
-  final String clientName;
-  final String? clientGender;
-  final int? subscriptionSize;
-  final DateTime? subscriptionStart;
-  final DateTime? subscriptionEnd;
-  final int? remainingSessions;
+  final SyncClientPayload client;
   final String workoutExternalId;
   final DateTime performedAt;
   final String? workoutName;
@@ -109,22 +99,10 @@ class WorkoutSyncPayload {
     final workoutName = _nonEmpty(source.workoutName);
     return {
       'type': 'workout',
-      'client': {
-        'client_id': source.clientExternalId,
-        'name': source.clientName,
-        if (source.clientGender != null) 'gender': source.clientGender,
-        if (source.subscriptionSize != null)
-          'subscription_size': source.subscriptionSize,
-        if (source.subscriptionStart != null)
-          'subscription_start': _dateOnly(source.subscriptionStart!),
-        if (source.subscriptionEnd != null)
-          'subscription_end': _dateOnly(source.subscriptionEnd!),
-        if (source.remainingSessions != null)
-          'remaining_sessions': source.remainingSessions,
-      },
+      'client': source.client.toJson(),
       'workout': {
         'workout_id': source.workoutExternalId,
-        'date': _dateOnly(source.performedAt),
+        'date': syncDateOnly(source.performedAt),
         if (workoutName != null) 'name': workoutName,
       },
       'exercises': [
@@ -140,7 +118,7 @@ class WorkoutSyncPayload {
   }
 
   static Map<String, dynamic> _normalize(Map<String, dynamic> json) {
-    final client = Map<String, dynamic>.from(json['client'] as Map);
+    final client = SyncClientPayload.fromJson(json['client'] as Map);
     final workout = Map<String, dynamic>.from(json['workout'] as Map);
     final exercises = json['exercises'] as List;
     final workoutName = _nonEmpty(
@@ -149,19 +127,7 @@ class WorkoutSyncPayload {
 
     return {
       'type': 'workout',
-      'client': {
-        'client_id': client['client_id'] ?? client['uuid'],
-        'name': client['name'],
-        if (client['gender'] != null) 'gender': client['gender'],
-        if (client['subscription_size'] != null)
-          'subscription_size': client['subscription_size'],
-        if (client['subscription_start'] != null)
-          'subscription_start': client['subscription_start'],
-        if (client['subscription_end'] != null)
-          'subscription_end': client['subscription_end'],
-        if (client['remaining_sessions'] != null)
-          'remaining_sessions': client['remaining_sessions'],
-      },
+      'client': client.toJson(),
       'workout': {
         'workout_id': workout['workout_id'] ?? workout['uuid'],
         'date': _normalizedDate(workout['date'] ?? workout['performed_at']),
@@ -184,12 +150,6 @@ class WorkoutSyncPayload {
     };
   }
 
-  static String _dateOnly(DateTime value) {
-    final local = value.toLocal();
-    String twoDigits(int part) => part.toString().padLeft(2, '0');
-    return '${local.year}-${twoDigits(local.month)}-${twoDigits(local.day)}';
-  }
-
   static String _normalizedDate(Object? value) {
     if (value is! String || value.trim().isEmpty) {
       throw const FormatException('В workout payload отсутствует дата');
@@ -198,7 +158,7 @@ class WorkoutSyncPayload {
     if (date == null) {
       throw const FormatException('Некорректная дата workout payload');
     }
-    return _dateOnly(date);
+    return syncDateOnly(date);
   }
 
   static String? _nonEmpty(Object? value) {

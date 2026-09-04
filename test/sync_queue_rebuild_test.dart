@@ -153,6 +153,39 @@ void main() {
       },
     );
 
+    test(
+      'rebuild excludes trial workouts and removes their old tasks',
+      () async {
+        await _createProgramClient(db, 'trial-client', plan: 'Пробный');
+        final session = await _saveSessionWithResult(
+          db,
+          clientId: 'trial-client',
+          absoluteIndex: 0,
+          templateIdx: 0,
+          performedAt: DateTime(2026, 1, 5),
+          gender: 'П',
+        );
+        expect(await db.select(db.syncQueue).get(), isEmpty);
+        await db.upsertSyncQueueTask(
+          entityType: SyncEntityTypes.workout,
+          entityExternalId: session.externalId!,
+          operation: SyncOperations.workoutUpsert,
+          payload: '{"legacy_trial":true}',
+        );
+
+        final preview = await db.analyzeWorkoutSyncQueueRebuild();
+        expect(preview.totalSessions, 1);
+        expect(preview.tasksToCreate, 0);
+
+        final result = await db.rebuildWorkoutSyncQueue(preview);
+
+        expect(result.createdTasks, 0);
+        expect(await db.select(db.syncQueue).get(), isEmpty);
+        expect(await db.select(db.workoutSessions).get(), hasLength(1));
+        expect(await db.select(db.workoutExerciseResults).get(), hasLength(1));
+      },
+    );
+
     test('same date exact template-plan conflicts are skipped', () async {
       await _createProgramClient(db, 'conflict-client');
       final first = await _saveSessionWithResult(
@@ -343,13 +376,17 @@ void main() {
   });
 }
 
-Future<void> _createProgramClient(AppDb db, String clientId) async {
+Future<void> _createProgramClient(
+  AppDb db,
+  String clientId, {
+  String plan = '4',
+}) async {
   await db.upsertClient(
     ClientsCompanion.insert(
       id: clientId,
       name: 'Client $clientId',
       gender: const Value('М'),
-      plan: const Value('4'),
+      plan: Value(plan),
     ),
   );
   await db.ensureProgramStateForClient(clientId);
@@ -362,10 +399,11 @@ Future<WorkoutSession> _saveSessionWithResult(
   required int templateIdx,
   required DateTime performedAt,
   double weight = 50,
+  String gender = 'М',
 }) async {
   final exercises = await db.getWorkoutPreviewForClient(
     clientId: clientId,
-    gender: 'М',
+    gender: gender,
     templateIdx: templateIdx,
   );
   return db.saveCompletedProgramSlot(

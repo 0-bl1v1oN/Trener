@@ -269,7 +269,10 @@ void main() {
           templateIdx: 2,
           results: const {},
         );
-        final backup = await source.buildBackupPayload();
+        final backup = await source.buildBackupPayload(
+          appVersion: '1.9.9',
+          buildNumber: '101',
+        );
         await source.close();
 
         final restored = AppDb.forTesting(NativeDatabase.memory());
@@ -298,7 +301,10 @@ void main() {
         templateIdx: 0,
         results: const {},
       );
-      final modern = await source.buildBackupPayload();
+      final modern = await source.buildBackupPayload(
+        appVersion: '1.9.9',
+        buildNumber: '101',
+      );
       final old = jsonDecode(jsonEncode(modern)) as Map<String, dynamic>;
       old['schemaVersion'] = 10;
       final tables = old['tables'] as Map<String, dynamic>;

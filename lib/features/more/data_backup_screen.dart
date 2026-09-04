@@ -7,10 +7,12 @@ import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
+import 'package:package_info_plus/package_info_plus.dart';
 import 'package:share_plus/share_plus.dart';
 
 import '../../app/app_db_scope.dart';
 import '../../main.dart';
+import 'backup_compatibility.dart';
 
 class DataBackupScreen extends StatefulWidget {
   const DataBackupScreen({super.key});
@@ -47,7 +49,10 @@ class _DataBackupScreenState extends State<DataBackupScreen> {
         .where((e) => e.path.endsWith('.json'))
         .toList();
 
-    entities.sort((a, b) => b.path.compareTo(a.path));
+    entities.sort((a, b) {
+      final byModified = b.statSync().modified.compareTo(a.statSync().modified);
+      return byModified != 0 ? byModified : b.path.compareTo(a.path);
+    });
 
     if (!mounted) return;
     setState(() => _files = entities);
@@ -56,9 +61,17 @@ class _DataBackupScreenState extends State<DataBackupScreen> {
   Future<File> _createBackupFile() async {
     final db = AppDbScope.of(context);
     final dir = await _backupDir();
-    final ts = DateFormat('yyyyMMdd_HHmmss').format(DateTime.now());
-    final filePath = p.join(dir.path, 'backup_$ts.json');
-    await db.exportBackupToFile(filePath);
+    final packageInfo = await PackageInfo.fromPlatform();
+    final fileName = buildBackupFileName(
+      appVersion: packageInfo.version,
+      createdAt: DateTime.now(),
+    );
+    final filePath = p.join(dir.path, fileName);
+    await db.exportBackupToFile(
+      filePath,
+      appVersion: packageInfo.version,
+      buildNumber: packageInfo.buildNumber,
+    );
     return File(filePath);
   }
 
@@ -123,13 +136,38 @@ class _DataBackupScreenState extends State<DataBackupScreen> {
 
   Future<void> _importBackup(File file) async {
     if (_busy) return;
+    final db = AppDbScope.of(context);
+
+    late final BackupHeader header;
+    late final PackageInfo packageInfo;
+    try {
+      final dynamic decoded = jsonDecode(await file.readAsString());
+      if (decoded is! Map<String, dynamic> || decoded['tables'] is! Map) {
+        throw const FormatException('Некорректный формат резервной копии');
+      }
+      header = BackupHeader.fromPayload(decoded);
+      packageInfo = await PackageInfo.fromPlatform();
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Ошибка импорта: $e')));
+      return;
+    }
+
+    if (!mounted) return;
+    final compatibility = classifyBackupCompatibility(
+      header: header,
+      currentAppVersion: packageInfo.version,
+      currentSchemaVersion: db.schemaVersion,
+    );
 
     final approved = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
         title: const Text('Импорт данных'),
         content: Text(
-          'Импорт из ${p.basename(file.path)} перезапишет текущие данные. Продолжить?',
+          _buildImportWarning(file, header, packageInfo, compatibility),
         ),
         actions: [
           TextButton(
@@ -148,7 +186,6 @@ class _DataBackupScreenState extends State<DataBackupScreen> {
 
     setState(() => _busy = true);
     try {
-      final db = AppDbScope.of(context);
       await db.importBackupFromFile(file.path);
 
       if (!mounted) return;
@@ -191,11 +228,91 @@ class _DataBackupScreenState extends State<DataBackupScreen> {
     }
   }
 
+  String _buildImportWarning(
+    File file,
+    BackupHeader header,
+    PackageInfo packageInfo,
+    BackupCompatibility compatibility,
+  ) {
+    final fileName = p.basename(file.path);
+    final backupVersion = header.appVersion;
+    final currentVersion = packageInfo.version;
+    final buffer = StringBuffer();
+
+    switch (compatibility.appVersionRelation) {
+      case BackupAppVersionRelation.same:
+        buffer.write(
+          'Импорт из $fileName перезапишет текущие данные. Продолжить?',
+        );
+        break;
+      case BackupAppVersionRelation.older:
+        buffer
+          ..writeln('Резервная копия создана в более старой версии приложения.')
+          ..writeln()
+          ..writeln('Версия копии: $backupVersion')
+          ..writeln('Текущая версия: $currentVersion')
+          ..writeln()
+          ..writeln(
+            'При восстановлении старые данные могут быть преобразованы под текущую версию.',
+          )
+          ..writeln()
+          ..write(
+            'Импорт из $fileName перезапишет текущие данные. Продолжить?',
+          );
+        break;
+      case BackupAppVersionRelation.newer:
+        buffer
+          ..writeln('Резервная копия создана в более новой версии приложения.')
+          ..writeln()
+          ..writeln('Версия копии: $backupVersion')
+          ..writeln('Текущая версия: $currentVersion')
+          ..writeln()
+          ..writeln(
+            'Некоторые данные могут быть несовместимы с этой версией приложения.',
+          )
+          ..writeln()
+          ..write(
+            'Импорт из $fileName перезапишет текущие данные. Продолжить?',
+          );
+        break;
+      case BackupAppVersionRelation.legacy:
+        buffer
+          ..writeln(
+            'Не удалось определить версию приложения, в которой создана эта резервная копия.',
+          )
+          ..writeln()
+          ..writeln(
+            'Это старая резервная копия. Перед восстановлением рекомендуется создать текущий backup.',
+          )
+          ..writeln()
+          ..write(
+            'Импорт из $fileName перезапишет текущие данные. Продолжить?',
+          );
+        break;
+    }
+
+    if (compatibility.hasNewerFormat) {
+      buffer
+        ..writeln()
+        ..writeln()
+        ..write('Формат резервной копии новее поддерживаемого.');
+    }
+    if (compatibility.hasNewerSchema) {
+      buffer
+        ..writeln()
+        ..writeln()
+        ..write(
+          'Структура данных резервной копии новее текущей версии приложения и может быть несовместима.',
+        );
+    }
+    return buffer.toString();
+  }
+
   Future<void> _pickAndImportBackup() async {
     if (_busy) return;
     setState(() => _busy = true);
 
-    File? localCopy;
+    late File localCopy;
     try {
       FilePickerResult? result;
       try {
@@ -257,7 +374,7 @@ class _DataBackupScreenState extends State<DataBackupScreen> {
       }
     }
 
-    if (localCopy != null && mounted) {
+    if (mounted) {
       await _importBackup(localCopy);
     }
   }

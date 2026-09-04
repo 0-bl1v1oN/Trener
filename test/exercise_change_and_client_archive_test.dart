@@ -239,7 +239,10 @@ void main() {
           .first;
       expect(historicalAppointments.single.client.id, fixture.clientId);
 
-      final backup = await fixture.db.buildBackupPayload();
+      final backup = await fixture.db.buildBackupPayload(
+        appVersion: '1.9.9',
+        buildNumber: '101',
+      );
       await fixture.db.restoreClient(fixture.clientId);
       expect((await fixture.db.getAllClients()).single.id, fixture.clientId);
       expect(await fixture.db.getArchivedClients(), isEmpty);

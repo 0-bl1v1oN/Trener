@@ -1,12 +1,14 @@
 import 'dart:convert';
 
+import 'sync_client_payload.dart';
+
 class ScheduleSyncAppointment {
   const ScheduleSyncAppointment({required this.date, required this.time});
 
   factory ScheduleSyncAppointment.fromStartAt(DateTime startAt) {
     final local = startAt.toLocal();
     return ScheduleSyncAppointment(
-      date: _dateOnly(local),
+      date: syncDateOnly(local),
       time: _timeOnly(local),
     );
   }
@@ -19,14 +21,14 @@ class ScheduleSyncAppointment {
 
 class ScheduleSyncPayload {
   const ScheduleSyncPayload({
-    required this.clientExternalId,
+    required this.client,
     required this.from,
     required this.to,
     required this.appointments,
   });
 
   factory ScheduleSyncPayload.fromRange({
-    required String clientExternalId,
+    required SyncClientPayload client,
     required DateTime fromInclusive,
     required DateTime toExclusive,
     required List<DateTime> appointmentStarts,
@@ -37,9 +39,9 @@ class ScheduleSyncPayload {
       toExclusive.day - 1,
     );
     return ScheduleSyncPayload(
-      clientExternalId: clientExternalId,
-      from: _dateOnly(fromInclusive),
-      to: _dateOnly(lastDay),
+      client: client,
+      from: syncDateOnly(fromInclusive),
+      to: syncDateOnly(lastDay),
       appointments: [
         for (final startAt in appointmentStarts)
           ScheduleSyncAppointment.fromStartAt(startAt),
@@ -58,7 +60,7 @@ class ScheduleSyncPayload {
       throw const FormatException('Некорректный список schedule appointments');
     }
     return ScheduleSyncPayload(
-      clientExternalId: client['client_id'] as String,
+      client: SyncClientPayload.fromJson(client),
       from: schedule['from'] as String,
       to: schedule['to'] as String,
       appointments: [
@@ -76,14 +78,16 @@ class ScheduleSyncPayload {
     );
   }
 
-  final String clientExternalId;
+  final SyncClientPayload client;
   final String from;
   final String to;
   final List<ScheduleSyncAppointment> appointments;
 
+  String get clientExternalId => client.clientExternalId;
+
   Map<String, dynamic> toJson() => {
     'type': 'schedule',
-    'client': {'client_id': clientExternalId},
+    'client': client.toJson(),
     'schedule': {
       'from': from,
       'to': to,
@@ -92,12 +96,6 @@ class ScheduleSyncPayload {
   };
 
   String encode() => jsonEncode(toJson());
-}
-
-String _dateOnly(DateTime value) {
-  final local = value.toLocal();
-  String twoDigits(int part) => part.toString().padLeft(2, '0');
-  return '${local.year}-${twoDigits(local.month)}-${twoDigits(local.day)}';
 }
 
 String _timeOnly(DateTime value) {
