@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import '../db/app_db.dart';
 import 'sync_models.dart';
 import 'sync_transport.dart';
@@ -8,12 +10,41 @@ class SyncService {
     : _db = db,
       _transport = transport;
 
+  static final Expando<SyncService> _sharedByDatabase = Expando<SyncService>(
+    'shared sync service',
+  );
+
+  static SyncService shared({
+    required AppDb db,
+    required SyncTransport transport,
+  }) {
+    final existing = _sharedByDatabase[db];
+    if (existing != null) return existing;
+    final service = SyncService(db: db, transport: transport);
+    _sharedByDatabase[db] = service;
+    return service;
+  }
+
   final AppDb _db;
   final SyncTransport _transport;
+  Future<SyncRunResult>? _activePendingRun;
+  bool _rerunRequested = false;
+  final List<void Function(SyncProgress progress)> _progressListeners = [];
+  SyncProgress? _latestProgress;
 
   bool get isConfigured => _transport.isConfigured;
 
+  void triggerAutomatic() {
+    unawaited(
+      _startOrJoinPending(
+        requestRerunIfActive: true,
+      ).then<void>((_) {}, onError: (Object _, StackTrace _) {}),
+    );
+  }
+
   Future<SingleSyncResult> syncTaskById(int taskId) async {
+    final pendingRun = _activePendingRun;
+    if (pendingRun != null) await pendingRun;
     if (!_transport.isConfigured) {
       return const SingleSyncResult(
         status: SingleSyncStatus.notConfigured,
@@ -107,6 +138,65 @@ class SyncService {
 
   Future<SyncRunResult> syncPending({
     void Function(SyncProgress progress)? onProgress,
+  }) {
+    return _startOrJoinPending(onProgress: onProgress);
+  }
+
+  Future<SyncRunResult> _startOrJoinPending({
+    void Function(SyncProgress progress)? onProgress,
+    bool requestRerunIfActive = false,
+  }) {
+    final active = _activePendingRun;
+    if (active != null) {
+      if (onProgress != null) {
+        _progressListeners.add(onProgress);
+        final latest = _latestProgress;
+        if (latest != null) onProgress(latest);
+      }
+      if (requestRerunIfActive) _rerunRequested = true;
+      return active;
+    }
+
+    _progressListeners.clear();
+    _latestProgress = null;
+    if (onProgress != null) _progressListeners.add(onProgress);
+    late final Future<SyncRunResult> run;
+    run = _runPendingAndRelease();
+    _activePendingRun = run;
+    return run;
+  }
+
+  void _notifyProgress(SyncProgress progress) {
+    _latestProgress = progress;
+    for (final listener in List.of(_progressListeners)) {
+      try {
+        listener(progress);
+      } catch (_) {
+        // UI progress is observational and must not interrupt queue processing.
+      }
+    }
+  }
+
+  Future<SyncRunResult> _runPendingAndRelease() async {
+    SyncRunResult? result;
+    try {
+      result = await _syncPending(onProgress: _notifyProgress);
+      return result;
+    } finally {
+      final shouldRunAgain =
+          _rerunRequested &&
+          result?.status == SyncRunStatus.completed &&
+          result?.stopReason == null;
+      _rerunRequested = false;
+      _activePendingRun = null;
+      _progressListeners.clear();
+      _latestProgress = null;
+      if (shouldRunAgain) scheduleMicrotask(triggerAutomatic);
+    }
+  }
+
+  Future<SyncRunResult> _syncPending({
+    void Function(SyncProgress progress)? onProgress,
   }) async {
     await _db.cleanupSyncLogs();
     if (!_transport.isConfigured) {
@@ -114,7 +204,7 @@ class SyncService {
     }
 
     await _db.recoverInterruptedSyncTasks();
-    final total = await _db.getPendingSyncTaskCount();
+    var total = await _db.getPendingSyncTaskCount();
     var succeeded = 0;
     var failed = 0;
     SyncRunStopReason? stopReason;
@@ -198,6 +288,7 @@ class SyncService {
           httpStatus: result.httpStatus,
         );
         succeeded++;
+        if (succeeded > total) total = succeeded;
         onProgress?.call(SyncProgress(sent: succeeded, total: total));
         continue;
       }

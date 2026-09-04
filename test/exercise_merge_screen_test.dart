@@ -227,6 +227,7 @@ void main() {
       expect(find.text('Обновить'), findsOneWidget);
       expect(find.text('Разобрать дубли'), findsOneWidget);
       expect(find.text('Объединить вручную'), findsOneWidget);
+      expect(find.text('Проверить legacy-привязки'), findsOneWidget);
       expect(find.text('Скопировать mapping'), findsOneWidget);
       await tester.tap(find.text('Обновить'));
       await tester.pumpAndSettle();
@@ -362,5 +363,111 @@ void main() {
           .text,
       'Позиция скролла',
     );
+  });
+
+  testWidgets('legacy tool shows candidates and requires correction preview', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(900, 1600);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    final db = await openDb();
+    addTearDown(db.close);
+    final legacy = await addIdentity(
+      db,
+      uuid: 'd0000000-0000-4000-8000-000000000001',
+      name: 'Legacy curl UI',
+    );
+    final target = await addIdentity(
+      db,
+      uuid: 'd0000000-0000-4000-8000-000000000002',
+      name: 'Legacy hammer UI',
+    );
+    await db
+        .into(db.clients)
+        .insert(
+          ClientsCompanion.insert(
+            id: 'legacy-ui-client',
+            externalId: const Value('d1000000-0000-4000-8000-000000000001'),
+            name: 'Legacy UI client',
+            gender: const Value('М'),
+          ),
+        );
+    final template = (await db.getWorkoutTemplatesByGender('М')).first;
+    final slot =
+        await (db.select(db.workoutTemplateExercises)
+              ..where((row) => row.templateId.equals(template.id))
+              ..limit(1))
+            .getSingle();
+    await db
+        .into(db.clientTemplateExerciseOverrides)
+        .insert(
+          ClientTemplateExerciseOverridesCompanion.insert(
+            clientId: 'legacy-ui-client',
+            templateExerciseId: slot.id,
+            exerciseIdentityId: Value(legacy.id),
+          ),
+        );
+    await db.customStatement(
+      'INSERT INTO client_exercise_name_overrides '
+      '(client_id, template_exercise_id, custom_name) VALUES (?, ?, ?)',
+      ['legacy-ui-client', slot.id, 'Legacy hammer UI'],
+    );
+    final sessionId = await db
+        .into(db.workoutSessions)
+        .insert(
+          WorkoutSessionsCompanion.insert(
+            externalId: const Value('d2000000-0000-4000-8000-000000000001'),
+            clientId: 'legacy-ui-client',
+            performedAt: DateTime(2026, 9, 4),
+            planInstance: 1,
+            gender: 'М',
+            templateIdx: template.idx,
+          ),
+        );
+    final resultId = await db
+        .into(db.workoutExerciseResults)
+        .insert(
+          WorkoutExerciseResultsCompanion.insert(
+            sessionId: sessionId,
+            templateExerciseId: slot.id,
+            exerciseIdentityId: Value(legacy.id),
+            exerciseNameSnapshot: const Value('Legacy hammer UI'),
+          ),
+        );
+
+    await tester.pumpWidget(app(db, const ExerciseCatalogScreen()));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('exercise_catalog_more')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Проверить legacy-привязки'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Legacy-привязки'), findsOneWidget);
+    expect(find.byKey(const Key('legacy_orphan_bindings')), findsOneWidget);
+    expect(find.text('Legacy UI client'), findsOneWidget);
+    expect(find.textContaining('Чистый кандидат'), findsOneWidget);
+    await tester.tap(find.text('Legacy UI client'));
+    await tester.pumpAndSettle();
+    expect(find.textContaining(legacy.externalId), findsOneWidget);
+    await tester.tap(find.text('Исправить точечно'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Legacy hammer UI').last);
+    await tester.pump();
+    await tester.tap(find.text('Выбрать упражнение'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text(target.canonicalName).last);
+    await tester.pumpAndSettle();
+
+    expect(find.text('Исправить legacy-привязку?'), findsOneWidget);
+    expect(find.textContaining('historical results: 1'), findsOneWidget);
+    expect(find.textContaining(target.externalId), findsOneWidget);
+    await tester.tap(find.text('Отмена'));
+    await tester.pumpAndSettle();
+    final unchanged = await (db.select(
+      db.workoutExerciseResults,
+    )..where((row) => row.id.equals(resultId))).getSingle();
+    expect(unchanged.exerciseIdentityId, legacy.id);
   });
 }

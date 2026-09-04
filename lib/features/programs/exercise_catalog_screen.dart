@@ -6,8 +6,15 @@ import 'package:flutter/services.dart';
 import '../../app/app_db_scope.dart';
 import '../../db/app_db.dart';
 import 'exercise_merge_screen.dart';
+import 'legacy_exercise_bindings_screen.dart';
 
-enum ExerciseCatalogAction { refresh, duplicates, manualMerge, copyMapping }
+enum ExerciseCatalogAction {
+  refresh,
+  duplicates,
+  manualMerge,
+  legacyBindings,
+  copyMapping,
+}
 
 class ExerciseCatalogController {
   _ExerciseCatalogScreenState? _state;
@@ -60,6 +67,10 @@ class ExerciseCatalogTopActions extends StatelessWidget {
             PopupMenuItem(
               value: ExerciseCatalogAction.manualMerge,
               child: Text('Объединить вручную'),
+            ),
+            PopupMenuItem(
+              value: ExerciseCatalogAction.legacyBindings,
+              child: Text('Проверить legacy-привязки'),
             ),
             PopupMenuItem(
               value: ExerciseCatalogAction.copyMapping,
@@ -158,6 +169,8 @@ class _ExerciseCatalogScreenState extends State<ExerciseCatalogScreen> {
         await _openDuplicates();
       case ExerciseCatalogAction.manualMerge:
         await _openManualMerge();
+      case ExerciseCatalogAction.legacyBindings:
+        await _openLegacyBindings();
       case ExerciseCatalogAction.copyMapping:
         await _copyUuidMapping();
     }
@@ -173,6 +186,13 @@ class _ExerciseCatalogScreenState extends State<ExerciseCatalogScreen> {
   Future<void> _openManualMerge() async {
     await Navigator.of(context).push<bool>(
       MaterialPageRoute(builder: (_) => const ManualExerciseMergeScreen()),
+    );
+    if (mounted) setState(_reload);
+  }
+
+  Future<void> _openLegacyBindings() async {
+    await Navigator.of(context).push<void>(
+      MaterialPageRoute(builder: (_) => const LegacyExerciseBindingsScreen()),
     );
     if (mounted) setState(_reload);
   }

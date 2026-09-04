@@ -698,6 +698,105 @@ class ExerciseUuidAliasVm {
   };
 }
 
+class LegacyExerciseSnapshotGroupVm {
+  const LegacyExerciseSnapshotGroupVm({
+    required this.name,
+    required this.resultIds,
+  });
+
+  final String name;
+  final List<int> resultIds;
+
+  int get resultCount => resultIds.length;
+}
+
+class LegacyExerciseBindingCandidateVm {
+  const LegacyExerciseBindingCandidateVm({
+    required this.clientId,
+    required this.clientName,
+    required this.templateExerciseId,
+    required this.programSlot,
+    required this.displayName,
+    required this.currentIdentityId,
+    required this.currentIdentityName,
+    required this.currentIdentityExternalId,
+    required this.snapshotGroups,
+    required this.identitySnapshotNames,
+  });
+
+  final String clientId;
+  final String clientName;
+  final int templateExerciseId;
+  final String programSlot;
+  final String displayName;
+  final int currentIdentityId;
+  final String currentIdentityName;
+  final String currentIdentityExternalId;
+  final List<LegacyExerciseSnapshotGroupVm> snapshotGroups;
+  final List<String> identitySnapshotNames;
+
+  int get historicalResultCount =>
+      snapshotGroups.fold(0, (total, group) => total + group.resultCount);
+
+  bool get hasMixedIdentityHistory {
+    final names = identitySnapshotNames
+        .map(AppDb.normalizeExerciseName)
+        .where((name) => name.isNotEmpty)
+        .toSet();
+    return names.length > 1;
+  }
+
+  bool get isCleanCandidate {
+    if (hasMixedIdentityHistory || snapshotGroups.isEmpty) return false;
+    final display = AppDb.normalizeExerciseName(displayName);
+    final snapshots = snapshotGroups
+        .map((group) => AppDb.normalizeExerciseName(group.name))
+        .where((name) => name.isNotEmpty)
+        .toSet();
+    return snapshots.length == 1 && snapshots.single == display;
+  }
+}
+
+class LegacyExerciseBindingsAuditVm {
+  const LegacyExerciseBindingsAuditVm({
+    required this.candidates,
+    required this.orphanBindings,
+  });
+
+  final List<LegacyExerciseBindingCandidateVm> candidates;
+  final int orphanBindings;
+}
+
+class LegacyExerciseCorrectionPreview {
+  const LegacyExerciseCorrectionPreview({
+    required this.historicalResults,
+    required this.currentSlots,
+    required this.affectedSessions,
+    required this.targetIdentityId,
+    required this.targetName,
+    required this.targetExternalId,
+  });
+
+  final int historicalResults;
+  final int currentSlots;
+  final int affectedSessions;
+  final int targetIdentityId;
+  final String targetName;
+  final String targetExternalId;
+}
+
+class LegacyExerciseCorrectionResult {
+  const LegacyExerciseCorrectionResult({
+    required this.changedHistoricalResults,
+    required this.changedCurrentSlots,
+    required this.requeuedWorkoutSessions,
+  });
+
+  final int changedHistoricalResults;
+  final int changedCurrentSlots;
+  final int requeuedWorkoutSessions;
+}
+
 @DriftDatabase(
   tables: [
     Clients,
@@ -734,6 +833,19 @@ class AppDb extends _$AppDb {
   bool _femaleDefaultsPatched = false;
   bool _trialDefaultsPatched = false;
   Future<void>? _templateDefaultsPatchFuture;
+  void Function()? _automaticSyncTrigger;
+
+  void configureAutomaticSyncTrigger(void Function()? trigger) {
+    _automaticSyncTrigger = trigger;
+  }
+
+  void _triggerAutomaticSync() {
+    try {
+      _automaticSyncTrigger?.call();
+    } catch (_) {
+      // Auto-sync is best-effort and must not affect the local mutation.
+    }
+  }
 
   @override
   int get schemaVersion => 13;
@@ -1299,6 +1411,354 @@ class AppDb extends _$AppDb {
     if (identityId == null) return null;
     final canonicalId = await _resolveCanonicalExerciseIdentityId(identityId);
     return (await getExerciseById(canonicalId))!.externalId;
+  }
+
+  Future<int?> _readCurrentExerciseIdentityId({
+    required String clientId,
+    required int templateExerciseId,
+  }) async {
+    final clientOverride =
+        await (select(clientTemplateExerciseOverrides)
+              ..where(
+                (row) =>
+                    row.clientId.equals(clientId) &
+                    row.templateExerciseId.equals(templateExerciseId),
+              )
+              ..limit(1))
+            .getSingleOrNull();
+    if (clientOverride?.exerciseIdentityId case final identityId?) {
+      return identityId;
+    }
+
+    final clientBinding = await _findCurrentExerciseBinding(
+      clientId: clientId,
+      sourceType: _templateExerciseSource,
+      sourceId: templateExerciseId,
+    );
+    if (clientBinding != null) return clientBinding;
+
+    final template =
+        await (select(workoutTemplateExercises)
+              ..where((row) => row.id.equals(templateExerciseId))
+              ..limit(1))
+            .getSingleOrNull();
+    if (template?.exerciseIdentityId case final identityId?) {
+      return identityId;
+    }
+    return _findCurrentExerciseBinding(
+      sourceType: _templateExerciseSource,
+      sourceId: templateExerciseId,
+    );
+  }
+
+  Future<LegacyExerciseBindingsAuditVm> analyzeLegacyExerciseBindings() async {
+    await _ensureClientExerciseNameOverridesTable();
+    final overrides = await customSelect(
+      '''
+      SELECT o.client_id, o.template_exercise_id, o.custom_name,
+             c.name AS client_name, e.order_index,
+             t.label AS template_label, t.title AS template_title
+      FROM client_exercise_name_overrides o
+      LEFT JOIN clients c ON c.id = o.client_id
+      LEFT JOIN workout_template_exercises e
+        ON e.id = o.template_exercise_id
+      LEFT JOIN workout_templates t ON t.id = e.template_id
+      ORDER BY c.name COLLATE NOCASE, t.idx, e.order_index, o.template_exercise_id
+      ''',
+      readsFrom: {clients, workoutTemplateExercises, workoutTemplates},
+    ).get();
+
+    final candidates = <LegacyExerciseBindingCandidateVm>[];
+    for (final row in overrides) {
+      final clientId = row.read<String>('client_id');
+      final templateExerciseId = row.read<int>('template_exercise_id');
+      final displayName = row.read<String>('custom_name').trim();
+      final currentId = await _readCurrentExerciseIdentityId(
+        clientId: clientId,
+        templateExerciseId: templateExerciseId,
+      );
+      if (currentId == null) continue;
+      final canonicalId = await _resolveCanonicalExerciseIdentityId(currentId);
+      final identity = await getExerciseById(canonicalId);
+      if (identity == null ||
+          normalizeExerciseName(displayName) ==
+              normalizeExerciseName(identity.canonicalName)) {
+        continue;
+      }
+
+      final resultRows = await customSelect(
+        '''
+        SELECT r.id, r.exercise_name_snapshot
+        FROM workout_exercise_results r
+        INNER JOIN workout_sessions s ON s.id = r.session_id
+        WHERE s.client_id = ? AND r.template_exercise_id = ?
+        ORDER BY r.id
+        ''',
+        variables: [
+          Variable.withString(clientId),
+          Variable.withInt(templateExerciseId),
+        ],
+        readsFrom: {workoutExerciseResults, workoutSessions},
+      ).get();
+      final grouped = <String, ({String name, List<int> ids})>{};
+      for (final result in resultRows) {
+        final snapshot = result
+            .readNullable<String>('exercise_name_snapshot')
+            ?.trim();
+        final normalized = normalizeExerciseName(snapshot ?? '');
+        final groupKey = normalized.isEmpty
+            ? '__missing_snapshot__'
+            : normalized;
+        final group = grouped.putIfAbsent(
+          groupKey,
+          () => (
+            name: snapshot?.isNotEmpty == true ? snapshot! : 'Без snapshot',
+            ids: <int>[],
+          ),
+        );
+        group.ids.add(result.read<int>('id'));
+      }
+
+      final identitySnapshotRows = await customSelect(
+        '''
+        SELECT DISTINCT exercise_name_snapshot
+        FROM workout_exercise_results
+        WHERE exercise_identity_id = ?
+          AND exercise_name_snapshot IS NOT NULL
+          AND TRIM(exercise_name_snapshot) != ''
+        ORDER BY exercise_name_snapshot COLLATE NOCASE
+        ''',
+        variables: [Variable.withInt(canonicalId)],
+        readsFrom: {workoutExerciseResults},
+      ).get();
+      final label = row.readNullable<String>('template_label')?.trim() ?? '';
+      final title = row.readNullable<String>('template_title')?.trim() ?? '';
+      final order = row.readNullable<int>('order_index');
+      final slotParts = <String>[
+        if (title.isNotEmpty) title else if (label.isNotEmpty) label,
+        if (order != null) 'упражнение ${order + 1}',
+      ];
+      candidates.add(
+        LegacyExerciseBindingCandidateVm(
+          clientId: clientId,
+          clientName:
+              row.readNullable<String>('client_name')?.trim().isNotEmpty == true
+              ? row.read<String>('client_name').trim()
+              : clientId,
+          templateExerciseId: templateExerciseId,
+          programSlot: slotParts.isEmpty
+              ? 'slot #$templateExerciseId'
+              : slotParts.join(' • '),
+          displayName: displayName,
+          currentIdentityId: canonicalId,
+          currentIdentityName: identity.canonicalName,
+          currentIdentityExternalId: identity.externalId,
+          snapshotGroups: [
+            for (final group in grouped.values)
+              LegacyExerciseSnapshotGroupVm(
+                name: group.name,
+                resultIds: List.unmodifiable(group.ids),
+              ),
+          ],
+          identitySnapshotNames: [
+            for (final item in identitySnapshotRows)
+              item.read<String>('exercise_name_snapshot'),
+          ],
+        ),
+      );
+    }
+
+    final orphanRow = await customSelect(
+      '''
+      SELECT COUNT(*) AS amount
+      FROM exercise_identity_bindings b
+      WHERE (b.source_type = 'TEMPLATE' AND NOT EXISTS (
+               SELECT 1 FROM workout_template_exercises e WHERE e.id = b.source_id
+             ))
+         OR (b.source_type = 'CLIENT_ADDED' AND NOT EXISTS (
+               SELECT 1 FROM client_added_exercises a
+               WHERE a.id = b.source_id AND a.client_id = b.client_id
+             ))
+         OR b.source_type NOT IN ('TEMPLATE', 'CLIENT_ADDED')
+      ''',
+      readsFrom: {exerciseIdentityBindings, workoutTemplateExercises},
+    ).getSingle();
+    return LegacyExerciseBindingsAuditVm(
+      candidates: List.unmodifiable(candidates),
+      orphanBindings: orphanRow.read<int>('amount'),
+    );
+  }
+
+  Future<LegacyExerciseCorrectionPreview> previewLegacyExerciseCorrection({
+    required String clientId,
+    required int templateExerciseId,
+    required Iterable<int> historicalResultIds,
+    required int targetExerciseIdentityId,
+    required bool reassignCurrentSlot,
+  }) async {
+    final targetId = await _resolveCanonicalExerciseIdentityId(
+      targetExerciseIdentityId,
+    );
+    final target = await getExerciseById(targetId);
+    if (target == null ||
+        target.status != activeExerciseStatus ||
+        target.mergedIntoIdentityId != null ||
+        !_isUuidV4(target.externalId)) {
+      throw StateError('Выберите активное canonical упражнение');
+    }
+
+    final ids = historicalResultIds.where((id) => id > 0).toSet();
+    final selectedRows = ids.isEmpty
+        ? const <QueryRow>[]
+        : await customSelect(
+            '''
+            SELECT r.id, r.session_id, r.exercise_identity_id,
+                   s.client_id, s.external_id, s.gender
+            FROM workout_exercise_results r
+            INNER JOIN workout_sessions s ON s.id = r.session_id
+            WHERE r.id IN (${List.filled(ids.length, '?').join(', ')})
+            ''',
+            variables: [for (final id in ids) Variable.withInt(id)],
+            readsFrom: {workoutExerciseResults, workoutSessions},
+          ).get();
+    if (selectedRows.length != ids.length ||
+        selectedRows.any(
+          (row) =>
+              row.read<String>('client_id') != clientId ||
+              row.read<int>('id') <= 0,
+        )) {
+      throw StateError('Выбранные historical results больше не существуют');
+    }
+    final scopedRows = ids.isEmpty
+        ? const <QueryRow>[]
+        : await customSelect(
+            '''
+            SELECT r.id
+            FROM workout_exercise_results r
+            WHERE r.id IN (${List.filled(ids.length, '?').join(', ')})
+              AND r.template_exercise_id = ?
+            ''',
+            variables: [
+              for (final id in ids) Variable.withInt(id),
+              Variable.withInt(templateExerciseId),
+            ],
+            readsFrom: {workoutExerciseResults},
+          ).get();
+    if (scopedRows.length != ids.length) {
+      throw StateError('Выбранные results относятся к другому program slot');
+    }
+    final changedRows = selectedRows
+        .where(
+          (row) => row.readNullable<int>('exercise_identity_id') != targetId,
+        )
+        .toList(growable: false);
+
+    var currentSlots = 0;
+    if (reassignCurrentSlot) {
+      final source =
+          await (select(workoutTemplateExercises)
+                ..where((row) => row.id.equals(templateExerciseId))
+                ..limit(1))
+              .getSingleOrNull();
+      if (source == null) throw StateError('Текущий program slot не найден');
+      currentSlots = 1;
+    }
+    if (changedRows.isEmpty && currentSlots == 0) {
+      throw StateError('Не выбраны данные для исправления');
+    }
+    final sessions = <int>{};
+    for (final row in changedRows) {
+      final uuid = row.readNullable<String>('external_id')?.trim() ?? '';
+      if (row.read<String>('gender') != 'П' && uuid.isNotEmpty) {
+        sessions.add(row.read<int>('session_id'));
+      }
+    }
+    return LegacyExerciseCorrectionPreview(
+      historicalResults: changedRows.length,
+      currentSlots: currentSlots,
+      affectedSessions: sessions.length,
+      targetIdentityId: targetId,
+      targetName: target.canonicalName,
+      targetExternalId: target.externalId,
+    );
+  }
+
+  Future<LegacyExerciseCorrectionResult> reassignLegacyExerciseData({
+    required String clientId,
+    required int templateExerciseId,
+    required Iterable<int> historicalResultIds,
+    required int targetExerciseIdentityId,
+    required bool reassignCurrentSlot,
+  }) {
+    return transaction(() async {
+      final ids = historicalResultIds.where((id) => id > 0).toSet();
+      final preview = await previewLegacyExerciseCorrection(
+        clientId: clientId,
+        templateExerciseId: templateExerciseId,
+        historicalResultIds: ids,
+        targetExerciseIdentityId: targetExerciseIdentityId,
+        reassignCurrentSlot: reassignCurrentSlot,
+      );
+      final sessionRows = ids.isEmpty
+          ? const <QueryRow>[]
+          : await customSelect(
+              '''
+              SELECT DISTINCT s.external_id, s.gender
+              FROM workout_exercise_results r
+              INNER JOIN workout_sessions s ON s.id = r.session_id
+              WHERE r.id IN (${List.filled(ids.length, '?').join(', ')})
+                AND (r.exercise_identity_id IS NULL OR r.exercise_identity_id != ?)
+              ''',
+              variables: [
+                for (final id in ids) Variable.withInt(id),
+                Variable.withInt(preview.targetIdentityId),
+              ],
+              readsFrom: {workoutExerciseResults, workoutSessions},
+            ).get();
+      final changedResults = ids.isEmpty
+          ? 0
+          : await (update(workoutExerciseResults)..where(
+                  (row) =>
+                      row.id.isIn(ids) &
+                      (row.exerciseIdentityId.isNull() |
+                          row.exerciseIdentityId
+                              .equals(preview.targetIdentityId)
+                              .not()),
+                ))
+                .write(
+                  WorkoutExerciseResultsCompanion(
+                    exerciseIdentityId: Value(preview.targetIdentityId),
+                  ),
+                );
+
+      var changedSlots = 0;
+      if (reassignCurrentSlot) {
+        await setExerciseForClientSlot(
+          clientId: clientId,
+          templateExerciseId: templateExerciseId,
+          exerciseIdentityId: preview.targetIdentityId,
+        );
+        await customStatement(
+          'DELETE FROM client_exercise_name_overrides '
+          'WHERE client_id = ? AND template_exercise_id = ?',
+          [clientId, templateExerciseId],
+        );
+        changedSlots = 1;
+      }
+
+      var requeued = 0;
+      for (final row in sessionRows) {
+        final uuid = row.readNullable<String>('external_id')?.trim() ?? '';
+        if (row.read<String>('gender') == 'П' || uuid.isEmpty) continue;
+        await enqueueWorkoutSync(uuid, triggerAutoSync: false);
+        requeued++;
+      }
+      return LegacyExerciseCorrectionResult(
+        changedHistoricalResults: changedResults,
+        changedCurrentSlots: changedSlots,
+        requeuedWorkoutSessions: requeued,
+      );
+    });
   }
 
   Future<List<ExerciseUuidAliasVm>> getExerciseUuidAliases() async {
@@ -2197,9 +2657,12 @@ class AppDb extends _$AppDb {
           'У результата ${result.id} отсутствует историческая identity',
         );
       }
+      final canonicalIdentityId = await _resolveCanonicalExerciseIdentityId(
+        identityId,
+      );
       final identity =
           await (select(exerciseIdentities)
-                ..where((row) => row.id.equals(identityId))
+                ..where((row) => row.id.equals(canonicalIdentityId))
                 ..limit(1))
               .getSingleOrNull();
       final exerciseExternalId = identity?.externalId.trim() ?? '';
@@ -2403,6 +2866,8 @@ class AppDb extends _$AppDb {
   Future<WorkoutSyncQueueRebuildResult> rebuildWorkoutSyncQueue(
     WorkoutSyncQueueRebuildPreview preview,
   ) {
+    // Rebuild only prepares a pending snapshot for an explicit manual run. It
+    // intentionally bypasses enqueue helpers, so it never starts HTTP sync.
     return transaction(() async {
       await (delete(
         syncQueue,
@@ -2438,17 +2903,22 @@ class AppDb extends _$AppDb {
     });
   }
 
-  Future<SyncQueueEntry> enqueueWorkoutSync(String workoutExternalId) async {
+  Future<SyncQueueEntry> enqueueWorkoutSync(
+    String workoutExternalId, {
+    bool triggerAutoSync = true,
+  }) async {
     final payload = await buildWorkoutSyncPayload(workoutExternalId);
     if (payload == null) {
       throw StateError('Завершённая тренировка не найдена');
     }
-    return upsertSyncQueueTask(
+    final task = await upsertSyncQueueTask(
       entityType: SyncEntityTypes.workout,
       entityExternalId: payload.workoutExternalId,
       operation: SyncOperations.workoutUpsert,
       payload: payload.encode(),
     );
+    if (triggerAutoSync) _triggerAutomaticSync();
+    return task;
   }
 
   Future<int> deleteQueuedTrialWorkoutSyncTasks() {
@@ -2473,17 +2943,22 @@ class AppDb extends _$AppDb {
     );
   }
 
-  Future<SyncQueueEntry> enqueueScheduleSync(String clientExternalId) async {
+  Future<SyncQueueEntry> enqueueScheduleSync(
+    String clientExternalId, {
+    bool triggerAutoSync = true,
+  }) async {
     final payload = await buildScheduleSyncPayload(clientExternalId);
     if (payload == null) {
       throw StateError('Клиент для синхронизации расписания не найден');
     }
-    return upsertSyncQueueTask(
+    final task = await upsertSyncQueueTask(
       entityType: SyncEntityTypes.client,
       entityExternalId: payload.clientExternalId,
       operation: SyncOperations.scheduleUpsert,
       payload: payload.encode(),
     );
+    if (triggerAutoSync) _triggerAutomaticSync();
+    return task;
   }
 
   Future<SyncQueueEntry> upsertSyncQueueTask({
@@ -2537,13 +3012,23 @@ class AppDb extends _$AppDb {
     });
   }
 
-  Future<void> _enqueueWorkoutSyncSafely(String? workoutExternalId) async {
-    if (workoutExternalId == null || workoutExternalId.trim().isEmpty) return;
+  Future<bool> _enqueueWorkoutSyncSafely(
+    String? workoutExternalId, {
+    bool triggerAutoSync = true,
+  }) async {
+    if (workoutExternalId == null || workoutExternalId.trim().isEmpty) {
+      return false;
+    }
     try {
-      await enqueueWorkoutSync(workoutExternalId);
+      await enqueueWorkoutSync(
+        workoutExternalId,
+        triggerAutoSync: triggerAutoSync,
+      );
+      return true;
     } catch (_) {
       // Локальная тренировка уже зафиксирована. Ошибка инфраструктуры sync
       // не должна отменять или скрывать её от пользователя.
+      return false;
     }
   }
 
@@ -2573,7 +3058,10 @@ class AppDb extends _$AppDb {
               ..orderBy([(row) => OrderingTerm.asc(row.id)]))
             .get();
     for (final session in sessions) {
-      await _enqueueWorkoutSyncSafely(session.externalId);
+      await _enqueueWorkoutSyncSafely(
+        session.externalId,
+        triggerAutoSync: false,
+      );
     }
   }
 
@@ -5292,6 +5780,7 @@ class AppDb extends _$AppDb {
     }
 
     late WorkoutSession savedSession;
+    var queuedForAutomaticSync = false;
     await transaction(() async {
       final client = await getClientById(clientId);
       if (client == null || _parsePlanSize(client.plan) <= 0) {
@@ -5390,9 +5879,13 @@ class AppDb extends _$AppDb {
       }
 
       if (enqueueForSync && !_isTrialWorkoutSession(savedSession)) {
-        await _enqueueWorkoutSyncSafely(savedSession.externalId);
+        queuedForAutomaticSync = await _enqueueWorkoutSyncSafely(
+          savedSession.externalId,
+          triggerAutoSync: false,
+        );
       }
     });
+    if (queuedForAutomaticSync) _triggerAutomaticSync();
     return savedSession;
   }
 

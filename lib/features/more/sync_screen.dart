@@ -43,8 +43,9 @@ class _SyncScreenState extends State<SyncScreen> {
     if (identical(_db, db)) return;
     _db = db;
     final transport = HttpSyncTransport.fromEnvironment();
-    _service = SyncService(db: db, transport: transport);
-    _manualService = SyncService(db: db, transport: transport);
+    final service = SyncService.shared(db: db, transport: transport);
+    _service = service;
+    _manualService = service;
     _load();
   }
 

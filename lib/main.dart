@@ -9,6 +9,8 @@ import 'app/app.dart';
 import 'app/app_db_scope.dart';
 import 'app/app_error_reporter.dart';
 import 'db/app_db.dart';
+import 'sync/sync_service.dart';
+import 'sync/sync_transport.dart';
 import 'theme_controller.dart';
 
 Future<void> main() async {
@@ -61,14 +63,30 @@ class AppBootstrap extends StatefulWidget {
 
 class _AppBootstrapState extends State<AppBootstrap> {
   Key _appKey = UniqueKey();
-  AppDb _db = AppDb();
+  late AppDb _db;
+  late SyncService _syncService;
+
+  @override
+  void initState() {
+    super.initState();
+    _createRuntime();
+  }
+
+  void _createRuntime() {
+    _db = AppDb();
+    _syncService = SyncService.shared(
+      db: _db,
+      transport: HttpSyncTransport.fromEnvironment(),
+    );
+    _db.configureAutomaticSyncTrigger(_syncService.triggerAutomatic);
+  }
 
   Future<void> restartApp() async {
     await _db.close();
     if (!mounted) return;
 
     setState(() {
-      _db = AppDb();
+      _createRuntime();
       _appKey = UniqueKey();
     });
   }

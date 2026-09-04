@@ -7,19 +7,21 @@ import '../../db/app_db.dart';
 Future<ExerciseIdentity?> showExerciseSelector(
   BuildContext context, {
   AppDb? database,
+  bool allowCreate = true,
 }) {
   final db = database ?? AppDbScope.of(context);
   return showModalBottomSheet<ExerciseIdentity>(
     context: context,
     isScrollControlled: true,
-    builder: (_) => _ExerciseSelectorSheet(db: db),
+    builder: (_) => _ExerciseSelectorSheet(db: db, allowCreate: allowCreate),
   );
 }
 
 class _ExerciseSelectorSheet extends StatefulWidget {
-  const _ExerciseSelectorSheet({required this.db});
+  const _ExerciseSelectorSheet({required this.db, required this.allowCreate});
 
   final AppDb db;
+  final bool allowCreate;
 
   @override
   State<_ExerciseSelectorSheet> createState() => _ExerciseSelectorSheetState();
@@ -83,7 +85,8 @@ class _ExerciseSelectorSheetState extends State<_ExerciseSelectorSheet> {
                 ),
               ),
               const SizedBox(height: 8),
-              if (AppDb.normalizeExerciseName(_query).isNotEmpty)
+              if (widget.allowCreate &&
+                  AppDb.normalizeExerciseName(_query).isNotEmpty)
                 OutlinedButton.icon(
                   onPressed: _creating ? null : _createFromQuery,
                   icon: _creating
