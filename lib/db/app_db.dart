@@ -10,6 +10,7 @@ import '../sync/schedule_sync_payload.dart';
 import '../sync/workout_sync_payload.dart';
 
 part 'app_db.g.dart';
+part 'exercise_identity_lifecycle.dart';
 
 class Clients extends Table {
   TextColumn get id => text()();
@@ -1394,6 +1395,58 @@ class AppDb extends _$AppDb {
           canonicalExternalId: '966607d2-84a0-4d63-a66a-65f66e655695',
         ),
       ];
+  static const _confirmedTrialExerciseDuplicateMerges =
+      <
+        ({
+          int oldId,
+          String oldExternalId,
+          int canonicalId,
+          String canonicalExternalId,
+          int orphanBindingId,
+          int orphanSourceId,
+        })
+      >[
+        (
+          oldId: 627,
+          oldExternalId: '17fd2bca-2395-4d46-b679-7a5c350ecd41',
+          canonicalId: 230,
+          canonicalExternalId: 'ca91d5b0-5a80-43ca-91f6-7b591086bbdd',
+          orphanBindingId: 654,
+          orphanSourceId: 2973,
+        ),
+        (
+          oldId: 628,
+          oldExternalId: 'fc282a77-8268-4365-b49a-7ee3d52a8479',
+          canonicalId: 558,
+          canonicalExternalId: '71276424-4268-4598-b30b-4b2f52dc2254',
+          orphanBindingId: 655,
+          orphanSourceId: 2974,
+        ),
+        (
+          oldId: 629,
+          oldExternalId: '459b73bf-700e-490a-9e62-76412bccb8a7',
+          canonicalId: 310,
+          canonicalExternalId: '7a3a762d-0dcf-4e12-8315-412a882f798d',
+          orphanBindingId: 656,
+          orphanSourceId: 2975,
+        ),
+        (
+          oldId: 630,
+          oldExternalId: 'a2eb226e-c4a1-4b8f-94f2-c6102443ed52',
+          canonicalId: 314,
+          canonicalExternalId: '7ef69ad0-3588-4a50-935e-6d4c11431fa0',
+          orphanBindingId: 657,
+          orphanSourceId: 2976,
+        ),
+        (
+          oldId: 631,
+          oldExternalId: '19b9b93b-50e5-488b-ba23-79debc1d1b96',
+          canonicalId: 596,
+          canonicalExternalId: '966607d2-84a0-4d63-a66a-65f66e655695',
+          orphanBindingId: 658,
+          orphanSourceId: 2977,
+        ),
+      ];
 
   bool _maleDefaultsPatched = false;
   bool _femaleDefaultsPatched = false;
@@ -1578,7 +1631,9 @@ class AppDb extends _$AppDb {
       await _ensureExternalIdentityIndexes();
       await _ensureWorkoutSlotIdentityIndex();
       await _ensureSyncIndexes();
+      await _applyConfirmedCurrentExerciseOverridesDataFix();
       await _backfillExternalIdentities();
+      await _mergeConfirmedTrialExerciseDuplicates();
       await _ensureTrainerUuid();
       await cleanupSyncLogs();
     },
@@ -1808,7 +1863,9 @@ class AppDb extends _$AppDb {
                 ..limit(1))
               .getSingleOrNull();
       if (conflict != null) {
-        throw StateError('Упражнение с таким названием уже есть в базе');
+        throw StateError(
+          'Упражнение с таким названием уже есть в базе: ${conflict.id} ${conflict.canonicalName}',
+        );
       }
       await (update(
         exerciseIdentities,
@@ -2575,9 +2632,10 @@ class AppDb extends _$AppDb {
     return result;
   }
 
-  Future<void> mergeExerciseIdentities({
+  Future<ExerciseDeletionResult> mergeExerciseIdentities({
     required int canonicalIdentityId,
     required Iterable<int> duplicateIdentityIds,
+    bool retainLegacyRows = false,
   }) {
     return transaction(() async {
       await _ensureClientAddedExercisesTable();
@@ -2628,6 +2686,9 @@ class AppDb extends _$AppDb {
       }
 
       final now = DateTime.now();
+      final affected = await (select(
+        workoutExerciseResults,
+      )..where((row) => row.exerciseIdentityId.isIn(duplicateIds))).get();
       for (final duplicate in duplicates) {
         await customStatement(
           'UPDATE workout_template_exercises '
@@ -2703,6 +2764,23 @@ class AppDb extends _$AppDb {
           updatedAt: Value(now),
         ),
       );
+      if (retainLegacyRows) return const ExerciseDeletionResult([], {});
+      await _refreshReassignedWorkoutQueue(
+        affected.map((row) => row.sessionId).toSet(),
+        duplicates.map((row) => row.externalId).toSet(),
+      );
+      final deleted = <int>[];
+      final blocked = <int, Map<String, int>>{};
+      for (final duplicate in duplicates) {
+        if (await hardDeleteExerciseIdentityIfUnused(duplicate.id)) {
+          deleted.add(duplicate.id);
+        } else {
+          blocked[duplicate.id] = await exerciseIdentityReferences(
+            duplicate.id,
+          );
+        }
+      }
+      return ExerciseDeletionResult(deleted, blocked);
     });
   }
 
@@ -2789,8 +2867,154 @@ class AppDb extends _$AppDb {
       await mergeExerciseIdentities(
         canonicalIdentityId: merge.canonicalId,
         duplicateIdentityIds: [merge.oldId],
+        retainLegacyRows: true,
       );
     }
+  }
+
+  Future<({int merged, int orphanBindingsDeleted})>
+  _mergeConfirmedTrialExerciseDuplicates() async {
+    var merged = 0;
+    var orphanBindingsDeleted = 0;
+
+    for (final pair in _confirmedTrialExerciseDuplicateMerges) {
+      final oldIdentity = await getExerciseById(pair.oldId);
+      final canonicalIdentity = await getExerciseById(pair.canonicalId);
+      if (oldIdentity == null ||
+          canonicalIdentity == null ||
+          oldIdentity.externalId != pair.oldExternalId ||
+          canonicalIdentity.externalId != pair.canonicalExternalId ||
+          canonicalIdentity.status != activeExerciseStatus ||
+          canonicalIdentity.mergedIntoIdentityId != null ||
+          normalizeExerciseName(oldIdentity.canonicalName) !=
+              normalizeExerciseName(canonicalIdentity.canonicalName)) {
+        continue;
+      }
+
+      var alreadyMerged = false;
+      if (oldIdentity.mergedIntoIdentityId != null) {
+        final finalId = await _resolveCanonicalExerciseIdentityId(
+          oldIdentity.id,
+        );
+        final alias =
+            await (select(exerciseIdentityAliases)
+                  ..where(
+                    (row) =>
+                        row.oldExternalId.equals(pair.oldExternalId) &
+                        row.canonicalIdentityId.equals(pair.canonicalId),
+                  )
+                  ..limit(1))
+                .getSingleOrNull();
+        alreadyMerged = finalId == pair.canonicalId && alias != null;
+        if (!alreadyMerged) continue;
+      } else {
+        if (oldIdentity.status != activeExerciseStatus) continue;
+
+        Future<int> count(String sql, List<Variable<Object>> variables) async {
+          final row = await customSelect(sql, variables: variables).getSingle();
+          return row.read<int>('amount');
+        }
+
+        final oldIdVariable = <Variable<Object>>[Variable.withInt(pair.oldId)];
+        final hasReferences =
+            await count(
+                  'SELECT COUNT(*) AS amount FROM workout_exercise_results '
+                  'WHERE exercise_identity_id = ?',
+                  oldIdVariable,
+                ) !=
+                0 ||
+            await count(
+                  'SELECT COUNT(*) AS amount FROM workout_template_exercises '
+                  'WHERE exercise_identity_id = ?',
+                  oldIdVariable,
+                ) !=
+                0 ||
+            await count(
+                  'SELECT COUNT(*) AS amount FROM client_template_exercise_overrides '
+                  'WHERE exercise_identity_id = ?',
+                  oldIdVariable,
+                ) !=
+                0 ||
+            await count(
+                  'SELECT COUNT(*) AS amount FROM client_added_exercises '
+                  'WHERE exercise_identity_id = ?',
+                  oldIdVariable,
+                ) !=
+                0 ||
+            await count(
+                  'SELECT COUNT(*) AS amount FROM sync_queue WHERE payload LIKE ?',
+                  <Variable<Object>>[
+                    Variable.withString('%${pair.oldExternalId}%'),
+                  ],
+                ) !=
+                0;
+        if (hasReferences) continue;
+
+        final bindings = await (select(
+          exerciseIdentityBindings,
+        )..where((row) => row.identityId.equals(pair.oldId))).get();
+        final orphanSource =
+            await (select(workoutTemplateExercises)
+                  ..where((row) => row.id.equals(pair.orphanSourceId))
+                  ..limit(1))
+                .getSingleOrNull();
+        final childMerge =
+            await (select(exerciseIdentities)
+                  ..where((row) => row.mergedIntoIdentityId.equals(pair.oldId))
+                  ..limit(1))
+                .getSingleOrNull();
+        final incomingAlias =
+            await (select(exerciseIdentityAliases)
+                  ..where((row) => row.canonicalIdentityId.equals(pair.oldId))
+                  ..limit(1))
+                .getSingleOrNull();
+        final oldAlias =
+            await (select(exerciseIdentityAliases)
+                  ..where((row) => row.oldExternalId.equals(pair.oldExternalId))
+                  ..limit(1))
+                .getSingleOrNull();
+        if (bindings.length != 1 ||
+            bindings.single.id != pair.orphanBindingId ||
+            bindings.single.clientId != null ||
+            bindings.single.sourceType != _templateExerciseSource ||
+            bindings.single.sourceId != pair.orphanSourceId ||
+            orphanSource != null ||
+            childMerge != null ||
+            incomingAlias != null ||
+            oldAlias != null) {
+          continue;
+        }
+
+        await mergeExerciseIdentities(
+          canonicalIdentityId: pair.canonicalId,
+          duplicateIdentityIds: [pair.oldId],
+          retainLegacyRows: true,
+        );
+        merged++;
+      }
+
+      if (alreadyMerged ||
+          (await getExerciseById(pair.oldId))?.mergedIntoIdentityId ==
+              pair.canonicalId) {
+        final sourceStillMissing =
+            await (select(workoutTemplateExercises)
+                  ..where((row) => row.id.equals(pair.orphanSourceId))
+                  ..limit(1))
+                .getSingleOrNull();
+        if (sourceStillMissing == null) {
+          orphanBindingsDeleted +=
+              await (delete(exerciseIdentityBindings)..where(
+                    (row) =>
+                        row.id.equals(pair.orphanBindingId) &
+                        row.sourceType.equals(_templateExerciseSource) &
+                        row.sourceId.equals(pair.orphanSourceId),
+                  ))
+                  .go();
+        }
+      }
+    }
+
+    return (merged: merged, orphanBindingsDeleted: orphanBindingsDeleted);
   }
 
   Future<bool> _applyConfirmedHammerResultDataFix() async {
@@ -3151,7 +3375,10 @@ class AppDb extends _$AppDb {
               _confirmedUpperChestPressOldIdentityExternalId &&
           oldIdentity?.canonicalName ==
               _confirmedUpperChestPressCanonicalName &&
-          oldIdentity?.status == archivedExerciseStatus &&
+          const {
+            archivedExerciseStatus,
+            activeExerciseStatus,
+          }.contains(oldIdentity?.status) &&
           canonicalIdentity?.externalId ==
               _confirmedUpperChestPressCanonicalIdentityExternalId &&
           canonicalIdentity?.status == activeExerciseStatus &&
@@ -3202,6 +3429,7 @@ class AppDb extends _$AppDb {
             duplicateIdentityIds: const [
               _confirmedUpperChestPressOldIdentityId,
             ],
+            retainLegacyRows: true,
           );
           merged = true;
         }
@@ -3231,10 +3459,75 @@ class AppDb extends _$AppDb {
         );
         if (refreshedCanonical?.canonicalName ==
             'Жим в тренажёре на вверх груди') {
-          await renameExercise(
-            exerciseId: _confirmedUpperChestPressCanonicalIdentityId,
-            name: _confirmedUpperChestPressCanonicalName,
+          final normalizedTarget = normalizeExerciseName(
+            _confirmedUpperChestPressCanonicalName,
           );
+          final emptyExactConflicts =
+              await (select(exerciseIdentities)..where(
+                    (row) =>
+                        row.id
+                            .equals(
+                              _confirmedUpperChestPressCanonicalIdentityId,
+                            )
+                            .not() &
+                        row.status.equals(activeExerciseStatus) &
+                        row.mergedIntoIdentityId.isNull() &
+                        row.normalizedName.equals(normalizedTarget),
+                  ))
+                  .get();
+          for (final conflict in emptyExactConflicts) {
+            final result =
+                await (select(workoutExerciseResults)
+                      ..where(
+                        (row) => row.exerciseIdentityId.equals(conflict.id),
+                      )
+                      ..limit(1))
+                    .getSingleOrNull();
+            final slot =
+                await (select(workoutTemplateExercises)
+                      ..where(
+                        (row) => row.exerciseIdentityId.equals(conflict.id),
+                      )
+                      ..limit(1))
+                    .getSingleOrNull();
+            final clientOverride =
+                await (select(clientTemplateExerciseOverrides)
+                      ..where(
+                        (row) => row.exerciseIdentityId.equals(conflict.id),
+                      )
+                      ..limit(1))
+                    .getSingleOrNull();
+            final clientAdded = await customSelect(
+              'SELECT 1 FROM client_added_exercises '
+              'WHERE exercise_identity_id = ? LIMIT 1',
+              variables: [Variable.withInt(conflict.id)],
+            ).getSingleOrNull();
+            if (result != null ||
+                slot != null ||
+                clientOverride != null ||
+                clientAdded != null) {
+              continue;
+            }
+            await mergeExerciseIdentities(
+              canonicalIdentityId: _confirmedUpperChestPressCanonicalIdentityId,
+              duplicateIdentityIds: [conflict.id],
+              retainLegacyRows: true,
+            );
+          }
+          final canonicalName = _displayExerciseName(
+            _confirmedUpperChestPressCanonicalName,
+          );
+          await (update(exerciseIdentities)..where(
+                (row) =>
+                    row.id.equals(_confirmedUpperChestPressCanonicalIdentityId),
+              ))
+              .write(
+                ExerciseIdentitiesCompanion(
+                  canonicalName: Value(canonicalName),
+                  normalizedName: Value(normalizeExerciseName(canonicalName)),
+                  updatedAt: Value(DateTime.now()),
+                ),
+              );
         }
       }
 
@@ -3354,15 +3647,17 @@ class AppDb extends _$AppDb {
                       row.mergedIntoIdentityId.isNull(),
                 ))
                 .get();
-        if (matches.length != 1 ||
-            matches.single.externalId != fix.targetExternalId ||
-            normalizeExerciseName(matches.single.canonicalName) !=
+        final confirmedMatches = matches
+            .where((row) => row.externalId == fix.targetExternalId)
+            .toList();
+        if (confirmedMatches.length != 1 ||
+            normalizeExerciseName(confirmedMatches.single.canonicalName) !=
                 targetNormalized) {
           skipped++;
           continue;
         }
 
-        final target = matches.single;
+        final target = confirmedMatches.single;
         final existing =
             await (select(clientTemplateExerciseOverrides)..where(
                   (row) =>
@@ -3438,16 +3733,95 @@ class AppDb extends _$AppDb {
       sourceId: sourceId,
       clientId: clientId,
     );
-    if (existing != null) return existing;
+    int? directIdentityId;
+    String? sourceName;
+    if (sourceType == _templateExerciseSource) {
+      final source =
+          await (select(workoutTemplateExercises)
+                ..where((row) => row.id.equals(sourceId))
+                ..limit(1))
+              .getSingleOrNull();
+      directIdentityId = source?.exerciseIdentityId;
+      sourceName = source?.name;
+    } else if (sourceType == _clientAddedExerciseSource && clientId != null) {
+      final source = await customSelect(
+        '''
+        SELECT exercise_identity_id, name
+        FROM client_added_exercises
+        WHERE id = ? AND client_id = ?
+        LIMIT 1
+        ''',
+        variables: [Variable.withInt(sourceId), Variable.withString(clientId)],
+      ).getSingleOrNull();
+      directIdentityId = source?.readNullable<int>('exercise_identity_id');
+      sourceName = source?.readNullable<String>('name');
+    }
 
-    final identityId = await _createExerciseIdentity();
-    await into(exerciseIdentityBindings).insert(
-      ExerciseIdentityBindingsCompanion.insert(
-        clientId: Value(clientId),
+    final normalizedName = normalizeExerciseName(sourceName ?? '');
+    Future<int> useIdentity(
+      ExerciseIdentity identity, {
+      bool renameSource = false,
+    }) async {
+      if (sourceName != null) {
+        await _activateCurrentExercise(identity.id);
+        final table = sourceType == _templateExerciseSource
+            ? 'workout_template_exercises'
+            : 'client_added_exercises';
+        await customStatement(
+          'UPDATE $table SET exercise_identity_id = ?${renameSource ? ', name = ?' : ''} WHERE id = ?',
+          [identity.id, if (renameSource) identity.canonicalName, sourceId],
+        );
+      }
+      await _bindExerciseIdentity(
         sourceType: sourceType,
         sourceId: sourceId,
-        identityId: identityId,
-      ),
+        identityId: identity.id,
+        clientId: clientId,
+      );
+      return identity.id;
+    }
+
+    if (directIdentityId != null) {
+      final direct = await getExerciseById(directIdentityId);
+      if (direct?.mergedIntoIdentityId != null) {
+        final canonical = await getExerciseById(
+          await _resolveCanonicalExerciseIdentityId(direct!.id),
+        );
+        if (canonical != null) {
+          return useIdentity(canonical, renameSource: true);
+        }
+      } else if (direct != null && direct.normalizedName == normalizedName) {
+        return useIdentity(direct);
+      }
+    }
+    if (existing != null) {
+      final current = await getExerciseById(
+        await _resolveCanonicalExerciseIdentityId(existing),
+      );
+      if (current != null &&
+          (sourceName == null || current.normalizedName == normalizedName)) {
+        return useIdentity(current);
+      }
+    }
+    if (normalizedName.isNotEmpty) {
+      final exactMatches =
+          await (select(exerciseIdentities)..where(
+                (row) =>
+                    row.normalizedName.equals(normalizedName) &
+                    row.mergedIntoIdentityId.isNull(),
+              ))
+              .get();
+      if (exactMatches.length == 1) {
+        return useIdentity(exactMatches.single);
+      }
+    }
+
+    final identityId = await _createExerciseIdentity(canonicalName: sourceName);
+    await _bindExerciseIdentity(
+      sourceType: sourceType,
+      sourceId: sourceId,
+      identityId: identityId,
+      clientId: clientId,
     );
     return identityId;
   }
@@ -3770,6 +4144,7 @@ class AppDb extends _$AppDb {
 
   Future<void> _backfillExternalIdentities() async {
     await transaction(() async {
+      await _repairArchivedBindingDuplicates();
       await customStatement(
         "UPDATE clients SET status = 'ACTIVE' "
         "WHERE status IS NULL OR TRIM(status) = ''",
@@ -6658,6 +7033,7 @@ class AppDb extends _$AppDb {
 
         for (var i = 0; i < list.length; i++) {
           final item = list[i];
+          if (await _isDeletedDefault(item.$1)) continue;
           final exercise = await createExercise(item.$1);
           await into(workoutTemplateExercises).insert(
             WorkoutTemplateExercisesCompanion.insert(
@@ -6750,6 +7126,7 @@ class AppDb extends _$AppDb {
 
         for (var i = 0; i < list.length; i++) {
           final item = list[i];
+          if (await _isDeletedDefault(item.$1)) continue;
           final exercise = await createExercise(item.$1);
           await into(workoutTemplateExercises).insert(
             WorkoutTemplateExercisesCompanion.insert(
@@ -6769,52 +7146,106 @@ class AppDb extends _$AppDb {
 
   Future<void> _ensureTrialDefaultsPatched() async {
     if (_trialDefaultsPatched) return;
-    final existing =
-        await (select(workoutTemplates)
-              ..where((t) => t.gender.equals('П') & t.idx.equals(0))
-              ..limit(1))
-            .getSingleOrNull();
+    await transaction(() async {
+      final existing =
+          await (select(workoutTemplates)
+                ..where((t) => t.gender.equals('П') & t.idx.equals(0))
+                ..limit(1))
+              .getSingleOrNull();
 
-    final tpl = _trialTemplateDefaults().first;
-    if (existing == null) {
-      await into(workoutTemplates).insert(tpl);
-    } else {
-      await (update(
-        workoutTemplates,
-      )..where((x) => x.id.equals(existing.id))).write(
-        WorkoutTemplatesCompanion(
-          gender: Value(tpl.gender.value),
-          idx: Value(tpl.idx.value),
-          label: Value(tpl.label.value),
-          title: Value(tpl.title.value),
-        ),
-      );
-    }
+      final tpl = _trialTemplateDefaults().first;
+      final templateId = existing == null
+          ? await into(workoutTemplates).insert(tpl)
+          : existing.id;
+      if (existing != null &&
+          (existing.label != tpl.label.value ||
+              existing.title != tpl.title.value)) {
+        await (update(
+          workoutTemplates,
+        )..where((row) => row.id.equals(existing.id))).write(
+          WorkoutTemplatesCompanion(
+            label: Value(tpl.label.value),
+            title: Value(tpl.title.value),
+          ),
+        );
+      }
 
-    final row =
-        await (select(workoutTemplates)
-              ..where((t) => t.gender.equals('П') & t.idx.equals(0))
-              ..limit(1))
-            .getSingle();
+      final current = await (select(
+        workoutTemplateExercises,
+      )..where((row) => row.templateId.equals(templateId))).get();
+      current.sort((left, right) => left.id.compareTo(right.id));
+      final currentByOrder = <int, WorkoutTemplateExercise>{};
+      final extraSlots = <WorkoutTemplateExercise>[];
+      for (final row in current) {
+        if (currentByOrder.containsKey(row.orderIndex)) {
+          extraSlots.add(row);
+        } else {
+          currentByOrder[row.orderIndex] = row;
+        }
+      }
+      final plan = _trialExerciseDefaults()[0] ?? const <(String, int?)>[];
 
-    await (delete(
-      workoutTemplateExercises,
-    )..where((e) => e.templateId.equals(row.id))).go();
+      for (var orderIndex = 0; orderIndex < plan.length; orderIndex++) {
+        final item = plan[orderIndex];
+        if (await _isDeletedDefault(item.$1)) continue;
+        final existingSlot = currentByOrder.remove(orderIndex);
+        late final int sourceId;
+        if (existingSlot == null) {
+          sourceId = await into(workoutTemplateExercises).insert(
+            WorkoutTemplateExercisesCompanion.insert(
+              templateId: templateId,
+              orderIndex: orderIndex,
+              name: _displayExerciseName(item.$1),
+              groupId: Value(item.$2),
+            ),
+          );
+        } else {
+          sourceId = existingSlot.id;
+          if (existingSlot.name != _displayExerciseName(item.$1) ||
+              existingSlot.groupId != item.$2) {
+            await (update(
+              workoutTemplateExercises,
+            )..where((row) => row.id.equals(existingSlot.id))).write(
+              WorkoutTemplateExercisesCompanion(
+                name: Value(_displayExerciseName(item.$1)),
+                groupId: Value(item.$2),
+              ),
+            );
+          }
+        }
+        final identityId = await _ensureExerciseBinding(
+          sourceType: _templateExerciseSource,
+          sourceId: sourceId,
+        );
+        final refreshedSlot =
+            await (select(workoutTemplateExercises)
+                  ..where((row) => row.id.equals(sourceId))
+                  ..limit(1))
+                .getSingle();
+        if (refreshedSlot.exerciseIdentityId != identityId) {
+          await (update(
+            workoutTemplateExercises,
+          )..where((row) => row.id.equals(sourceId))).write(
+            WorkoutTemplateExercisesCompanion(
+              exerciseIdentityId: Value(identityId),
+            ),
+          );
+        }
+      }
 
-    final plan = _trialExerciseDefaults()[0] ?? const <(String, int?)>[];
-    for (var i = 0; i < plan.length; i++) {
-      final item = plan[i];
-      final exercise = await createExercise(item.$1);
-      await into(workoutTemplateExercises).insert(
-        WorkoutTemplateExercisesCompanion.insert(
-          templateId: row.id,
-          orderIndex: i,
-          name: exercise.canonicalName,
-          exerciseIdentityId: Value(exercise.id),
-          groupId: item.$2 == null ? const Value.absent() : Value(item.$2!),
-        ),
-      );
-    }
+      extraSlots.addAll(currentByOrder.values);
+      for (final extra in extraSlots) {
+        await (delete(exerciseIdentityBindings)..where(
+              (row) =>
+                  row.sourceType.equals(_templateExerciseSource) &
+                  row.sourceId.equals(extra.id),
+            ))
+            .go();
+        await (delete(
+          workoutTemplateExercises,
+        )..where((row) => row.id.equals(extra.id))).go();
+      }
+    });
 
     _trialDefaultsPatched = true;
   }
@@ -7451,6 +7882,7 @@ class AppDb extends _$AppDb {
 
       for (var i = 0; i < (plan?.length ?? 0); i++) {
         final item = plan![i];
+        if (await _isDeletedDefault(item.$1)) continue;
         rows.add(
           WorkoutTemplateExercisesCompanion.insert(
             templateId: t.id,
@@ -9955,6 +10387,7 @@ class AppDb extends _$AppDb {
         await _applyConfirmedHistoricalExerciseBindingsDataFix();
         await _applyConfirmedUpperChestPressDataFix();
         await _applyConfirmedCurrentExerciseOverridesDataFix();
+        await _mergeConfirmedTrialExerciseDuplicates();
         await _ensureTrainerUuid();
         if (!rawTables.containsKey(syncQueue.actualTableName)) {
           await _enqueueAllExistingWorkoutSessionsForSync();

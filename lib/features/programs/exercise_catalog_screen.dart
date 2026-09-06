@@ -283,28 +283,95 @@ class _ExerciseCatalogScreenState extends State<ExerciseCatalogScreen> {
     }
   }
 
-  Future<bool> _confirmArchive(ExerciseIdentity exercise) async {
-    return await showDialog<bool>(
+  Future<void> _deleteExercise(ExerciseIdentity exercise) async {
+    final db = AppDbScope.of(context);
+    final refs = await db.exerciseIdentityReferences(exercise.id);
+    final targets = (await db.getActiveExercises())
+        .where((e) => e.id != exercise.id && e.mergedIntoIdentityId == null)
+        .toList();
+    if (!mounted) return;
+    int? target;
+    final requiresTarget =
+        refs.containsKey('workout_exercise_results') ||
+        refs.containsKey('exercise_identity_aliases') ||
+        refs.containsKey('exercise_identities') ||
+        refs.containsKey('sync_queue');
+    final confirmed =
+        await showDialog<bool>(
           context: context,
-          builder: (context) => AlertDialog(
-            title: const Text('Архивировать упражнение?'),
-            content: Text(
-              '«${exercise.canonicalName}» исчезнет из выбора для новых '
-              'слотов. Уже назначенные слоты и история тренировок сохранятся.',
+          builder: (context) => StatefulBuilder(
+            builder: (context, updateDialog) => AlertDialog(
+              title: const Text('Удалить упражнение?'),
+              content: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      '«${exercise.canonicalName}» будет удалено из каталога и текущей программы. '
+                      'При выборе замены назначения и история перейдут к ней; названия в истории, вес и повторения сохранятся.',
+                    ),
+                    if (requiresTarget)
+                      const Padding(
+                        padding: EdgeInsets.only(top: 12),
+                        child: Text(
+                          'Есть история или связанные данные. Для удаления выберите упражнение на замену.',
+                        ),
+                      ),
+                    const SizedBox(height: 12),
+                    DropdownButtonFormField<int>(
+                      isExpanded: true,
+                      decoration: const InputDecoration(
+                        labelText: 'Заменить на упражнение',
+                      ),
+                      items: targets
+                          .map(
+                            (e) => DropdownMenuItem(
+                              value: e.id,
+                              child: Text(
+                                e.canonicalName,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ),
+                          )
+                          .toList(),
+                      onChanged: (value) => updateDialog(() => target = value),
+                    ),
+                  ],
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(context, false),
+                  child: const Text('Отмена'),
+                ),
+                FilledButton(
+                  onPressed: requiresTarget && target == null
+                      ? null
+                      : () => Navigator.pop(context, true),
+                  child: const Text('Удалить'),
+                ),
+              ],
             ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(context, false),
-                child: const Text('Отмена'),
-              ),
-              FilledButton(
-                onPressed: () => Navigator.pop(context, true),
-                child: const Text('В архив'),
-              ),
-            ],
           ),
         ) ??
         false;
+    if (!confirmed) return;
+    try {
+      final result = await db.deleteExerciseIdentity(
+        exercise.id,
+        canonicalIdentityId: target,
+      );
+      if (!mounted) return;
+      setState(_reload);
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(result.message)));
+    } on Object catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Удаление отменено: $error')));
+    }
   }
 
   Widget _buildBody(BuildContext context) {
@@ -364,12 +431,8 @@ class _ExerciseCatalogScreenState extends State<ExerciseCatalogScreen> {
                         : PopupMenuButton<String>(
                             onSelected: (action) async {
                               if (action == 'rename') await _rename(item);
-                              if (action == 'archive') {
-                                if (!await _confirmArchive(item)) return;
-                                await AppDbScope.of(
-                                  context,
-                                ).archiveExercise(item.id);
-                                if (mounted) setState(_reload);
+                              if (action == 'delete') {
+                                await _deleteExercise(item);
                               }
                               if (action == 'restore') {
                                 try {
@@ -392,11 +455,9 @@ class _ExerciseCatalogScreenState extends State<ExerciseCatalogScreen> {
                                   value: 'rename',
                                   child: Text('Переименовать'),
                                 ),
-                              PopupMenuItem(
-                                value: archived ? 'restore' : 'archive',
-                                child: Text(
-                                  archived ? 'Восстановить' : 'В архив',
-                                ),
+                              const PopupMenuItem(
+                                value: 'delete',
+                                child: Text('Удалить упражнение'),
                               ),
                             ],
                           ),

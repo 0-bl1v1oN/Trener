@@ -145,10 +145,7 @@ void main() {
       expect(canonicalAfter.externalId, canonical.externalId);
       expect(canonicalAfter.status, AppDb.activeExerciseStatus);
       for (final duplicate in [duplicateA, duplicateB]) {
-        final after = (await db.getExerciseById(duplicate.id))!;
-        expect(after.externalId, duplicate.externalId);
-        expect(after.status, AppDb.archivedExerciseStatus);
-        expect(after.mergedIntoIdentityId, canonical.id);
+        expect(await db.getExerciseById(duplicate.id), isNull);
       }
       expect(
         (await db.select(db.workoutTemplateExercises).get())
@@ -444,10 +441,10 @@ void main() {
       final tables = backup['tables'] as Map<String, dynamic>;
       expect(tables['exercise_identity_aliases'], hasLength(1));
       expect(
-        (tables['exercise_identities'] as List).cast<Map>().firstWhere(
+        (tables['exercise_identities'] as List).cast<Map>().where(
           (row) => row['id'] == duplicate.id,
-        )['merged_into_identity_id'],
-        canonical.id,
+        ),
+        isEmpty,
       );
 
       final restored = AppDb.forTesting(NativeDatabase.memory());

@@ -1,6 +1,6 @@
 import 'dart:convert';
 
-import 'package:drift/drift.dart';
+import 'package:drift/drift.dart' hide isNull;
 import 'package:drift/native.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -97,7 +97,7 @@ void main() {
 
     await tester.tap(find.text('Продолжить'));
     await tester.pumpAndSettle();
-    expect(find.text('Упражнения объединены'), findsOneWidget);
+    expect(find.text('Удалено упражнений: 1'), findsOneWidget);
     expect(await db.getExerciseUuidAliases(), hasLength(1));
     expect(
       (await db.getExerciseDuplicateGroups()).where(
@@ -326,9 +326,9 @@ void main() {
       ),
     );
     await tester.pumpAndSettle();
-    await tester.tap(find.text('В архив'));
+    await tester.tap(find.text('Удалить упражнение'));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('В архив'));
+    await tester.tap(find.text('Удалить'));
     await tester.pumpAndSettle();
     final offsetAfterArchive = controller.offset;
     expect(offsetAfterArchive, greaterThan(0));
@@ -344,7 +344,7 @@ void main() {
       'Позиция скролла',
     );
 
-    await db.restoreExercise(target.id);
+    expect(await db.getExerciseById(target.id), isNull);
     await tester.tap(find.byKey(const Key('exercise_catalog_more')));
     await tester.pumpAndSettle();
     await tester.tap(find.text('Обновить'));
@@ -355,7 +355,7 @@ void main() {
       controller.offset,
       lessThanOrEqualTo(controller.position.maxScrollExtent),
     );
-    expect(targetTile(), findsOneWidget);
+    expect(targetTile(), findsNothing);
     expect(
       tester
           .widget<EditableText>(find.byType(EditableText).first)

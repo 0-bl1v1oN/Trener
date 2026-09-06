@@ -74,7 +74,7 @@ class _ExerciseDuplicatesScreenState extends State<ExerciseDuplicatesScreen> {
     }
     if (!mounted) return;
     try {
-      await AppDbScope.of(context).mergeExerciseIdentities(
+      final result = await AppDbScope.of(context).mergeExerciseIdentities(
         canonicalIdentityId: canonical.id,
         duplicateIdentityIds: duplicates,
       );
@@ -82,7 +82,7 @@ class _ExerciseDuplicatesScreenState extends State<ExerciseDuplicatesScreen> {
       setState(_reload);
       ScaffoldMessenger.of(
         context,
-      ).showSnackBar(const SnackBar(content: Text('Упражнения объединены')));
+      ).showSnackBar(SnackBar(content: Text(result.message)));
     } on Object catch (error) {
       if (!mounted) return;
       ScaffoldMessenger.of(
@@ -219,11 +219,15 @@ class _ManualExerciseMergeScreenState extends State<ManualExerciseMergeScreen> {
     }
     if (!mounted) return;
     try {
-      await AppDbScope.of(context).mergeExerciseIdentities(
+      final result = await AppDbScope.of(context).mergeExerciseIdentities(
         canonicalIdentityId: canonicalId,
         duplicateIdentityIds: _duplicateIds,
       );
-      if (mounted) Navigator.pop(context, true);
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(result.message)));
+      Navigator.pop(context, true);
     } on Object catch (error) {
       if (!mounted) return;
       ScaffoldMessenger.of(

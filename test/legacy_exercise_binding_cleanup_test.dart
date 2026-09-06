@@ -144,10 +144,12 @@ void main() {
       await db.mergeExerciseIdentities(
         canonicalIdentityId: b.id,
         duplicateIdentityIds: [a.id],
+        retainLegacyRows: true,
       );
       await db.mergeExerciseIdentities(
         canonicalIdentityId: c.id,
         duplicateIdentityIds: [b.id],
+        retainLegacyRows: true,
       );
       // Simulates an imported legacy result that still references the first link.
       await (db.update(

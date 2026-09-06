@@ -284,6 +284,7 @@ Future<int> _seedFixture(AppDb db) async {
       fix.targetUuid: (name: fix.targetName, uuid: fix.targetUuid),
   };
   var targetId = 2000;
+  final targetIds = <String, int>{};
   for (final target in targets.values) {
     final normalized = AppDb.normalizeExerciseName(target.name);
     await (db.update(
@@ -303,6 +304,26 @@ Future<int> _seedFixture(AppDb db) async {
             normalizedName: Value(normalized),
           ),
         );
+    targetIds[target.uuid] = targetId - 1;
+    await (db.update(db.exerciseIdentities)..where(
+          (row) =>
+              row.normalizedName.equals(normalized) &
+              row.externalId.equals(target.uuid).not(),
+        ))
+        .write(
+          const ExerciseIdentitiesCompanion(
+            status: Value(AppDb.archivedExerciseStatus),
+          ),
+        );
+  }
+  for (final fix in _fixes) {
+    await (db.update(
+      db.workoutTemplateExercises,
+    )..where((row) => row.id.equals(fix.slotId))).write(
+      WorkoutTemplateExercisesCompanion(
+        exerciseIdentityId: Value(targetIds[fix.targetUuid]),
+      ),
+    );
   }
 
   final clients = <String, String>{

@@ -104,9 +104,11 @@ void main() {
       final slot = await (db.select(
         db.workoutTemplateExercises,
       )..where((row) => row.id.equals(7000))).getSingle();
-      final binding = await (db.select(
-        db.exerciseIdentityBindings,
-      )..where((row) => row.sourceId.equals(7000))).getSingle();
+      final binding =
+          await (db.select(db.exerciseIdentityBindings)..where(
+                (row) => row.sourceId.equals(7000) & row.isCurrent.equals(true),
+              ))
+              .getSingle();
       expect(slot.exerciseIdentityId, _canonicalId);
       expect(slot.name, _canonicalName);
       expect(binding.identityId, _canonicalId);
@@ -299,6 +301,26 @@ Future<void> _seedFixture(AppDb db, {int? changedResultId}) async {
     uuid: _dumbbellUuid,
     name: 'Жим гантелей под углом',
   );
+  await (db.update(db.exerciseIdentities)..where(
+        (row) =>
+            row.normalizedName.equals(
+              AppDb.normalizeExerciseName(_canonicalName),
+            ) &
+            row.id.equals(_canonicalId).not(),
+      ))
+      .write(
+        const ExerciseIdentitiesCompanion(
+          status: Value(AppDb.archivedExerciseStatus),
+        ),
+      );
+  await (db.update(db.workoutTemplateExercises)
+        ..where((row) => row.name.lower().equals(_canonicalName.toLowerCase())))
+      .write(
+        const WorkoutTemplateExercisesCompanion(
+          exerciseIdentityId: Value(_canonicalId),
+          name: Value('Жим в тренажёре на вверх груди'),
+        ),
+      );
   await db
       .into(db.clients)
       .insert(
@@ -331,7 +353,7 @@ Future<void> _seedFixture(AppDb db, {int? changedResultId}) async {
           templateId: template!.id,
           orderIndex: 1000,
           name: _canonicalName,
-          exerciseIdentityId: const Value(_oldId),
+          exerciseIdentityId: const Value(_canonicalId),
         ),
       );
   await db
@@ -340,7 +362,7 @@ Future<void> _seedFixture(AppDb db, {int? changedResultId}) async {
         ExerciseIdentityBindingsCompanion.insert(
           sourceType: 'TEMPLATE',
           sourceId: 7000,
-          identityId: _oldId,
+          identityId: _canonicalId,
         ),
       );
 
