@@ -947,6 +947,12 @@ class AppDb extends _$AppDb {
   static const String _confirmedHammerCanonicalIdentityExternalId =
       '44998917-34b1-42e1-bfca-3ff98f50d178';
   static const String _confirmedHammerSnapshot = 'молоточки';
+  static const String _confirmedMotyaDuplicateWorkout74 =
+      '6c9dbb07-b094-47c9-bad2-ee83a7afc20b';
+  static const String _confirmedMotyaDuplicateWorkout75 =
+      '343337f9-027e-4cda-8a5c-414d711911da';
+  static const String _confirmedMotyaCanonicalWorkout76 =
+      'c92e8971-07f3-474b-ae53-ce43593669e1';
   static const _knownEmptyExerciseDuplicateMerges =
       <({String oldExternalId, String canonicalExternalId})>[
         (
@@ -986,7 +992,7 @@ class AppDb extends _$AppDb {
   }
 
   @override
-  int get schemaVersion => 15;
+  int get schemaVersion => 16;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -1117,6 +1123,9 @@ class AppDb extends _$AppDb {
       }
       if (from < 15) {
         await _applyConfirmedHammerResultDataFix();
+      }
+      if (from < 16) {
+        await _applyConfirmedMotyaWorkoutConflictDataFix();
       }
       await _ensureTrainerUuid();
       if (from < 9) {
@@ -2423,6 +2432,158 @@ class AppDb extends _$AppDb {
       triggerAutoSync: false,
     );
     return true;
+  }
+
+  Future<bool> _applyConfirmedMotyaWorkoutConflictDataFix() {
+    return transaction(() async {
+      const sessionIds = [74, 75, 76];
+      final sessionRows =
+          await (select(workoutSessions)
+                ..where((row) => row.id.isIn(sessionIds))
+                ..orderBy([(row) => OrderingTerm.asc(row.id)]))
+              .get();
+
+      // The complete already-fixed state is a no-op. A partial set is not
+      // repaired because it no longer matches the confirmed production case.
+      if (sessionRows.length == 1 && sessionRows.single.id == 76) return false;
+      if (sessionRows.length != 3) return false;
+      final sessionsById = {for (final row in sessionRows) row.id: row};
+      final session74 = sessionsById[74]!;
+      final session75 = sessionsById[75]!;
+      final session76 = sessionsById[76]!;
+
+      bool matchesSession(WorkoutSession session, String expectedExternalId) =>
+          session.externalId?.trim() == expectedExternalId &&
+          session.clientId == '1772007727103362' &&
+          session.performedAt.millisecondsSinceEpoch ~/ 1000 == 1772010000 &&
+          session.planInstance == 1 &&
+          session.absoluteIndex == null &&
+          session.gender == 'М' &&
+          session.templateIdx == 4;
+
+      if (!matchesSession(session74, _confirmedMotyaDuplicateWorkout74) ||
+          !matchesSession(session75, _confirmedMotyaDuplicateWorkout75) ||
+          !matchesSession(session76, _confirmedMotyaCanonicalWorkout76)) {
+        return false;
+      }
+      final client = await getClientById(session76.clientId);
+      if (client?.name != 'Мотя') return false;
+
+      final resultRows =
+          await (select(workoutExerciseResults)
+                ..where((row) => row.sessionId.isIn(sessionIds))
+                ..orderBy([
+                  (row) => OrderingTerm.asc(row.sessionId),
+                  (row) => OrderingTerm.asc(row.templateExerciseId),
+                ]))
+              .get();
+      final resultsBySession = <int, List<WorkoutExerciseResult>>{
+        for (final id in sessionIds) id: <WorkoutExerciseResult>[],
+      };
+      for (final result in resultRows) {
+        resultsBySession[result.sessionId]!.add(result);
+      }
+      if (resultsBySession.values.any((rows) => rows.length != 4)) {
+        return false;
+      }
+
+      bool sameResult(
+        WorkoutExerciseResult first,
+        WorkoutExerciseResult second, {
+        bool includeReps = true,
+      }) =>
+          first.templateExerciseId == second.templateExerciseId &&
+          first.exerciseIdentityId == second.exerciseIdentityId &&
+          first.exerciseNameSnapshot == second.exerciseNameSnapshot &&
+          first.lastWeightKg == second.lastWeightKg &&
+          (!includeReps || first.lastReps == second.lastReps);
+
+      final results74 = resultsBySession[74]!;
+      final results75 = resultsBySession[75]!;
+      final results76 = resultsBySession[76]!;
+      const expectedTemplateExerciseIds = [25, 26, 27, 29];
+      for (var index = 0; index < expectedTemplateExerciseIds.length; index++) {
+        if (results74[index].templateExerciseId !=
+                expectedTemplateExerciseIds[index] ||
+            results75[index].templateExerciseId !=
+                expectedTemplateExerciseIds[index] ||
+            results76[index].templateExerciseId !=
+                expectedTemplateExerciseIds[index]) {
+          return false;
+        }
+      }
+      for (var index = 0; index < 3; index++) {
+        if (!sameResult(results74[index], results75[index]) ||
+            !sameResult(results74[index], results76[index])) {
+          return false;
+        }
+      }
+      bool matchesConfirmedBaseResult(
+        WorkoutExerciseResult result,
+        int templateExerciseId,
+        String snapshot,
+        double weight,
+      ) =>
+          result.templateExerciseId == templateExerciseId &&
+          result.exerciseIdentityId != null &&
+          result.exerciseNameSnapshot == snapshot &&
+          result.lastWeightKg == weight &&
+          result.lastReps == 10;
+      if (!matchesConfirmedBaseResult(
+            results76[0],
+            25,
+            'Жим штанги на верх груди',
+            2.5,
+          ) ||
+          !matchesConfirmedBaseResult(results76[1], 26, 'Жим в хаммере', 5.0) ||
+          !matchesConfirmedBaseResult(
+            results76[2],
+            27,
+            'Сведение рук стоя',
+            20.0,
+          )) {
+        return false;
+      }
+
+      final superman74 = results74[3];
+      final superman75 = results75[3];
+      final superman76 = results76[3];
+      if (!sameResult(superman74, superman75, includeReps: false) ||
+          !sameResult(superman74, superman76, includeReps: false) ||
+          superman74.exerciseIdentityId == null ||
+          superman74.exerciseNameSnapshot != 'Супермен' ||
+          superman74.lastWeightKg != 20.0 ||
+          superman74.lastReps != 18 ||
+          superman75.lastReps != 1 ||
+          superman76.lastReps != 10) {
+        return false;
+      }
+
+      await (delete(syncQueue)..where(
+            (row) =>
+                row.entityType.equals(SyncEntityTypes.workout) &
+                row.entityExternalId.isIn(const [
+                  _confirmedMotyaDuplicateWorkout74,
+                  _confirmedMotyaDuplicateWorkout75,
+                ]),
+          ))
+          .go();
+      final deletedResults = await (delete(
+        workoutExerciseResults,
+      )..where((row) => row.sessionId.isIn(const [74, 75]))).go();
+      final deletedSessions = await (delete(
+        workoutSessions,
+      )..where((row) => row.id.isIn(const [74, 75]))).go();
+      if (deletedResults != 8 || deletedSessions != 2) {
+        throw StateError('Не удалось атомарно устранить workout-дубли');
+      }
+
+      await enqueueWorkoutSync(
+        _confirmedMotyaCanonicalWorkout76,
+        triggerAutoSync: false,
+      );
+      return true;
+    });
   }
 
   Future<int?> _findCurrentExerciseBinding({
@@ -8966,6 +9127,7 @@ class AppDb extends _$AppDb {
         await _backfillExternalIdentities();
         await _mergeKnownEmptyExerciseDuplicates();
         await _applyConfirmedHammerResultDataFix();
+        await _applyConfirmedMotyaWorkoutConflictDataFix();
         await _ensureTrainerUuid();
         if (!rawTables.containsKey(syncQueue.actualTableName)) {
           await _enqueueAllExistingWorkoutSessionsForSync();
