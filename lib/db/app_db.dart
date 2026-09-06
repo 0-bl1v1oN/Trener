@@ -936,6 +936,17 @@ class AppDb extends _$AppDb {
   static const String _clientAddedExerciseSource = 'CLIENT_ADDED';
   static const String activeExerciseStatus = 'ACTIVE';
   static const String archivedExerciseStatus = 'ARCHIVED';
+  static const int _confirmedHammerResultId = 2158;
+  static const int _confirmedHammerSessionId = 669;
+  static const int _confirmedHammerOldIdentityId = 324;
+  static const int _confirmedHammerCanonicalIdentityId = 348;
+  static const String _confirmedHammerWorkoutExternalId =
+      '99d787bd-d229-4d3c-aabe-2986b2a4ca48';
+  static const String _confirmedHammerOldIdentityExternalId =
+      '9cf98acc-49e1-4271-b4d1-a351f6a8efd7';
+  static const String _confirmedHammerCanonicalIdentityExternalId =
+      '44998917-34b1-42e1-bfca-3ff98f50d178';
+  static const String _confirmedHammerSnapshot = 'молоточки';
   static const _knownEmptyExerciseDuplicateMerges =
       <({String oldExternalId, String canonicalExternalId})>[
         (
@@ -975,7 +986,7 @@ class AppDb extends _$AppDb {
   }
 
   @override
-  int get schemaVersion => 14;
+  int get schemaVersion => 15;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -1103,6 +1114,9 @@ class AppDb extends _$AppDb {
       await _backfillExternalIdentities();
       if (from < 14) {
         await _mergeKnownEmptyExerciseDuplicates();
+      }
+      if (from < 15) {
+        await _applyConfirmedHammerResultDataFix();
       }
       await _ensureTrainerUuid();
       if (from < 9) {
@@ -2328,6 +2342,87 @@ class AppDb extends _$AppDb {
         duplicateIdentityIds: [merge.oldId],
       );
     }
+  }
+
+  Future<bool> _applyConfirmedHammerResultDataFix() async {
+    final result =
+        await (select(workoutExerciseResults)
+              ..where((row) => row.id.equals(_confirmedHammerResultId))
+              ..limit(1))
+            .getSingleOrNull();
+    if (result == null) return false;
+
+    // The already-correct state is deliberately a no-op. Any other deviation
+    // from the confirmed production row is treated as a different dataset and
+    // must not be guessed at by this narrowly scoped repair.
+    if (result.exerciseIdentityId == _confirmedHammerCanonicalIdentityId &&
+        result.exerciseNameSnapshot == _confirmedHammerSnapshot) {
+      return false;
+    }
+    if (result.sessionId != _confirmedHammerSessionId ||
+        result.templateExerciseId != -21 ||
+        result.exerciseIdentityId != _confirmedHammerOldIdentityId ||
+        result.exerciseNameSnapshot != null ||
+        result.lastWeightKg != 9.0 ||
+        result.lastReps != 10) {
+      return false;
+    }
+
+    final session =
+        await (select(workoutSessions)
+              ..where((row) => row.id.equals(_confirmedHammerSessionId))
+              ..limit(1))
+            .getSingleOrNull();
+    if (session == null ||
+        session.externalId?.trim() != _confirmedHammerWorkoutExternalId ||
+        session.clientId != '1772001915174699' ||
+        session.performedAt.millisecondsSinceEpoch ~/ 1000 != 1774429200 ||
+        session.gender != 'М' ||
+        session.templateIdx != 6) {
+      return false;
+    }
+
+    final client = await getClientById(session.clientId);
+    final oldIdentity = await getExerciseById(_confirmedHammerOldIdentityId);
+    final canonicalIdentity = await getExerciseById(
+      _confirmedHammerCanonicalIdentityId,
+    );
+    if (client?.name != 'Павел' ||
+        oldIdentity?.externalId != _confirmedHammerOldIdentityExternalId ||
+        oldIdentity?.status != archivedExerciseStatus ||
+        oldIdentity?.mergedIntoIdentityId != null ||
+        canonicalIdentity?.externalId !=
+            _confirmedHammerCanonicalIdentityExternalId ||
+        canonicalIdentity?.canonicalName != 'Молотки сидя' ||
+        canonicalIdentity?.status != activeExerciseStatus ||
+        canonicalIdentity?.mergedIntoIdentityId != null) {
+      return false;
+    }
+
+    final changed =
+        await (update(workoutExerciseResults)..where(
+              (row) =>
+                  row.id.equals(_confirmedHammerResultId) &
+                  row.sessionId.equals(_confirmedHammerSessionId) &
+                  row.templateExerciseId.equals(-21) &
+                  row.exerciseIdentityId.equals(_confirmedHammerOldIdentityId) &
+                  row.exerciseNameSnapshot.isNull() &
+                  row.lastWeightKg.equals(9.0) &
+                  row.lastReps.equals(10),
+            ))
+            .write(
+              const WorkoutExerciseResultsCompanion(
+                exerciseIdentityId: Value(_confirmedHammerCanonicalIdentityId),
+                exerciseNameSnapshot: Value(_confirmedHammerSnapshot),
+              ),
+            );
+    if (changed != 1) return false;
+
+    await enqueueWorkoutSync(
+      _confirmedHammerWorkoutExternalId,
+      triggerAutoSync: false,
+    );
+    return true;
   }
 
   Future<int?> _findCurrentExerciseBinding({
@@ -8870,6 +8965,7 @@ class AppDb extends _$AppDb {
         // удаление исходной базы также будет отменено.
         await _backfillExternalIdentities();
         await _mergeKnownEmptyExerciseDuplicates();
+        await _applyConfirmedHammerResultDataFix();
         await _ensureTrainerUuid();
         if (!rawTables.containsKey(syncQueue.actualTableName)) {
           await _enqueueAllExistingWorkoutSessionsForSync();

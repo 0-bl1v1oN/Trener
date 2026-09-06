@@ -74,7 +74,7 @@ void main() {
         final version = await db
             .customSelect('PRAGMA user_version')
             .getSingle();
-        expect(version.read<int>('user_version'), 14);
+        expect(version.read<int>('user_version'), 15);
       },
     );
 
@@ -92,7 +92,7 @@ void main() {
       addTearDown(db.close);
 
       final version = await db.customSelect('PRAGMA user_version').getSingle();
-      expect(version.read<int>('user_version'), 14);
+      expect(version.read<int>('user_version'), 15);
       expect(await _count(db, 'clients'), 2);
       expect(await _count(db, 'workout_sessions'), 2);
       expect(await _count(db, 'workout_exercise_results'), 2);
@@ -173,7 +173,7 @@ void main() {
       db = AppDb.forTesting(NativeDatabase(file));
       addTearDown(db.close);
       final version = await db.customSelect('PRAGMA user_version').getSingle();
-      expect(version.read<int>('user_version'), 14);
+      expect(version.read<int>('user_version'), 15);
       expect(await _count(db, 'exercise_identities'), countBefore);
       expect(await db.select(db.exerciseIdentityAliases).get(), isEmpty);
       final duplicates = (await db.getExerciseDuplicateGroups()).where(
@@ -333,7 +333,7 @@ void main() {
         final version = await db
             .customSelect('PRAGMA user_version')
             .getSingle();
-        expect(version.read<int>('user_version'), 14);
+        expect(version.read<int>('user_version'), 15);
 
         for (final pair in pairs) {
           final old = await (db.select(
