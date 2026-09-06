@@ -953,6 +953,243 @@ class AppDb extends _$AppDb {
       '343337f9-027e-4cda-8a5c-414d711911da';
   static const String _confirmedMotyaCanonicalWorkout76 =
       'c92e8971-07f3-474b-ae53-ce43593669e1';
+  static const int _confirmedHistoricalBindingSourceIdentityId = 267;
+  static const String _confirmedHistoricalBindingSourceIdentityExternalId =
+      'af51b1f6-eb6a-43a0-be8a-5a8c5ba34315';
+  static const int _confirmedZerkerIdentityId = 284;
+  static const String _confirmedZerkerIdentityExternalId =
+      'cb6d8ee9-d99f-4e43-907b-454f0636c809';
+  static const int _confirmedSeatedHammerIdentityId = 348;
+  static const String _confirmedSeatedHammerIdentityExternalId =
+      '44998917-34b1-42e1-bfca-3ff98f50d178';
+  static const _confirmedHistoricalExerciseBindingFixes =
+      <
+        ({
+          int resultId,
+          int sessionId,
+          String workoutExternalId,
+          String clientId,
+          int performedAtSeconds,
+          String gender,
+          int templateIdx,
+          int templateExerciseId,
+          String snapshot,
+          double weightKg,
+          int reps,
+          int targetIdentityId,
+        })
+      >[
+        (
+          resultId: 665,
+          sessionId: 365,
+          workoutExternalId: 'f4501956-b13d-4e4e-bf01-5a2156313232',
+          clientId: '1771968319889522',
+          performedAtSeconds: 1772701200,
+          gender: 'Ж',
+          templateIdx: 0,
+          templateExerciseId: 58,
+          snapshot: 'Зеркер',
+          weightKg: 0.0,
+          reps: 10,
+          targetIdentityId: _confirmedZerkerIdentityId,
+        ),
+        (
+          resultId: 1267,
+          sessionId: 485,
+          workoutExternalId: '7768dbfe-01b7-4a5b-9615-adbc9ce42a8a',
+          clientId: '1771968319889522',
+          performedAtSeconds: 1773392400,
+          gender: 'Ж',
+          templateIdx: 0,
+          templateExerciseId: 58,
+          snapshot: 'Зеркер',
+          weightKg: 0.0,
+          reps: 10,
+          targetIdentityId: _confirmedZerkerIdentityId,
+        ),
+        (
+          resultId: 3058,
+          sessionId: 836,
+          workoutExternalId: '86ac7051-fb70-46ee-bb79-7ac955a0c42f',
+          clientId: '1771968319889522',
+          performedAtSeconds: 1775466000,
+          gender: 'Ж',
+          templateIdx: 0,
+          templateExerciseId: 58,
+          snapshot: 'Зеркер',
+          weightKg: 0.0,
+          reps: 10,
+          targetIdentityId: _confirmedZerkerIdentityId,
+        ),
+        (
+          resultId: 4563,
+          sessionId: 1095,
+          workoutExternalId: 'ef0e5a48-2c31-46af-8256-5814fcdb3473',
+          clientId: '1771968319889522',
+          performedAtSeconds: 1777021200,
+          gender: 'Ж',
+          templateIdx: 0,
+          templateExerciseId: 58,
+          snapshot: 'Зеркер',
+          weightKg: 4.0,
+          reps: 10,
+          targetIdentityId: _confirmedZerkerIdentityId,
+        ),
+        (
+          resultId: 5797,
+          sessionId: 1313,
+          workoutExternalId: '0a4db11e-5ceb-45d5-b130-62991aa71058',
+          clientId: '1771968319889522',
+          performedAtSeconds: 1778662800,
+          gender: 'Ж',
+          templateIdx: 0,
+          templateExerciseId: 58,
+          snapshot: 'Зеркер',
+          weightKg: 4.0,
+          reps: 10,
+          targetIdentityId: _confirmedZerkerIdentityId,
+        ),
+        (
+          resultId: 7490,
+          sessionId: 1607,
+          workoutExternalId: '0c0115b3-8c76-46c1-a538-712967767b3f',
+          clientId: '1771968319889522',
+          performedAtSeconds: 1780650000,
+          gender: 'Ж',
+          templateIdx: 0,
+          templateExerciseId: 58,
+          snapshot: 'Зеркер',
+          weightKg: 4.0,
+          reps: 10,
+          targetIdentityId: _confirmedZerkerIdentityId,
+        ),
+        (
+          resultId: 8560,
+          sessionId: 1804,
+          workoutExternalId: 'd51c53be-9738-4ae2-913e-93a7b6028e9e',
+          clientId: '1771968319889522',
+          performedAtSeconds: 1782291600,
+          gender: 'Ж',
+          templateIdx: 0,
+          templateExerciseId: 58,
+          snapshot: 'Зеркер',
+          weightKg: 4.0,
+          reps: 10,
+          targetIdentityId: _confirmedZerkerIdentityId,
+        ),
+        (
+          resultId: 9627,
+          sessionId: 2011,
+          workoutExternalId: '92d06e3b-8cb4-4fff-a8d1-bd467b599ee9',
+          clientId: '1771968319889522',
+          performedAtSeconds: 1784106000,
+          gender: 'Ж',
+          templateIdx: 0,
+          templateExerciseId: 58,
+          snapshot: 'Зеркер',
+          weightKg: 4.0,
+          reps: 10,
+          targetIdentityId: _confirmedZerkerIdentityId,
+        ),
+        (
+          resultId: 10491,
+          sessionId: 2180,
+          workoutExternalId: '8b27e94d-c66d-4a70-82d7-bb3976cc59eb',
+          clientId: '1771968319889522',
+          performedAtSeconds: 1785747600,
+          gender: 'Ж',
+          templateIdx: 0,
+          templateExerciseId: 58,
+          snapshot: 'Зеркер',
+          weightKg: 4.0,
+          reps: 10,
+          targetIdentityId: _confirmedZerkerIdentityId,
+        ),
+        (
+          resultId: 33,
+          sessionId: 44,
+          workoutExternalId: '2921ea59-f7e4-45bf-9795-58a74351a26c',
+          clientId: '1771968856758008',
+          performedAtSeconds: 1772010000,
+          gender: 'М',
+          templateIdx: 6,
+          templateExerciseId: 40,
+          snapshot: 'Молоточки',
+          weightKg: 9.0,
+          reps: 10,
+          targetIdentityId: _confirmedSeatedHammerIdentityId,
+        ),
+        (
+          resultId: 2336,
+          sessionId: 702,
+          workoutExternalId: '83abf407-4193-4bb2-9645-a524e6622c0d',
+          clientId: '1771968856758008',
+          performedAtSeconds: 1774515600,
+          gender: 'М',
+          templateIdx: 6,
+          templateExerciseId: 40,
+          snapshot: 'Молоточки',
+          weightKg: 30.0,
+          reps: 10,
+          targetIdentityId: _confirmedSeatedHammerIdentityId,
+        ),
+        (
+          resultId: 4765,
+          sessionId: 1131,
+          workoutExternalId: 'b7deefd5-eb4a-494d-814e-e76738be56ab',
+          clientId: '1771968856758008',
+          performedAtSeconds: 1777280400,
+          gender: 'М',
+          templateIdx: 6,
+          templateExerciseId: 40,
+          snapshot: 'Молоточки',
+          weightKg: 10.0,
+          reps: 10,
+          targetIdentityId: _confirmedSeatedHammerIdentityId,
+        ),
+        (
+          resultId: 7069,
+          sessionId: 1532,
+          workoutExternalId: 'f0efa31e-61d7-4fe4-bbd3-f83197cd354f',
+          clientId: '1771968856758008',
+          performedAtSeconds: 1780045200,
+          gender: 'М',
+          templateIdx: 6,
+          templateExerciseId: 40,
+          snapshot: 'Молоточки',
+          weightKg: 10.0,
+          reps: 10,
+          targetIdentityId: _confirmedSeatedHammerIdentityId,
+        ),
+        (
+          resultId: 9194,
+          sessionId: 1927,
+          workoutExternalId: '8a1e6a2d-456b-40a0-bb8a-35dda94e13fe',
+          clientId: '1771968856758008',
+          performedAtSeconds: 1783414800,
+          gender: 'М',
+          templateIdx: 6,
+          templateExerciseId: 40,
+          snapshot: 'Молоточки',
+          weightKg: 10.0,
+          reps: 10,
+          targetIdentityId: _confirmedSeatedHammerIdentityId,
+        ),
+        (
+          resultId: 10675,
+          sessionId: 2219,
+          workoutExternalId: '727440a8-8af8-43a2-a850-0eda8da0ea6c',
+          clientId: '1771968856758008',
+          performedAtSeconds: 1786093200,
+          gender: 'М',
+          templateIdx: 6,
+          templateExerciseId: 40,
+          snapshot: 'Молоточки',
+          weightKg: 10.0,
+          reps: 10,
+          targetIdentityId: _confirmedSeatedHammerIdentityId,
+        ),
+      ];
   static const _knownEmptyExerciseDuplicateMerges =
       <({String oldExternalId, String canonicalExternalId})>[
         (
@@ -992,7 +1229,7 @@ class AppDb extends _$AppDb {
   }
 
   @override
-  int get schemaVersion => 16;
+  int get schemaVersion => 17;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -1126,6 +1363,9 @@ class AppDb extends _$AppDb {
       }
       if (from < 16) {
         await _applyConfirmedMotyaWorkoutConflictDataFix();
+      }
+      if (from < 17) {
+        await _applyConfirmedHistoricalExerciseBindingsDataFix();
       }
       await _ensureTrainerUuid();
       if (from < 9) {
@@ -2583,6 +2823,114 @@ class AppDb extends _$AppDb {
         triggerAutoSync: false,
       );
       return true;
+    });
+  }
+
+  Future<({int zerkerResults, int seatedHammerResults})>
+  _applyConfirmedHistoricalExerciseBindingsDataFix() {
+    return transaction(() async {
+      final sourceIdentity = await getExerciseById(
+        _confirmedHistoricalBindingSourceIdentityId,
+      );
+      final zerkerIdentity = await getExerciseById(_confirmedZerkerIdentityId);
+      final seatedHammerIdentity = await getExerciseById(
+        _confirmedSeatedHammerIdentityId,
+      );
+      if (sourceIdentity?.externalId !=
+              _confirmedHistoricalBindingSourceIdentityExternalId ||
+          sourceIdentity?.canonicalName != 'Сгибание рук в кроссовере' ||
+          sourceIdentity?.status != activeExerciseStatus ||
+          sourceIdentity?.mergedIntoIdentityId != null ||
+          zerkerIdentity?.externalId != _confirmedZerkerIdentityExternalId ||
+          zerkerIdentity?.canonicalName !=
+              'Сгибание штанги на бицепс верхним хватом' ||
+          zerkerIdentity?.status != activeExerciseStatus ||
+          zerkerIdentity?.mergedIntoIdentityId != null ||
+          seatedHammerIdentity?.externalId !=
+              _confirmedSeatedHammerIdentityExternalId ||
+          seatedHammerIdentity?.canonicalName != 'Молотки сидя' ||
+          seatedHammerIdentity?.status != activeExerciseStatus ||
+          seatedHammerIdentity?.mergedIntoIdentityId != null) {
+        return (zerkerResults: 0, seatedHammerResults: 0);
+      }
+
+      var zerkerResults = 0;
+      var seatedHammerResults = 0;
+      final workoutExternalIds = <String>{};
+      for (final fix in _confirmedHistoricalExerciseBindingFixes) {
+        final result =
+            await (select(workoutExerciseResults)
+                  ..where((row) => row.id.equals(fix.resultId))
+                  ..limit(1))
+                .getSingleOrNull();
+        if (result == null) continue;
+
+        // A previously repaired row is deliberately left untouched and does
+        // not refresh its queue task on repeated migration/import runs.
+        if (result.exerciseIdentityId == fix.targetIdentityId &&
+            result.exerciseNameSnapshot == fix.snapshot) {
+          continue;
+        }
+        if (result.sessionId != fix.sessionId ||
+            result.templateExerciseId != fix.templateExerciseId ||
+            result.exerciseIdentityId !=
+                _confirmedHistoricalBindingSourceIdentityId ||
+            result.exerciseNameSnapshot != fix.snapshot ||
+            result.lastWeightKg != fix.weightKg ||
+            result.lastReps != fix.reps) {
+          continue;
+        }
+
+        final session =
+            await (select(workoutSessions)
+                  ..where((row) => row.id.equals(fix.sessionId))
+                  ..limit(1))
+                .getSingleOrNull();
+        if (session == null ||
+            session.externalId?.trim() != fix.workoutExternalId ||
+            session.clientId != fix.clientId ||
+            session.performedAt.millisecondsSinceEpoch ~/ 1000 !=
+                fix.performedAtSeconds ||
+            session.gender != fix.gender ||
+            session.templateIdx != fix.templateIdx ||
+            await getClientById(session.clientId) == null) {
+          continue;
+        }
+
+        final changed =
+            await (update(workoutExerciseResults)..where(
+                  (row) =>
+                      row.id.equals(fix.resultId) &
+                      row.sessionId.equals(fix.sessionId) &
+                      row.templateExerciseId.equals(fix.templateExerciseId) &
+                      row.exerciseIdentityId.equals(
+                        _confirmedHistoricalBindingSourceIdentityId,
+                      ) &
+                      row.exerciseNameSnapshot.equals(fix.snapshot) &
+                      row.lastWeightKg.equals(fix.weightKg) &
+                      row.lastReps.equals(fix.reps),
+                ))
+                .write(
+                  WorkoutExerciseResultsCompanion(
+                    exerciseIdentityId: Value(fix.targetIdentityId),
+                  ),
+                );
+        if (changed != 1) continue;
+        workoutExternalIds.add(fix.workoutExternalId);
+        if (fix.targetIdentityId == _confirmedZerkerIdentityId) {
+          zerkerResults++;
+        } else {
+          seatedHammerResults++;
+        }
+      }
+
+      for (final workoutExternalId in workoutExternalIds) {
+        await enqueueWorkoutSync(workoutExternalId, triggerAutoSync: false);
+      }
+      return (
+        zerkerResults: zerkerResults,
+        seatedHammerResults: seatedHammerResults,
+      );
     });
   }
 
@@ -9128,6 +9476,7 @@ class AppDb extends _$AppDb {
         await _mergeKnownEmptyExerciseDuplicates();
         await _applyConfirmedHammerResultDataFix();
         await _applyConfirmedMotyaWorkoutConflictDataFix();
+        await _applyConfirmedHistoricalExerciseBindingsDataFix();
         await _ensureTrainerUuid();
         if (!rawTables.containsKey(syncQueue.actualTableName)) {
           await _enqueueAllExistingWorkoutSessionsForSync();

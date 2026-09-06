@@ -283,7 +283,7 @@ void main() {
             .select(restored.workoutSessions)
             .getSingle();
         final queue = await restored.select(restored.syncQueue).getSingle();
-        expect(backup['schemaVersion'], 16);
+        expect(backup['schemaVersion'], 17);
         expect(session.absoluteIndex, 2);
         expect(session.externalId, saved.externalId);
         expect(queue.entityExternalId, saved.externalId);

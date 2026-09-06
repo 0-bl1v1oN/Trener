@@ -15,7 +15,7 @@ void main() {
       );
       final meta = payload['backupMeta'] as Map<String, dynamic>;
 
-      expect(payload['schemaVersion'], 16);
+      expect(payload['schemaVersion'], 17);
       expect(payload['exportedAt'], isA<String>());
       expect(meta['formatVersion'], supportedBackupFormatVersion);
       expect(meta['appVersion'], '1.9.9');
