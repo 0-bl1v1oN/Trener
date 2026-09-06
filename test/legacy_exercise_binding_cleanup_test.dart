@@ -173,6 +173,65 @@ void main() {
   );
 
   test(
+    'diagnostics group normalized legacy names and never suggest fuzzy match',
+    () async {
+      final db = await openDb();
+      final wrong = await addExercise(
+        db,
+        'Неверная identity grouping',
+        '18000000-0000-4000-8000-000000000001',
+      );
+      final exact = await addExercise(
+        db,
+        'Точный стульчик 774',
+        '18000000-0000-4000-8000-000000000002',
+      );
+      final template = (await db.getWorkoutTemplatesByGender('М')).first;
+      final slot =
+          await (db.select(db.workoutTemplateExercises)
+                ..where((row) => row.templateId.equals(template.id))
+                ..limit(1))
+              .getSingle();
+      for (final item in <(String, String)>[
+        ('group-client-1', 'Точный стульчик 774'),
+        ('group-client-2', '  ТОЧНЫЙ   СТУЛЬЧИК 774 '),
+        ('group-client-3', 'Точный стульчек 774'),
+      ]) {
+        await db
+            .into(db.clients)
+            .insert(ClientsCompanion.insert(id: item.$1, name: item.$1));
+        await db
+            .into(db.clientTemplateExerciseOverrides)
+            .insert(
+              ClientTemplateExerciseOverridesCompanion.insert(
+                clientId: item.$1,
+                templateExerciseId: slot.id,
+                exerciseIdentityId: Value(wrong.id),
+              ),
+            );
+        await db.customStatement(
+          'INSERT INTO client_exercise_name_overrides '
+          '(client_id, template_exercise_id, custom_name) VALUES (?, ?, ?)',
+          [item.$1, slot.id, item.$2],
+        );
+      }
+
+      final groups = (await db.analyzeLegacyExerciseBindings()).groups;
+      final exactGroup = groups.singleWhere(
+        (item) => item.normalizedName == 'точный стульчик 774',
+      );
+      final fuzzyGroup = groups.singleWhere(
+        (item) => item.normalizedName == 'точный стульчек 774',
+      );
+      expect(exactGroup.clientCount, 2);
+      expect(exactGroup.slotCount, 2);
+      expect(exactGroup.exactCatalogMatch?.id, exact.id);
+      expect(fuzzyGroup.clientCount, 1);
+      expect(fuzzyGroup.exactCatalogMatch, equals(null));
+    },
+  );
+
+  test(
     'mixed history correction changes only selected results and queues manually',
     () async {
       final db = await openDb();
@@ -260,7 +319,7 @@ void main() {
         weight: 14.5,
         reps: 11,
       );
-      final trialResult = await addResult(
+      await addResult(
         db,
         sessionId: trialSession,
         slotId: slot.id,
@@ -294,17 +353,27 @@ void main() {
         'Сгибание штанги',
         'Молоточки',
       });
+      final group = audit.groups.singleWhere(
+        (item) => item.normalizedName == 'молоточки',
+      );
+      expect(group.clientCount, 1);
+      expect(group.slotCount, 1);
+      expect(group.historicalResultCount, 2);
+      expect(group.exactCatalogMatch?.id, hammer.id);
 
       final before = await (db.select(
         db.workoutExerciseResults,
       )..where((row) => row.id.equals(hammerResult))).getSingle();
-      final result = await db.reassignLegacyExerciseData(
-        clientId: 'mixed-client',
-        templateExerciseId: slot.id,
-        historicalResultIds: [hammerResult, trialResult],
+      final request = LegacyExerciseBulkCorrectionRequest(
+        normalizedLegacyName: group.normalizedName,
         targetExerciseIdentityId: hammer.id,
-        reassignCurrentSlot: true,
       );
+      final preview = await db.previewLegacyExerciseBulkCorrection([request]);
+      expect(preview.groups, 1);
+      expect(preview.historicalResults, 2);
+      expect(preview.currentSlots, 1);
+      expect(preview.affectedSessions, 1);
+      final result = await db.reassignLegacyExerciseGroups([request]);
       final after = await (db.select(
         db.workoutExerciseResults,
       )..where((row) => row.id.equals(hammerResult))).getSingle();
@@ -315,6 +384,7 @@ void main() {
       expect(result.changedHistoricalResults, 2);
       expect(result.changedCurrentSlots, 1);
       expect(result.requeuedWorkoutSessions, 1);
+      expect(result.groups, 1);
       expect(after.exerciseIdentityId, hammer.id);
       expect(after.exerciseNameSnapshot, before.exerciseNameSnapshot);
       expect(after.sessionId, before.sessionId);
@@ -426,28 +496,49 @@ void main() {
         sessionId: session,
         slotId: slot.id,
         identityId: from.id,
-        snapshot: 'Rollback snapshot',
+        snapshot: target.canonicalName,
+      );
+      await db
+          .into(db.clientTemplateExerciseOverrides)
+          .insert(
+            ClientTemplateExerciseOverridesCompanion.insert(
+              clientId: 'missing-client',
+              templateExerciseId: slot.id,
+              exerciseIdentityId: Value(from.id),
+            ),
+          );
+      await db.customStatement(
+        'INSERT INTO client_exercise_name_overrides '
+        '(client_id, template_exercise_id, custom_name) VALUES (?, ?, ?)',
+        ['missing-client', slot.id, target.canonicalName],
       );
 
       await expectLater(
-        db.reassignLegacyExerciseData(
-          clientId: 'missing-client',
-          templateExerciseId: slot.id,
-          historicalResultIds: [resultId],
-          targetExerciseIdentityId: target.id,
-          reassignCurrentSlot: true,
-        ),
+        db.reassignLegacyExerciseGroups([
+          LegacyExerciseBulkCorrectionRequest(
+            normalizedLegacyName: target.canonicalName,
+            targetExerciseIdentityId: target.id,
+          ),
+        ]),
         throwsStateError,
       );
       final result = await (db.select(
         db.workoutExerciseResults,
       )..where((row) => row.id.equals(resultId))).getSingle();
       expect(result.exerciseIdentityId, from.id);
+      final slotAfter = await (db.select(
+        db.clientTemplateExerciseOverrides,
+      )..where((row) => row.clientId.equals('missing-client'))).getSingle();
+      expect(slotAfter.exerciseIdentityId, from.id);
       expect(
-        await (db.select(
-          db.clientTemplateExerciseOverrides,
-        )..where((row) => row.clientId.equals('missing-client'))).get(),
-        isEmpty,
+        await db
+            .customSelect(
+              'SELECT * FROM client_exercise_name_overrides '
+              'WHERE client_id = ?',
+              variables: [Variable.withString('missing-client')],
+            )
+            .get(),
+        hasLength(1),
       );
       expect(await db.select(db.syncQueue).get(), isEmpty);
     },
@@ -505,8 +596,8 @@ void main() {
     );
 
     final backup = await db.buildBackupPayload(
-      appVersion: '1.14.0',
-      buildNumber: '106',
+      appVersion: '1.15.0',
+      buildNumber: '107',
     );
     final restored = AppDb.forTesting(NativeDatabase.memory());
     addTearDown(restored.close);

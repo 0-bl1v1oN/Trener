@@ -15,6 +15,8 @@ class LegacyExerciseBindingsScreen extends StatefulWidget {
 class _LegacyExerciseBindingsScreenState
     extends State<LegacyExerciseBindingsScreen> {
   late Future<LegacyExerciseBindingsAuditVm> _audit;
+  final Set<String> _selectedGroups = {};
+  final Map<String, ExerciseIdentity> _selectedTargets = {};
 
   @override
   void didChangeDependencies() {
@@ -23,119 +25,82 @@ class _LegacyExerciseBindingsScreenState
   }
 
   void _reload() => setState(() {
+    _selectedGroups.clear();
+    _selectedTargets.clear();
     _audit = AppDbScope.of(context).analyzeLegacyExerciseBindings();
   });
 
-  Future<({Set<int> resultIds, bool currentSlot})?> _chooseScope(
-    LegacyExerciseBindingCandidateVm candidate,
-  ) async {
-    final selected = <int>{};
-    var currentSlot = false;
-    return showDialog<({Set<int> resultIds, bool currentSlot})>(
-      context: context,
-      builder: (dialogContext) => StatefulBuilder(
-        builder: (context, setDialogState) => AlertDialog(
-          title: const Text('Что исправить?'),
-          content: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 520),
-            child: SingleChildScrollView(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  const Text(
-                    'Выберите только те historical results, которые точно '
-                    'относятся к одному упражнению.',
-                  ),
-                  const SizedBox(height: 8),
-                  for (final group in candidate.snapshotGroups)
-                    CheckboxListTile(
-                      key: ValueKey(
-                        'legacy_snapshot_${candidate.clientId}_'
-                        '${candidate.templateExerciseId}_${group.name}',
-                      ),
-                      contentPadding: EdgeInsets.zero,
-                      value: group.resultIds.every(selected.contains),
-                      title: Text(group.name),
-                      subtitle: Text('Результатов: ${group.resultCount}'),
-                      onChanged: (checked) => setDialogState(() {
-                        if (checked ?? false) {
-                          selected.addAll(group.resultIds);
-                        } else {
-                          selected.removeAll(group.resultIds);
-                        }
-                      }),
-                    ),
-                  const Divider(),
-                  CheckboxListTile(
-                    key: const Key('legacy_reassign_current_slot'),
-                    contentPadding: EdgeInsets.zero,
-                    value: currentSlot,
-                    title: const Text('Перепривязать текущий slot'),
-                    subtitle: const Text(
-                      'Текстовый legacy override будет удалён',
-                    ),
-                    onChanged: (value) =>
-                        setDialogState(() => currentSlot = value ?? false),
-                  ),
-                ],
-              ),
-            ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(dialogContext),
-              child: const Text('Отмена'),
-            ),
-            FilledButton(
-              onPressed: selected.isEmpty && !currentSlot
-                  ? null
-                  : () => Navigator.pop(dialogContext, (
-                      resultIds: Set<int>.of(selected),
-                      currentSlot: currentSlot,
-                    )),
-              child: const Text('Выбрать упражнение'),
-            ),
-          ],
-        ),
-      ),
-    );
+  ExerciseIdentity? _targetFor(LegacyExerciseBindingGroupVm group) =>
+      _selectedTargets[group.normalizedName] ?? group.exactCatalogMatch;
+
+  void _suggestExactMatches(LegacyExerciseBindingsAuditVm audit) {
+    setState(() {
+      _selectedGroups.clear();
+      for (final group in audit.groups) {
+        final match = group.exactCatalogMatch;
+        if (match == null) continue;
+        _selectedTargets[group.normalizedName] = match;
+        _selectedGroups.add(group.normalizedName);
+      }
+    });
   }
 
-  Future<void> _correct(LegacyExerciseBindingCandidateVm candidate) async {
-    final scope = await _chooseScope(candidate);
-    if (scope == null || !mounted) return;
-    final db = AppDbScope.of(context);
-    final target = await showExerciseSelector(
+  Future<void> _chooseTarget(LegacyExerciseBindingGroupVm group) async {
+    final selected = await showExerciseSelector(
       context,
-      database: db,
+      database: AppDbScope.of(context),
       allowCreate: false,
     );
-    if (target == null || !mounted) return;
+    if (selected == null || !mounted) return;
+    setState(() {
+      _selectedTargets[group.normalizedName] = selected;
+      _selectedGroups.add(group.normalizedName);
+    });
+  }
 
+  List<LegacyExerciseBulkCorrectionRequest> _requestsFor(
+    LegacyExerciseBindingsAuditVm audit,
+  ) {
+    return [
+      for (final group in audit.groups)
+        if (_selectedGroups.contains(group.normalizedName))
+          if (_targetFor(group) case final target?)
+            LegacyExerciseBulkCorrectionRequest(
+              normalizedLegacyName: group.normalizedName,
+              targetExerciseIdentityId: target.id,
+            ),
+    ];
+  }
+
+  Future<void> _applySelected(LegacyExerciseBindingsAuditVm audit) async {
+    final requests = _requestsFor(audit);
+    if (requests.isEmpty) return;
+    final db = AppDbScope.of(context);
     try {
-      final preview = await db.previewLegacyExerciseCorrection(
-        clientId: candidate.clientId,
-        templateExerciseId: candidate.templateExerciseId,
-        historicalResultIds: scope.resultIds,
-        targetExerciseIdentityId: target.id,
-        reassignCurrentSlot: scope.currentSlot,
-      );
+      final preview = await db.previewLegacyExerciseBulkCorrection(requests);
       if (!mounted) return;
+      final targetLines = preview.targets
+          .map(
+            (item) =>
+                '• ${item.legacyName} → ${item.targetName}\n  '
+                '${item.targetExternalId}',
+          )
+          .join('\n');
       final confirmed =
           await showDialog<bool>(
             context: context,
             builder: (dialogContext) => AlertDialog(
-              title: const Text('Исправить legacy-привязку?'),
-              content: SelectableText(
-                'Будет изменено:\n'
-                '• historical results: ${preview.historicalResults}\n'
-                '• current slots: ${preview.currentSlots}\n\n'
-                'В очередь будут поставлены тренировки: '
-                '${preview.affectedSessions}\n\n'
-                'Названия в истории изменены не будут.\n'
-                'UUID будет заменён на:\n'
-                '${preview.targetName}\n${preview.targetExternalId}',
+              title: const Text('Исправить подтверждённые группы?'),
+              content: SingleChildScrollView(
+                child: SelectableText(
+                  'Будет изменено:\n'
+                  '• групп: ${preview.groups}\n'
+                  '• historical results: ${preview.historicalResults}\n'
+                  '• current slots: ${preview.currentSlots}\n'
+                  '• тренировок в очередь: ${preview.affectedSessions}\n\n'
+                  'Названия, веса, повторы, sessions и даты в истории '
+                  'изменены не будут.\n\n$targetLines',
+                ),
               ),
               actions: [
                 TextButton(
@@ -143,7 +108,7 @@ class _LegacyExerciseBindingsScreenState
                   child: const Text('Отмена'),
                 ),
                 FilledButton(
-                  key: const Key('legacy_confirm_fix'),
+                  key: const Key('legacy_bulk_confirm'),
                   onPressed: () => Navigator.pop(dialogContext, true),
                   child: const Text('Исправить'),
                 ),
@@ -153,20 +118,15 @@ class _LegacyExerciseBindingsScreenState
           false;
       if (!confirmed) return;
 
-      final result = await db.reassignLegacyExerciseData(
-        clientId: candidate.clientId,
-        templateExerciseId: candidate.templateExerciseId,
-        historicalResultIds: scope.resultIds,
-        targetExerciseIdentityId: target.id,
-        reassignCurrentSlot: scope.currentSlot,
-      );
+      final result = await db.reassignLegacyExerciseGroups(requests);
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
-            'Исправлено results: ${result.changedHistoricalResults}, '
-            'slots: ${result.changedCurrentSlots}. '
-            'В очередь добавлено: ${result.requeuedWorkoutSessions}. '
+            'Исправлено групп: ${result.groups}, results: '
+            '${result.changedHistoricalResults}, slots: '
+            '${result.changedCurrentSlots}. В очередь добавлено: '
+            '${result.requeuedWorkoutSessions}. '
             'Запустите синхронизацию вручную.',
           ),
         ),
@@ -174,32 +134,27 @@ class _LegacyExerciseBindingsScreenState
       _reload();
     } on Object catch (error) {
       if (!mounted) return;
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text('Не удалось исправить: $error')));
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Не удалось исправить группы: $error')),
+      );
     }
   }
 
-  Widget _candidateCard(LegacyExerciseBindingCandidateVm candidate) {
+  Widget _candidateDetails(LegacyExerciseBindingCandidateVm candidate) {
     final colors = Theme.of(context).colorScheme;
-    final kind = candidate.hasMixedIdentityHistory
-        ? 'Mixed history — только точечная перепривязка'
-        : candidate.isCleanCandidate
-        ? 'Чистый кандидат на перепривязку'
-        : 'Требуется ручная проверка';
-    return Card(
-      child: ExpansionTile(
-        key: ValueKey(
-          'legacy_candidate_${candidate.clientId}_'
-          '${candidate.templateExerciseId}',
-        ),
-        title: Text(candidate.clientName),
-        subtitle: Text('${candidate.programSlot}\n$kind'),
-        childrenPadding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-        expandedCrossAxisAlignment: CrossAxisAlignment.stretch,
+    final snapshots = candidate.snapshotGroups
+        .map((item) => '${item.name} (${item.resultCount})')
+        .join(', ');
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Text('Отображаемое имя: ${candidate.displayName}'),
-          const SizedBox(height: 6),
+          Text(
+            '${candidate.clientName} • ${candidate.programSlot}',
+            style: const TextStyle(fontWeight: FontWeight.w600),
+          ),
+          const SizedBox(height: 4),
           Text('Текущая identity: ${candidate.currentIdentityName}'),
           SelectableText(
             candidate.currentIdentityExternalId,
@@ -208,34 +163,92 @@ class _LegacyExerciseBindingsScreenState
               fontFamily: 'monospace',
             ),
           ),
-          const SizedBox(height: 8),
-          Text('Historical results: ${candidate.historicalResultCount}'),
-          if (candidate.snapshotGroups.isEmpty)
-            const Text('Snapshots отсутствуют')
-          else
-            for (final group in candidate.snapshotGroups)
-              Text('• ${group.name}: ${group.resultCount}'),
-          if (candidate.hasMixedIdentityHistory) ...[
-            const SizedBox(height: 8),
+          const SizedBox(height: 4),
+          Text('Snapshots: $snapshots'),
+          if (candidate.hasMixedIdentityHistory)
             Text(
-              'Все snapshots этой identity: '
-              '${candidate.identitySnapshotNames.join(', ')}',
+              'Mixed history: изменятся только snapshots с точным именем '
+              'группы.',
               style: TextStyle(color: colors.error),
             ),
-          ],
-          const SizedBox(height: 12),
-          Align(
-            alignment: Alignment.centerRight,
-            child: FilledButton.icon(
-              key: ValueKey(
-                'legacy_correct_${candidate.clientId}_'
-                '${candidate.templateExerciseId}',
-              ),
-              onPressed: () => _correct(candidate),
-              icon: const Icon(Icons.link),
-              label: const Text('Исправить точечно'),
+        ],
+      ),
+    );
+  }
+
+  Widget _groupCard(LegacyExerciseBindingGroupVm group) {
+    final colors = Theme.of(context).colorScheme;
+    final target = _targetFor(group);
+    final selected = _selectedGroups.contains(group.normalizedName);
+    return Card(
+      child: ExpansionTile(
+        key: ValueKey('legacy_group_${group.normalizedName}'),
+        leading: Checkbox(
+          key: ValueKey('legacy_group_check_${group.normalizedName}'),
+          value: selected,
+          onChanged: target == null
+              ? null
+              : (value) => setState(() {
+                  if (value ?? false) {
+                    _selectedGroups.add(group.normalizedName);
+                  } else {
+                    _selectedGroups.remove(group.normalizedName);
+                  }
+                }),
+        ),
+        title: Text(group.displayName),
+        subtitle: Text(
+          '${group.clientCount} клиентов • ${group.slotCount} slots • '
+          '${group.historicalResultCount} historical results',
+        ),
+        childrenPadding: const EdgeInsets.only(bottom: 8),
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+            child: Row(
+              children: [
+                Expanded(
+                  child: target == null
+                      ? Text(
+                          'Точного единственного совпадения нет',
+                          style: TextStyle(color: colors.onSurfaceVariant),
+                        )
+                      : Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              group.exactCatalogMatch?.id == target.id &&
+                                      !_selectedTargets.containsKey(
+                                        group.normalizedName,
+                                      )
+                                  ? 'Предложено точное совпадение'
+                                  : 'Выбранное упражнение',
+                              style: TextStyle(color: colors.onSurfaceVariant),
+                            ),
+                            Text(
+                              target.canonicalName,
+                              style: const TextStyle(
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                            SelectableText(
+                              target.externalId,
+                              style: const TextStyle(fontFamily: 'monospace'),
+                            ),
+                          ],
+                        ),
+                ),
+                TextButton(
+                  key: ValueKey('legacy_group_target_${group.normalizedName}'),
+                  onPressed: () => _chooseTarget(group),
+                  child: Text(target == null ? 'Выбрать' : 'Изменить'),
+                ),
+              ],
             ),
           ),
+          const Divider(height: 1),
+          for (final candidate in group.candidates)
+            _candidateDetails(candidate),
         ],
       ),
     );
@@ -268,9 +281,38 @@ class _LegacyExerciseBindingsScreenState
             padding: const EdgeInsets.all(16),
             children: [
               const Text(
-                'Здесь показаны legacy name overrides, имя которых не '
-                'совпадает с текущим catalog exercise. Совпадение не '
-                'исправляется автоматически.',
+                'Проблемы сгруппированы по отображаемому имени. '
+                'Автоматически предлагаются только единственные точные '
+                'ACTIVE-совпадения; исправление всегда требует подтверждения.',
+              ),
+              const SizedBox(height: 12),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: [
+                  OutlinedButton.icon(
+                    key: const Key('legacy_suggest_exact'),
+                    onPressed:
+                        audit.groups.any(
+                          (group) => group.exactCatalogMatch != null,
+                        )
+                        ? () => _suggestExactMatches(audit)
+                        : null,
+                    icon: const Icon(Icons.auto_awesome),
+                    label: const Text('Предложить точные совпадения'),
+                  ),
+                  FilledButton.icon(
+                    key: const Key('legacy_apply_selected'),
+                    onPressed: _selectedGroups.isEmpty
+                        ? null
+                        : () => _applySelected(audit),
+                    icon: const Icon(Icons.link),
+                    label: Text(
+                      'Исправить подтверждённые группы '
+                      '(${_selectedGroups.length})',
+                    ),
+                  ),
+                ],
               ),
               const SizedBox(height: 12),
               Card(
@@ -284,14 +326,13 @@ class _LegacyExerciseBindingsScreenState
                 ),
               ),
               const SizedBox(height: 8),
-              if (audit.candidates.isEmpty)
+              if (audit.groups.isEmpty)
                 const Padding(
                   padding: EdgeInsets.only(top: 32),
                   child: Center(child: Text('Legacy-кандидаты не найдены')),
                 )
               else
-                for (final candidate in audit.candidates)
-                  _candidateCard(candidate),
+                for (final group in audit.groups) _groupCard(group),
             ],
           );
         },

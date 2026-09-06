@@ -472,6 +472,41 @@ void main() {
       expect(await legacyRestored.getExerciseUuidAliases(), isEmpty);
     },
   );
+
+  test('restore applies the validated empty duplicate repair', () async {
+    final source = await openDb();
+    final canonical = await insertIdentity(
+      source,
+      uuid: 'ca91d5b0-5a80-43ca-91f6-7b591086bbdd',
+      name: 'Тяга верхнего блока параллельным хватом',
+    );
+    final old = await insertIdentity(
+      source,
+      uuid: '0e6d41b3-8e85-430b-b2fa-e74145517065',
+      name: 'Тяга верхнего блока параллельным хватом',
+    );
+    final backup = await source.buildBackupPayload(
+      appVersion: '1.15.0',
+      buildNumber: '107',
+    );
+
+    final restored = AppDb.forTesting(NativeDatabase.memory());
+    addTearDown(restored.close);
+    await restored.importBackupPayload(backup);
+
+    final restoredOld = await (restored.select(
+      restored.exerciseIdentities,
+    )..where((row) => row.externalId.equals(old.externalId))).getSingle();
+    final restoredCanonical = await (restored.select(
+      restored.exerciseIdentities,
+    )..where((row) => row.externalId.equals(canonical.externalId))).getSingle();
+    expect(restoredOld.status, AppDb.archivedExerciseStatus);
+    expect(restoredOld.mergedIntoIdentityId, restoredCanonical.id);
+    expect(
+      await restored.resolveCanonicalExerciseUuid(old.externalId),
+      canonical.externalId,
+    );
+  });
 }
 
 class _RecordingTransport implements SyncTransport {

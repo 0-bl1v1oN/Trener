@@ -74,7 +74,7 @@ void main() {
         final version = await db
             .customSelect('PRAGMA user_version')
             .getSingle();
-        expect(version.read<int>('user_version'), 13);
+        expect(version.read<int>('user_version'), 14);
       },
     );
 
@@ -92,7 +92,7 @@ void main() {
       addTearDown(db.close);
 
       final version = await db.customSelect('PRAGMA user_version').getSingle();
-      expect(version.read<int>('user_version'), 13);
+      expect(version.read<int>('user_version'), 14);
       expect(await _count(db, 'clients'), 2);
       expect(await _count(db, 'workout_sessions'), 2);
       expect(await _count(db, 'workout_exercise_results'), 2);
@@ -106,7 +106,7 @@ void main() {
       expect(await db.select(db.syncLog).get(), isEmpty);
     });
 
-    test('schema 12 to 13 only adds merge infrastructure', () async {
+    test('schema 12 migrates to current merge infrastructure', () async {
       final temp = await Directory.systemTemp.createTemp(
         'trener-v12-merge-migration-',
       );
@@ -173,7 +173,7 @@ void main() {
       db = AppDb.forTesting(NativeDatabase(file));
       addTearDown(db.close);
       final version = await db.customSelect('PRAGMA user_version').getSingle();
-      expect(version.read<int>('user_version'), 13);
+      expect(version.read<int>('user_version'), 14);
       expect(await _count(db, 'exercise_identities'), countBefore);
       expect(await db.select(db.exerciseIdentityAliases).get(), isEmpty);
       final duplicates = (await db.getExerciseDuplicateGroups()).where(
@@ -187,6 +187,304 @@ void main() {
         ),
         isTrue,
       );
+    });
+
+    test(
+      'schema 13 to 14 merges only the four validated empty duplicates',
+      () async {
+        const pairs = <(String, String, String)>[
+          (
+            '0e6d41b3-8e85-430b-b2fa-e74145517065',
+            'ca91d5b0-5a80-43ca-91f6-7b591086bbdd',
+            'Тяга верхнего блока параллельным хватом',
+          ),
+          (
+            'a5e82f98-6165-4843-b572-8b2b9417765a',
+            '7ef69ad0-3588-4a50-935e-6d4c11431fa0',
+            'Жим ногами',
+          ),
+          (
+            'c416f9e9-be64-4fe7-ae16-1d3de9d4c0c0',
+            '81b869d0-2881-4ca5-8990-986ace32a00c',
+            'Жим в хамере',
+          ),
+          (
+            'ff9c9b6e-5f77-48a5-9118-e3ed758fb23c',
+            '966607d2-84a0-4d63-a66a-65f66e655695',
+            'Выпады на месте',
+          ),
+        ];
+        final temp = await Directory.systemTemp.createTemp(
+          'trener-v13-empty-duplicate-migration-',
+        );
+        addTearDown(() => temp.delete(recursive: true));
+        final file = File(
+          '${temp.path}${Platform.pathSeparator}schema-v13.sqlite',
+        );
+
+        var db = AppDb.forTesting(NativeDatabase(file));
+        await db.getActiveExercises();
+        await db
+            .into(db.clients)
+            .insert(
+              ClientsCompanion.insert(
+                id: 'known-merge-client',
+                externalId: const Value('11111111-2222-4333-8444-555555555555'),
+                name: 'Проверка merge',
+                gender: const Value('М'),
+              ),
+            );
+        final template = (await db.getWorkoutTemplatesByGender('М')).first;
+        final templateSlot = (await db.getTemplateExercisesByTemplateId(
+          template.id,
+        )).first;
+        final canonicalResultIds = <int>[];
+        final queuePayloads = <String>[];
+
+        for (var index = 0; index < pairs.length; index++) {
+          final pair = pairs[index];
+          final canonicalId = await db
+              .into(db.exerciseIdentities)
+              .insert(
+                ExerciseIdentitiesCompanion.insert(
+                  externalId: pair.$2,
+                  canonicalName: Value(pair.$3),
+                  normalizedName: Value(AppDb.normalizeExerciseName(pair.$3)),
+                ),
+              );
+          final oldId = await db
+              .into(db.exerciseIdentities)
+              .insert(
+                ExerciseIdentitiesCompanion.insert(
+                  externalId: pair.$1,
+                  canonicalName: Value(pair.$3),
+                  normalizedName: Value(AppDb.normalizeExerciseName(pair.$3)),
+                ),
+              );
+          await db
+              .into(db.exerciseIdentityBindings)
+              .insert(
+                ExerciseIdentityBindingsCompanion.insert(
+                  sourceType: 'TEMPLATE',
+                  sourceId: 9000 + index,
+                  identityId: oldId,
+                ),
+              );
+
+          final workoutUuid =
+              '22222222-3333-4${index}44-8555-66666666666$index';
+          final sessionId = await db
+              .into(db.workoutSessions)
+              .insert(
+                WorkoutSessionsCompanion.insert(
+                  externalId: Value(workoutUuid),
+                  clientId: 'known-merge-client',
+                  performedAt: DateTime(2026, 9, 1 + index),
+                  planInstance: 1,
+                  gender: 'М',
+                  templateIdx: template.idx,
+                ),
+              );
+          canonicalResultIds.add(
+            await db
+                .into(db.workoutExerciseResults)
+                .insert(
+                  WorkoutExerciseResultsCompanion.insert(
+                    sessionId: sessionId,
+                    templateExerciseId: templateSlot.id,
+                    exerciseIdentityId: Value(canonicalId),
+                    exerciseNameSnapshot: Value(pair.$3),
+                  ),
+                ),
+          );
+          final queuePayload = '{"exercise_id":"${pair.$2}"}';
+          queuePayloads.add(queuePayload);
+          await db
+              .into(db.syncQueue)
+              .insert(
+                SyncQueueCompanion.insert(
+                  entityType: 'WORKOUT',
+                  entityExternalId: workoutUuid,
+                  operation: 'WORKOUT_UPSERT',
+                  payload: queuePayload,
+                ),
+              );
+        }
+        final sentinelId = await db
+            .into(db.exerciseIdentities)
+            .insert(
+              ExerciseIdentitiesCompanion.insert(
+                externalId: '33333333-4444-4555-8666-777777777777',
+                canonicalName: const Value('Не связанное упражнение'),
+                normalizedName: const Value('не связанное упражнение'),
+              ),
+            );
+        await db.close();
+
+        final sqliteDb = sqlite.sqlite3.open(file.path);
+        try {
+          sqliteDb.execute('PRAGMA user_version = 13');
+        } finally {
+          sqliteDb.dispose();
+        }
+
+        db = AppDb.forTesting(NativeDatabase(file));
+        addTearDown(db.close);
+        final version = await db
+            .customSelect('PRAGMA user_version')
+            .getSingle();
+        expect(version.read<int>('user_version'), 14);
+
+        for (final pair in pairs) {
+          final old = await (db.select(
+            db.exerciseIdentities,
+          )..where((row) => row.externalId.equals(pair.$1))).getSingle();
+          final canonical = await (db.select(
+            db.exerciseIdentities,
+          )..where((row) => row.externalId.equals(pair.$2))).getSingle();
+          expect(old.status, AppDb.archivedExerciseStatus);
+          expect(old.mergedIntoIdentityId, canonical.id);
+          expect(canonical.status, AppDb.activeExerciseStatus);
+          expect(canonical.mergedIntoIdentityId, null);
+          expect(await db.resolveCanonicalExerciseUuid(pair.$1), pair.$2);
+          expect(
+            await (db.select(
+              db.workoutExerciseResults,
+            )..where((row) => row.exerciseIdentityId.equals(old.id))).get(),
+            isEmpty,
+          );
+          expect(
+            await (db.select(
+              db.exerciseIdentityBindings,
+            )..where((row) => row.identityId.equals(old.id))).get(),
+            isEmpty,
+          );
+        }
+        for (final resultId in canonicalResultIds) {
+          expect(
+            await (db.select(
+              db.workoutExerciseResults,
+            )..where((row) => row.id.equals(resultId))).getSingle(),
+            isNotNull,
+          );
+        }
+        expect(
+          (await db.getExerciseById(sentinelId))?.status,
+          AppDb.activeExerciseStatus,
+        );
+        expect(
+          (await db.select(db.syncQueue).get()).map((row) => row.payload),
+          queuePayloads,
+        );
+        final active = await db.getActiveExercises();
+        for (final pair in pairs) {
+          expect(
+            active.where(
+              (item) =>
+                  item.externalId == pair.$1 || item.externalId == pair.$2,
+            ),
+            hasLength(1),
+          );
+        }
+      },
+    );
+
+    test('schema 14 data fix skips a known duplicate with history', () async {
+      final temp = await Directory.systemTemp.createTemp(
+        'trener-v14-unsafe-duplicate-',
+      );
+      addTearDown(() => temp.delete(recursive: true));
+      final file = File(
+        '${temp.path}${Platform.pathSeparator}unsafe-v13.sqlite',
+      );
+
+      var db = AppDb.forTesting(NativeDatabase(file));
+      await db.getActiveExercises();
+      final canonicalId = await db
+          .into(db.exerciseIdentities)
+          .insert(
+            ExerciseIdentitiesCompanion.insert(
+              externalId: 'ca91d5b0-5a80-43ca-91f6-7b591086bbdd',
+              canonicalName: const Value(
+                'Тяга верхнего блока параллельным хватом',
+              ),
+              normalizedName: const Value(
+                'тяга верхнего блока параллельным хватом',
+              ),
+            ),
+          );
+      final oldId = await db
+          .into(db.exerciseIdentities)
+          .insert(
+            ExerciseIdentitiesCompanion.insert(
+              externalId: '0e6d41b3-8e85-430b-b2fa-e74145517065',
+              canonicalName: const Value(
+                'Тяга верхнего блока параллельным хватом',
+              ),
+              normalizedName: const Value(
+                'тяга верхнего блока параллельным хватом',
+              ),
+            ),
+          );
+      await db
+          .into(db.clients)
+          .insert(
+            ClientsCompanion.insert(
+              id: 'unsafe-merge-client',
+              externalId: const Value('44444444-5555-4666-8777-888888888888'),
+              name: 'Исторический клиент',
+            ),
+          );
+      final sessionId = await db
+          .into(db.workoutSessions)
+          .insert(
+            WorkoutSessionsCompanion.insert(
+              externalId: const Value('55555555-6666-4777-8888-999999999999'),
+              clientId: 'unsafe-merge-client',
+              performedAt: DateTime(2026, 9, 5),
+              planInstance: 1,
+              gender: 'М',
+              templateIdx: 0,
+            ),
+          );
+      final slot = (await db.getTemplateExercisesByTemplateId(
+        (await db.getWorkoutTemplatesByGender('М')).first.id,
+      )).first;
+      await db
+          .into(db.workoutExerciseResults)
+          .insert(
+            WorkoutExerciseResultsCompanion.insert(
+              sessionId: sessionId,
+              templateExerciseId: slot.id,
+              exerciseIdentityId: Value(oldId),
+              exerciseNameSnapshot: const Value(
+                'Тяга верхнего блока параллельным хватом',
+              ),
+            ),
+          );
+      await db.close();
+
+      final sqliteDb = sqlite.sqlite3.open(file.path);
+      try {
+        sqliteDb.execute('PRAGMA user_version = 13');
+      } finally {
+        sqliteDb.dispose();
+      }
+
+      db = AppDb.forTesting(NativeDatabase(file));
+      addTearDown(db.close);
+      final old = (await db.getExerciseById(oldId))!;
+      expect(old.status, AppDb.activeExerciseStatus);
+      expect(old.mergedIntoIdentityId, null);
+      expect(
+        await db.resolveCanonicalExerciseUuid(old.externalId),
+        old.externalId,
+      );
+      expect(
+        (await db.getExerciseById(canonicalId))?.status,
+        AppDb.activeExerciseStatus,
+      );
+      expect(await db.getExerciseUuidAliases(), isEmpty);
     });
 
     test(

@@ -446,23 +446,40 @@ void main() {
 
     expect(find.text('Legacy-привязки'), findsOneWidget);
     expect(find.byKey(const Key('legacy_orphan_bindings')), findsOneWidget);
-    expect(find.text('Legacy UI client'), findsOneWidget);
-    expect(find.textContaining('Чистый кандидат'), findsOneWidget);
-    await tester.tap(find.text('Legacy UI client'));
+    expect(find.text('Legacy hammer UI'), findsOneWidget);
+    expect(
+      find.textContaining('1 клиентов • 1 slots • 1 historical'),
+      findsOneWidget,
+    );
+    await tester.tap(find.text('Legacy hammer UI'));
     await tester.pumpAndSettle();
+    expect(
+      find.text('Legacy UI client • ${template.title} • упражнение 1'),
+      findsOneWidget,
+    );
     expect(find.textContaining(legacy.externalId), findsOneWidget);
-    await tester.tap(find.text('Исправить точечно'));
+    expect(find.text('Предложено точное совпадение'), findsOneWidget);
+    await tester.tap(find.byKey(const Key('legacy_suggest_exact')));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('Legacy hammer UI').last);
+    final groupCheckbox = find.byKey(
+      const ValueKey('legacy_group_check_legacy hammer ui'),
+    );
+    await tester.tap(groupCheckbox);
     await tester.pump();
-    await tester.tap(find.text('Выбрать упражнение'));
-    await tester.pumpAndSettle();
-    await tester.tap(find.text(target.canonicalName).last);
+    expect(
+      tester
+          .widget<FilledButton>(find.byKey(const Key('legacy_apply_selected')))
+          .onPressed,
+      equals(null),
+    );
+    await tester.tap(groupCheckbox);
+    await tester.pump();
+    await tester.tap(find.byKey(const Key('legacy_apply_selected')));
     await tester.pumpAndSettle();
 
-    expect(find.text('Исправить legacy-привязку?'), findsOneWidget);
+    expect(find.text('Исправить подтверждённые группы?'), findsOneWidget);
     expect(find.textContaining('historical results: 1'), findsOneWidget);
-    expect(find.textContaining(target.externalId), findsOneWidget);
+    expect(find.textContaining(target.externalId), findsWidgets);
     await tester.tap(find.text('Отмена'));
     await tester.pumpAndSettle();
     final unchanged = await (db.select(

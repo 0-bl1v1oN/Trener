@@ -760,11 +760,119 @@ class LegacyExerciseBindingCandidateVm {
 class LegacyExerciseBindingsAuditVm {
   const LegacyExerciseBindingsAuditVm({
     required this.candidates,
+    required this.groups,
     required this.orphanBindings,
   });
 
   final List<LegacyExerciseBindingCandidateVm> candidates;
+  final List<LegacyExerciseBindingGroupVm> groups;
   final int orphanBindings;
+}
+
+class LegacyExerciseBindingGroupVm {
+  const LegacyExerciseBindingGroupVm({
+    required this.displayName,
+    required this.normalizedName,
+    required this.candidates,
+    required this.exactCatalogMatch,
+  });
+
+  final String displayName;
+  final String normalizedName;
+  final List<LegacyExerciseBindingCandidateVm> candidates;
+  final ExerciseIdentity? exactCatalogMatch;
+
+  int get clientCount => candidates.map((item) => item.clientId).toSet().length;
+  int get slotCount => candidates.length;
+  int get historicalResultCount => candidates.fold(0, (total, candidate) {
+    return total +
+        candidate.snapshotGroups
+            .where(
+              (snapshot) =>
+                  AppDb.normalizeExerciseName(snapshot.name) == normalizedName,
+            )
+            .fold(0, (count, snapshot) => count + snapshot.resultCount);
+  });
+}
+
+class LegacyExerciseBulkCorrectionRequest {
+  const LegacyExerciseBulkCorrectionRequest({
+    required this.normalizedLegacyName,
+    required this.targetExerciseIdentityId,
+  });
+
+  final String normalizedLegacyName;
+  final int targetExerciseIdentityId;
+}
+
+class LegacyExerciseBulkTargetVm {
+  const LegacyExerciseBulkTargetVm({
+    required this.legacyName,
+    required this.targetName,
+    required this.targetExternalId,
+  });
+
+  final String legacyName;
+  final String targetName;
+  final String targetExternalId;
+}
+
+class LegacyExerciseBulkCorrectionPreview {
+  const LegacyExerciseBulkCorrectionPreview({
+    required this.groups,
+    required this.historicalResults,
+    required this.currentSlots,
+    required this.affectedSessions,
+    required this.targets,
+  });
+
+  final int groups;
+  final int historicalResults;
+  final int currentSlots;
+  final int affectedSessions;
+  final List<LegacyExerciseBulkTargetVm> targets;
+}
+
+class LegacyExerciseBulkCorrectionResult {
+  const LegacyExerciseBulkCorrectionResult({
+    required this.groups,
+    required this.changedHistoricalResults,
+    required this.changedCurrentSlots,
+    required this.requeuedWorkoutSessions,
+  });
+
+  final int groups;
+  final int changedHistoricalResults;
+  final int changedCurrentSlots;
+  final int requeuedWorkoutSessions;
+}
+
+class _LegacyExerciseSlotTarget {
+  const _LegacyExerciseSlotTarget({
+    required this.clientId,
+    required this.templateExerciseId,
+    required this.targetIdentityId,
+  });
+
+  final String clientId;
+  final int templateExerciseId;
+  final int targetIdentityId;
+}
+
+class _LegacyExerciseBulkPlan {
+  const _LegacyExerciseBulkPlan({
+    required this.groupCount,
+    required this.resultTargets,
+    required this.slotTargets,
+    required this.workoutExternalIds,
+    required this.targets,
+  });
+
+  final int groupCount;
+  final Map<int, int> resultTargets;
+  final List<_LegacyExerciseSlotTarget> slotTargets;
+  final Set<String> workoutExternalIds;
+  final List<LegacyExerciseBulkTargetVm> targets;
 }
 
 class LegacyExerciseCorrectionPreview {
@@ -828,6 +936,25 @@ class AppDb extends _$AppDb {
   static const String _clientAddedExerciseSource = 'CLIENT_ADDED';
   static const String activeExerciseStatus = 'ACTIVE';
   static const String archivedExerciseStatus = 'ARCHIVED';
+  static const _knownEmptyExerciseDuplicateMerges =
+      <({String oldExternalId, String canonicalExternalId})>[
+        (
+          oldExternalId: '0e6d41b3-8e85-430b-b2fa-e74145517065',
+          canonicalExternalId: 'ca91d5b0-5a80-43ca-91f6-7b591086bbdd',
+        ),
+        (
+          oldExternalId: 'a5e82f98-6165-4843-b572-8b2b9417765a',
+          canonicalExternalId: '7ef69ad0-3588-4a50-935e-6d4c11431fa0',
+        ),
+        (
+          oldExternalId: 'c416f9e9-be64-4fe7-ae16-1d3de9d4c0c0',
+          canonicalExternalId: '81b869d0-2881-4ca5-8990-986ace32a00c',
+        ),
+        (
+          oldExternalId: 'ff9c9b6e-5f77-48a5-9118-e3ed758fb23c',
+          canonicalExternalId: '966607d2-84a0-4d63-a66a-65f66e655695',
+        ),
+      ];
 
   bool _maleDefaultsPatched = false;
   bool _femaleDefaultsPatched = false;
@@ -848,7 +975,7 @@ class AppDb extends _$AppDb {
   }
 
   @override
-  int get schemaVersion => 13;
+  int get schemaVersion => 14;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -974,6 +1101,9 @@ class AppDb extends _$AppDb {
       await _seedWorkoutTemplates();
       await _seedWorkoutTemplateExercises();
       await _backfillExternalIdentities();
+      if (from < 14) {
+        await _mergeKnownEmptyExerciseDuplicates();
+      }
       await _ensureTrainerUuid();
       if (from < 9) {
         await _enqueueAllExistingWorkoutSessionsForSync();
@@ -1583,8 +1713,37 @@ class AppDb extends _$AppDb {
       ''',
       readsFrom: {exerciseIdentityBindings, workoutTemplateExercises},
     ).getSingle();
+    final candidatesByName = <String, List<LegacyExerciseBindingCandidateVm>>{};
+    for (final candidate in candidates) {
+      final normalized = normalizeExerciseName(candidate.displayName);
+      if (normalized.isEmpty) continue;
+      candidatesByName.putIfAbsent(normalized, () => []).add(candidate);
+    }
+    final activeByName = <String, List<ExerciseIdentity>>{};
+    for (final exercise in await getActiveExercises()) {
+      final normalized = normalizeExerciseName(exercise.canonicalName);
+      activeByName.putIfAbsent(normalized, () => []).add(exercise);
+    }
+    final groups = <LegacyExerciseBindingGroupVm>[];
+    for (final entry in candidatesByName.entries) {
+      final matches = activeByName[entry.key] ?? const <ExerciseIdentity>[];
+      groups.add(
+        LegacyExerciseBindingGroupVm(
+          displayName: entry.value.first.displayName,
+          normalizedName: entry.key,
+          candidates: List.unmodifiable(entry.value),
+          exactCatalogMatch: matches.length == 1 ? matches.single : null,
+        ),
+      );
+    }
+    groups.sort(
+      (left, right) => left.displayName.toLowerCase().compareTo(
+        right.displayName.toLowerCase(),
+      ),
+    );
     return LegacyExerciseBindingsAuditVm(
       candidates: List.unmodifiable(candidates),
+      groups: List.unmodifiable(groups),
       orphanBindings: orphanRow.read<int>('amount'),
     );
   }
@@ -1681,6 +1840,175 @@ class AppDb extends _$AppDb {
       targetName: target.canonicalName,
       targetExternalId: target.externalId,
     );
+  }
+
+  Future<_LegacyExerciseBulkPlan> _prepareLegacyExerciseBulkCorrection(
+    Iterable<LegacyExerciseBulkCorrectionRequest> requests,
+  ) async {
+    final requestList = requests.toList(growable: false);
+    if (requestList.isEmpty) {
+      throw ArgumentError('Не выбраны legacy-группы');
+    }
+    final audit = await analyzeLegacyExerciseBindings();
+    final groupsByName = {
+      for (final group in audit.groups) group.normalizedName: group,
+    };
+    final requestedNames = <String>{};
+    final proposedResultTargets = <int, int>{};
+    final slotTargetsByKey = <String, _LegacyExerciseSlotTarget>{};
+    final targets = <LegacyExerciseBulkTargetVm>[];
+
+    for (final request in requestList) {
+      final normalizedName = normalizeExerciseName(
+        request.normalizedLegacyName,
+      );
+      if (normalizedName.isEmpty || !requestedNames.add(normalizedName)) {
+        throw StateError('Legacy-группа выбрана повторно или имеет пустое имя');
+      }
+      final group = groupsByName[normalizedName];
+      if (group == null) {
+        throw StateError('Legacy-группа изменилась. Обновите диагностику');
+      }
+      final targetId = await _resolveCanonicalExerciseIdentityId(
+        request.targetExerciseIdentityId,
+      );
+      final target = await getExerciseById(targetId);
+      if (target == null ||
+          target.status != activeExerciseStatus ||
+          target.mergedIntoIdentityId != null ||
+          !_isUuidV4(target.externalId)) {
+        throw StateError('Выберите активное canonical упражнение');
+      }
+      targets.add(
+        LegacyExerciseBulkTargetVm(
+          legacyName: group.displayName,
+          targetName: target.canonicalName,
+          targetExternalId: target.externalId,
+        ),
+      );
+
+      for (final candidate in group.candidates) {
+        for (final snapshot in candidate.snapshotGroups) {
+          if (normalizeExerciseName(snapshot.name) != normalizedName) continue;
+          for (final resultId in snapshot.resultIds) {
+            final previous = proposedResultTargets[resultId];
+            if (previous != null && previous != targetId) {
+              throw StateError('Один historical result выбран в двух группах');
+            }
+            proposedResultTargets[resultId] = targetId;
+          }
+        }
+        final slotKey =
+            '${candidate.clientId}\u0000${candidate.templateExerciseId}';
+        final previousSlot = slotTargetsByKey[slotKey];
+        if (previousSlot != null && previousSlot.targetIdentityId != targetId) {
+          throw StateError('Один current slot выбран в двух группах');
+        }
+        slotTargetsByKey[slotKey] = _LegacyExerciseSlotTarget(
+          clientId: candidate.clientId,
+          templateExerciseId: candidate.templateExerciseId,
+          targetIdentityId: targetId,
+        );
+      }
+    }
+
+    final resultIds = proposedResultTargets.keys.toSet();
+    final rows = resultIds.isEmpty
+        ? const <QueryRow>[]
+        : await customSelect(
+            '''
+            SELECT r.id, r.exercise_identity_id, s.external_id, s.gender
+            FROM workout_exercise_results r
+            INNER JOIN workout_sessions s ON s.id = r.session_id
+            WHERE r.id IN (${List.filled(resultIds.length, '?').join(', ')})
+            ''',
+            variables: [for (final id in resultIds) Variable.withInt(id)],
+            readsFrom: {workoutExerciseResults, workoutSessions},
+          ).get();
+    if (rows.length != resultIds.length) {
+      throw StateError('Historical results изменились. Обновите диагностику');
+    }
+    final resultTargets = <int, int>{};
+    final workoutExternalIds = <String>{};
+    for (final row in rows) {
+      final resultId = row.read<int>('id');
+      final targetId = proposedResultTargets[resultId]!;
+      if (row.readNullable<int>('exercise_identity_id') == targetId) continue;
+      resultTargets[resultId] = targetId;
+      final externalId = row.readNullable<String>('external_id')?.trim() ?? '';
+      if (row.read<String>('gender') != 'П' && externalId.isNotEmpty) {
+        workoutExternalIds.add(externalId);
+      }
+    }
+    return _LegacyExerciseBulkPlan(
+      groupCount: requestList.length,
+      resultTargets: Map.unmodifiable(resultTargets),
+      slotTargets: List.unmodifiable(slotTargetsByKey.values),
+      workoutExternalIds: Set.unmodifiable(workoutExternalIds),
+      targets: List.unmodifiable(targets),
+    );
+  }
+
+  Future<LegacyExerciseBulkCorrectionPreview>
+  previewLegacyExerciseBulkCorrection(
+    Iterable<LegacyExerciseBulkCorrectionRequest> requests,
+  ) async {
+    final plan = await _prepareLegacyExerciseBulkCorrection(requests);
+    return LegacyExerciseBulkCorrectionPreview(
+      groups: plan.groupCount,
+      historicalResults: plan.resultTargets.length,
+      currentSlots: plan.slotTargets.length,
+      affectedSessions: plan.workoutExternalIds.length,
+      targets: plan.targets,
+    );
+  }
+
+  Future<LegacyExerciseBulkCorrectionResult> reassignLegacyExerciseGroups(
+    Iterable<LegacyExerciseBulkCorrectionRequest> requests,
+  ) {
+    return transaction(() async {
+      final plan = await _prepareLegacyExerciseBulkCorrection(requests);
+      var changedResults = 0;
+      final resultIdsByTarget = <int, Set<int>>{};
+      for (final entry in plan.resultTargets.entries) {
+        resultIdsByTarget
+            .putIfAbsent(entry.value, () => <int>{})
+            .add(entry.key);
+      }
+      for (final entry in resultIdsByTarget.entries) {
+        changedResults +=
+            await (update(
+              workoutExerciseResults,
+            )..where((row) => row.id.isIn(entry.value))).write(
+              WorkoutExerciseResultsCompanion(
+                exerciseIdentityId: Value(entry.key),
+              ),
+            );
+      }
+
+      for (final slot in plan.slotTargets) {
+        await setExerciseForClientSlot(
+          clientId: slot.clientId,
+          templateExerciseId: slot.templateExerciseId,
+          exerciseIdentityId: slot.targetIdentityId,
+        );
+        await customStatement(
+          'DELETE FROM client_exercise_name_overrides '
+          'WHERE client_id = ? AND template_exercise_id = ?',
+          [slot.clientId, slot.templateExerciseId],
+        );
+      }
+
+      for (final externalId in plan.workoutExternalIds) {
+        await enqueueWorkoutSync(externalId, triggerAutoSync: false);
+      }
+      return LegacyExerciseBulkCorrectionResult(
+        groups: plan.groupCount,
+        changedHistoricalResults: changedResults,
+        changedCurrentSlots: plan.slotTargets.length,
+        requeuedWorkoutSessions: plan.workoutExternalIds.length,
+      );
+    });
   }
 
   Future<LegacyExerciseCorrectionResult> reassignLegacyExerciseData({
@@ -1913,6 +2241,93 @@ class AppDb extends _$AppDb {
         ),
       );
     });
+  }
+
+  Future<void> _mergeKnownEmptyExerciseDuplicates() async {
+    final merges = <({int oldId, int canonicalId})>[];
+    for (final pair in _knownEmptyExerciseDuplicateMerges) {
+      final oldIdentity =
+          await (select(exerciseIdentities)
+                ..where((row) => row.externalId.equals(pair.oldExternalId))
+                ..limit(1))
+              .getSingleOrNull();
+      final canonicalIdentity =
+          await (select(exerciseIdentities)
+                ..where(
+                  (row) => row.externalId.equals(pair.canonicalExternalId),
+                )
+                ..limit(1))
+              .getSingleOrNull();
+
+      // These UUIDs belong to one known production dataset. Other installs
+      // normally don't contain either row, so the repair is intentionally a
+      // no-op unless the complete pair is present.
+      if (oldIdentity == null || canonicalIdentity == null) continue;
+
+      if (oldIdentity.mergedIntoIdentityId != null) {
+        final finalId = await _resolveCanonicalExerciseIdentityId(
+          oldIdentity.id,
+        );
+        if (finalId == canonicalIdentity.id) continue;
+        continue;
+      }
+
+      if (oldIdentity.id == canonicalIdentity.id ||
+          oldIdentity.status != activeExerciseStatus ||
+          canonicalIdentity.status != activeExerciseStatus ||
+          canonicalIdentity.mergedIntoIdentityId != null ||
+          normalizeExerciseName(oldIdentity.canonicalName) !=
+              normalizeExerciseName(canonicalIdentity.canonicalName)) {
+        continue;
+      }
+
+      final countExpression = workoutExerciseResults.id.count();
+      final oldResultCount =
+          await (selectOnly(workoutExerciseResults)
+                ..addColumns([countExpression])
+                ..where(
+                  workoutExerciseResults.exerciseIdentityId.equals(
+                    oldIdentity.id,
+                  ),
+                ))
+              .map((row) => row.read(countExpression) ?? 0)
+              .getSingle();
+      if (oldResultCount != 0) continue;
+
+      final childMerge =
+          await (select(exerciseIdentities)
+                ..where(
+                  (row) => row.mergedIntoIdentityId.equals(oldIdentity.id),
+                )
+                ..limit(1))
+              .getSingleOrNull();
+      final incomingAlias =
+          await (select(exerciseIdentityAliases)
+                ..where((row) => row.canonicalIdentityId.equals(oldIdentity.id))
+                ..limit(1))
+              .getSingleOrNull();
+      final existingOldAlias =
+          await (select(exerciseIdentityAliases)
+                ..where(
+                  (row) => row.oldExternalId.equals(oldIdentity.externalId),
+                )
+                ..limit(1))
+              .getSingleOrNull();
+      if (childMerge != null ||
+          incomingAlias != null ||
+          existingOldAlias != null) {
+        continue;
+      }
+
+      merges.add((oldId: oldIdentity.id, canonicalId: canonicalIdentity.id));
+    }
+
+    for (final merge in merges) {
+      await mergeExerciseIdentities(
+        canonicalIdentityId: merge.canonicalId,
+        duplicateIdentityIds: [merge.oldId],
+      );
+    }
   }
 
   Future<int?> _findCurrentExerciseBinding({
@@ -8454,6 +8869,7 @@ class AppDb extends _$AppDb {
         // выполняется до commit той же транзакции, поэтому при любой ошибке
         // удаление исходной базы также будет отменено.
         await _backfillExternalIdentities();
+        await _mergeKnownEmptyExerciseDuplicates();
         await _ensureTrainerUuid();
         if (!rawTables.containsKey(syncQueue.actualTableName)) {
           await _enqueueAllExistingWorkoutSessionsForSync();
