@@ -108,10 +108,10 @@ class _DataBackupScreenState extends State<DataBackupScreen> {
       await _reloadFiles();
 
       await Share.shareXFiles(
-        [XFile(file.path)],
+        [XFile(file.path, mimeType: 'application/json')],
         text:
-            'Резервная копия данных MyFitness. Сохраните файл в облако/на устройство, чтобы восстановить данные после переустановки.',
-        subject: 'Резервная копия MyFitness',
+            'Резервная копия данных Trener. Сохраните файл в облако/на устройство, чтобы восстановить данные после переустановки.',
+        subject: p.basename(file.path),
       );
 
       if (!mounted) return;

@@ -962,6 +962,75 @@ class AppDb extends _$AppDb {
   static const int _confirmedSeatedHammerIdentityId = 348;
   static const String _confirmedSeatedHammerIdentityExternalId =
       '44998917-34b1-42e1-bfca-3ff98f50d178';
+  static const int _confirmedUpperChestPressOldIdentityId = 236;
+  static const String _confirmedUpperChestPressOldIdentityExternalId =
+      '02179b87-ae75-4e0c-ba15-920861fc9010';
+  static const int _confirmedUpperChestPressCanonicalIdentityId = 290;
+  static const String _confirmedUpperChestPressCanonicalIdentityExternalId =
+      '8271280e-6aff-428d-b922-76dc958916ca';
+  static const String _confirmedUpperChestPressCanonicalName =
+      'Жим в тренажёре на верх груди';
+  static const int _confirmedInclineDumbbellPressIdentityId = 513;
+  static const String _confirmedInclineDumbbellPressIdentityExternalId =
+      'bec68760-2e03-412c-8251-d3548e3b833c';
+  static const _confirmedDumbbellHistoricalResultFixes =
+      <
+        ({
+          int resultId,
+          int sessionId,
+          String workoutExternalId,
+          int performedAtSeconds,
+          int planInstance,
+          double weightKg,
+          int reps,
+        })
+      >[
+        (
+          resultId: 1603,
+          sessionId: 549,
+          workoutExternalId: 'a098f4b0-eac3-43b4-b48f-36aa8e5bafea',
+          performedAtSeconds: 1773824400,
+          planInstance: 1,
+          weightKg: 20.0,
+          reps: 12,
+        ),
+        (
+          resultId: 3905,
+          sessionId: 981,
+          workoutExternalId: '202a8e75-b8ab-4940-a448-c69bdc6eebb6',
+          performedAtSeconds: 1776330000,
+          planInstance: 2,
+          weightKg: 20.0,
+          reps: 12,
+        ),
+        (
+          resultId: 6705,
+          sessionId: 1469,
+          workoutExternalId: '685cf0a9-a1e6-4b00-8503-b1dd58321033',
+          performedAtSeconds: 1779699600,
+          planInstance: 3,
+          weightKg: 10.0,
+          reps: 10,
+        ),
+        (
+          resultId: 8892,
+          sessionId: 1865,
+          workoutExternalId: 'a33286c4-1086-44f7-a7ed-27ea09e43a41',
+          performedAtSeconds: 1782896400,
+          planInstance: 4,
+          weightKg: 10.0,
+          reps: 10,
+        ),
+        (
+          resultId: 10300,
+          sessionId: 2141,
+          workoutExternalId: '8d00e820-f332-40a1-b2c6-6692f29ba32e',
+          performedAtSeconds: 1785315600,
+          planInstance: 5,
+          weightKg: 10.0,
+          reps: 10,
+        ),
+      ];
   static const _confirmedHistoricalExerciseBindingFixes =
       <
         ({
@@ -1229,7 +1298,7 @@ class AppDb extends _$AppDb {
   }
 
   @override
-  int get schemaVersion => 17;
+  int get schemaVersion => 18;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -1366,6 +1435,9 @@ class AppDb extends _$AppDb {
       }
       if (from < 17) {
         await _applyConfirmedHistoricalExerciseBindingsDataFix();
+      }
+      if (from < 18) {
+        await _applyConfirmedUpperChestPressDataFix();
       }
       await _ensureTrainerUuid();
       if (from < 9) {
@@ -2931,6 +3003,185 @@ class AppDb extends _$AppDb {
         zerkerResults: zerkerResults,
         seatedHammerResults: seatedHammerResults,
       );
+    });
+  }
+
+  Future<({bool merged, int dumbbellResults})>
+  _applyConfirmedUpperChestPressDataFix() {
+    return transaction(() async {
+      final oldIdentity = await getExerciseById(
+        _confirmedUpperChestPressOldIdentityId,
+      );
+      final canonicalIdentity = await getExerciseById(
+        _confirmedUpperChestPressCanonicalIdentityId,
+      );
+      final dumbbellIdentity = await getExerciseById(
+        _confirmedInclineDumbbellPressIdentityId,
+      );
+      final identitiesMatch =
+          oldIdentity?.externalId ==
+              _confirmedUpperChestPressOldIdentityExternalId &&
+          oldIdentity?.canonicalName ==
+              _confirmedUpperChestPressCanonicalName &&
+          oldIdentity?.status == archivedExerciseStatus &&
+          canonicalIdentity?.externalId ==
+              _confirmedUpperChestPressCanonicalIdentityExternalId &&
+          canonicalIdentity?.status == activeExerciseStatus &&
+          canonicalIdentity?.mergedIntoIdentityId == null &&
+          const {
+            'Жим в тренажёре на вверх груди',
+            _confirmedUpperChestPressCanonicalName,
+          }.contains(canonicalIdentity?.canonicalName);
+      final dumbbellIdentityMatches =
+          dumbbellIdentity?.externalId ==
+              _confirmedInclineDumbbellPressIdentityExternalId &&
+          dumbbellIdentity?.canonicalName == 'Жим гантелей под углом' &&
+          dumbbellIdentity?.status == activeExerciseStatus &&
+          dumbbellIdentity?.mergedIntoIdentityId == null;
+
+      var merged = false;
+      final workoutExternalIds = <String>{};
+      if (identitiesMatch && oldIdentity!.mergedIntoIdentityId == null) {
+        final oldAlias =
+            await (select(exerciseIdentityAliases)
+                  ..where(
+                    (row) => row.oldExternalId.equals(oldIdentity.externalId),
+                  )
+                  ..limit(1))
+                .getSingleOrNull();
+        if (oldAlias == null) {
+          final affectedRows = await customSelect(
+            '''
+            SELECT DISTINCT s.external_id
+            FROM workout_exercise_results r
+            INNER JOIN workout_sessions s ON s.id = r.session_id
+            INNER JOIN clients c ON c.id = s.client_id
+            WHERE r.exercise_identity_id = ?
+              AND s.gender != 'П'
+              AND s.external_id IS NOT NULL
+              AND TRIM(s.external_id) != ''
+            ''',
+            variables: [
+              Variable.withInt(_confirmedUpperChestPressOldIdentityId),
+            ],
+            readsFrom: {workoutExerciseResults, workoutSessions, clients},
+          ).get();
+          workoutExternalIds.addAll(
+            affectedRows.map((row) => row.read<String>('external_id').trim()),
+          );
+          await mergeExerciseIdentities(
+            canonicalIdentityId: _confirmedUpperChestPressCanonicalIdentityId,
+            duplicateIdentityIds: const [
+              _confirmedUpperChestPressOldIdentityId,
+            ],
+          );
+          merged = true;
+        }
+      }
+
+      final refreshedOldIdentity = await getExerciseById(
+        _confirmedUpperChestPressOldIdentityId,
+      );
+      final oldAlias =
+          await (select(exerciseIdentityAliases)
+                ..where(
+                  (row) => row.oldExternalId.equals(
+                    _confirmedUpperChestPressOldIdentityExternalId,
+                  ),
+                )
+                ..limit(1))
+              .getSingleOrNull();
+      final mergeIsComplete =
+          refreshedOldIdentity?.mergedIntoIdentityId ==
+              _confirmedUpperChestPressCanonicalIdentityId &&
+          refreshedOldIdentity?.status == archivedExerciseStatus &&
+          oldAlias?.canonicalIdentityId ==
+              _confirmedUpperChestPressCanonicalIdentityId;
+      if (mergeIsComplete) {
+        final refreshedCanonical = await getExerciseById(
+          _confirmedUpperChestPressCanonicalIdentityId,
+        );
+        if (refreshedCanonical?.canonicalName ==
+            'Жим в тренажёре на вверх груди') {
+          await renameExercise(
+            exerciseId: _confirmedUpperChestPressCanonicalIdentityId,
+            name: _confirmedUpperChestPressCanonicalName,
+          );
+        }
+      }
+
+      var dumbbellResults = 0;
+      if (dumbbellIdentityMatches) {
+        for (final fix in _confirmedDumbbellHistoricalResultFixes) {
+          final result =
+              await (select(workoutExerciseResults)
+                    ..where((row) => row.id.equals(fix.resultId))
+                    ..limit(1))
+                  .getSingleOrNull();
+          if (result == null) continue;
+          if (result.exerciseIdentityId ==
+                  _confirmedInclineDumbbellPressIdentityId &&
+              result.exerciseNameSnapshot == 'Гантели') {
+            continue;
+          }
+          if (result.sessionId != fix.sessionId ||
+              result.templateExerciseId != 65 ||
+              result.exerciseIdentityId !=
+                  _confirmedUpperChestPressCanonicalIdentityId ||
+              result.exerciseNameSnapshot != 'Гантели' ||
+              result.lastWeightKg != fix.weightKg ||
+              result.lastReps != fix.reps) {
+            continue;
+          }
+          final session =
+              await (select(workoutSessions)
+                    ..where((row) => row.id.equals(fix.sessionId))
+                    ..limit(1))
+                  .getSingleOrNull();
+          final client = session == null
+              ? null
+              : await getClientById(session.clientId);
+          if (session == null ||
+              session.externalId?.trim() != fix.workoutExternalId ||
+              session.clientId != '1772877700578140' ||
+              session.performedAt.millisecondsSinceEpoch ~/ 1000 !=
+                  fix.performedAtSeconds ||
+              session.planInstance != fix.planInstance ||
+              session.gender != 'Ж' ||
+              session.templateIdx != 2 ||
+              client?.name != 'Елена (мамы)') {
+            continue;
+          }
+          final changed =
+              await (update(workoutExerciseResults)..where(
+                    (row) =>
+                        row.id.equals(fix.resultId) &
+                        row.sessionId.equals(fix.sessionId) &
+                        row.templateExerciseId.equals(65) &
+                        row.exerciseIdentityId.equals(
+                          _confirmedUpperChestPressCanonicalIdentityId,
+                        ) &
+                        row.exerciseNameSnapshot.equals('Гантели') &
+                        row.lastWeightKg.equals(fix.weightKg) &
+                        row.lastReps.equals(fix.reps),
+                  ))
+                  .write(
+                    const WorkoutExerciseResultsCompanion(
+                      exerciseIdentityId: Value(
+                        _confirmedInclineDumbbellPressIdentityId,
+                      ),
+                    ),
+                  );
+          if (changed != 1) continue;
+          dumbbellResults++;
+          workoutExternalIds.add(fix.workoutExternalId);
+        }
+      }
+
+      for (final workoutExternalId in workoutExternalIds) {
+        await enqueueWorkoutSync(workoutExternalId, triggerAutoSync: false);
+      }
+      return (merged: merged, dumbbellResults: dumbbellResults);
     });
   }
 
@@ -9477,6 +9728,7 @@ class AppDb extends _$AppDb {
         await _applyConfirmedHammerResultDataFix();
         await _applyConfirmedMotyaWorkoutConflictDataFix();
         await _applyConfirmedHistoricalExerciseBindingsDataFix();
+        await _applyConfirmedUpperChestPressDataFix();
         await _ensureTrainerUuid();
         if (!rawTables.containsKey(syncQueue.actualTableName)) {
           await _enqueueAllExistingWorkoutSessionsForSync();
