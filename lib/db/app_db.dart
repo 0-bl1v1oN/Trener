@@ -973,6 +973,122 @@ class AppDb extends _$AppDb {
   static const int _confirmedInclineDumbbellPressIdentityId = 513;
   static const String _confirmedInclineDumbbellPressIdentityExternalId =
       'bec68760-2e03-412c-8251-d3548e3b833c';
+  static const _confirmedCurrentExerciseOverrideFixes =
+      <
+        ({
+          String clientId,
+          int templateExerciseId,
+          String displayName,
+          String targetCanonicalName,
+          String targetExternalId,
+        })
+      >[
+        (
+          clientId: '1771968976799655',
+          templateExerciseId: 66,
+          displayName: 'Сведение рук',
+          targetCanonicalName: 'Сведение рук в кроссовере',
+          targetExternalId: '68c9bf93-f67f-47d2-a884-4d50a58dac5e',
+        ),
+        (
+          clientId: '1785867203298113',
+          templateExerciseId: 12,
+          displayName: 'Жим ногами',
+          targetCanonicalName: 'Жим ногами',
+          targetExternalId: '7ef69ad0-3588-4a50-935e-6d4c11431fa0',
+        ),
+        (
+          clientId: '1785867203298113',
+          templateExerciseId: 13,
+          displayName: 'Гакка',
+          targetCanonicalName: 'Гакка',
+          targetExternalId: '7c245fca-e2b2-4a27-9177-7a3349b1b0dd',
+        ),
+        (
+          clientId: '1771968976799655',
+          templateExerciseId: 65,
+          displayName: 'Отжимания',
+          targetCanonicalName: 'Отжимания',
+          targetExternalId: 'aa6b34ae-f299-44b5-a32f-f26593d1f71d',
+        ),
+        (
+          clientId: '1771969323937422',
+          templateExerciseId: 21,
+          displayName: 'Тяга в кроссовере',
+          targetCanonicalName: 'Тяга одной рукой в кроссовере',
+          targetExternalId: 'd467d747-275e-47b8-ad26-1bdb0adfbc07',
+        ),
+        (
+          clientId: '1772007370007117',
+          templateExerciseId: 38,
+          displayName: 'Тяга штанги в наклоне',
+          targetCanonicalName: 'Тяга штанги в наклоне',
+          targetExternalId: '41adb3a8-ea0a-4597-b9c3-66ed36728134',
+        ),
+        (
+          clientId: '1772007370007117',
+          templateExerciseId: 39,
+          displayName: 'Тяга нижнего блока параллельным хватом',
+          targetCanonicalName: 'Тяга нижнего блока параллельным хватом',
+          targetExternalId: '1b1e4ff8-8eca-4051-b4d4-7d90aee41a0e',
+        ),
+        (
+          clientId: '1785867203298113',
+          templateExerciseId: 28,
+          displayName: 'Жим штанги стоя с подъёмами на предплечье',
+          targetCanonicalName: 'Жим штанги стоя с подъёмами на предплечье',
+          targetExternalId: '5be9453d-358e-4d13-9c9f-0cdb61b750cb',
+        ),
+        (
+          clientId: '1785867203298113',
+          templateExerciseId: 29,
+          displayName: 'Самурай',
+          targetCanonicalName: 'Самурай',
+          targetExternalId: '0884df83-8139-42cf-af30-aed32d4ec3e3',
+        ),
+        (
+          clientId: '1771969023161770',
+          templateExerciseId: 44,
+          displayName: 'Отрицательный жим штанги',
+          targetCanonicalName: 'Отрицательный жим штанги',
+          targetExternalId: '55afb5da-b70f-4fa6-81af-6936ea6d8f0b',
+        ),
+        (
+          clientId: '1771969023161770',
+          templateExerciseId: 46,
+          displayName: 'Подъёмы гантелей перед собой',
+          targetCanonicalName: 'Подъёмы гантелей перед собой',
+          targetExternalId: '907e322b-b492-4116-9105-ab815d452999',
+        ),
+        (
+          clientId: '1771968730757039',
+          templateExerciseId: 2,
+          displayName: 'Т-образная тяга',
+          targetCanonicalName: 'Тяга Т-образный гриф',
+          targetExternalId: 'ae6344bc-7203-4cae-9ded-0f157c889fb4',
+        ),
+        (
+          clientId: '1771968730757039',
+          templateExerciseId: 3,
+          displayName: 'Пуловер',
+          targetCanonicalName: 'Пуловер',
+          targetExternalId: 'a9960e54-5dc1-49e6-b507-36a14a194f41',
+        ),
+        (
+          clientId: '1771969364280756',
+          templateExerciseId: 26,
+          displayName: 'Жим гантелей',
+          targetCanonicalName: 'Жим гантелей лёжа на скамье',
+          targetExternalId: 'ef5f6400-c408-4eb5-b520-dbd1e45abf5b',
+        ),
+        (
+          clientId: '1788251777595645',
+          templateExerciseId: 9,
+          displayName: 'Сведение рук в кроссовере',
+          targetCanonicalName: 'Сведение рук в кроссовере',
+          targetExternalId: '68c9bf93-f67f-47d2-a884-4d50a58dac5e',
+        ),
+      ];
   static const _confirmedDumbbellHistoricalResultFixes =
       <
         ({
@@ -1298,7 +1414,7 @@ class AppDb extends _$AppDb {
   }
 
   @override
-  int get schemaVersion => 18;
+  int get schemaVersion => 19;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -1438,6 +1554,9 @@ class AppDb extends _$AppDb {
       }
       if (from < 18) {
         await _applyConfirmedUpperChestPressDataFix();
+      }
+      if (from < 19) {
+        await _applyConfirmedCurrentExerciseOverridesDataFix();
       }
       await _ensureTrainerUuid();
       if (from < 9) {
@@ -1950,6 +2069,15 @@ class AppDb extends _$AppDb {
               normalizeExerciseName(identity.canonicalName)) {
         continue;
       }
+      final isConfirmedCurrentOverride = _confirmedCurrentExerciseOverrideFixes
+          .any(
+            (fix) =>
+                fix.clientId == clientId &&
+                fix.templateExerciseId == templateExerciseId &&
+                fix.displayName == displayName &&
+                fix.targetExternalId == identity.externalId,
+          );
+      if (isConfirmedCurrentOverride) continue;
 
       final resultRows = await customSelect(
         '''
@@ -3185,6 +3313,85 @@ class AppDb extends _$AppDb {
     });
   }
 
+  Future<({int corrected, int skipped})>
+  _applyConfirmedCurrentExerciseOverridesDataFix() {
+    return transaction(() async {
+      var corrected = 0;
+      var skipped = 0;
+      for (final fix in _confirmedCurrentExerciseOverrideFixes) {
+        final client = await getClientById(fix.clientId);
+        final slot =
+            await (select(workoutTemplateExercises)
+                  ..where((row) => row.id.equals(fix.templateExerciseId))
+                  ..limit(1))
+                .getSingleOrNull();
+        final nameOverride = await customSelect(
+          '''
+          SELECT custom_name
+          FROM client_exercise_name_overrides
+          WHERE client_id = ? AND template_exercise_id = ?
+          LIMIT 1
+          ''',
+          variables: [
+            Variable.withString(fix.clientId),
+            Variable.withInt(fix.templateExerciseId),
+          ],
+        ).getSingleOrNull();
+        if (client == null ||
+            slot == null ||
+            nameOverride?.read<String>('custom_name').trim() !=
+                fix.displayName) {
+          skipped++;
+          continue;
+        }
+
+        final targetNormalized = normalizeExerciseName(fix.targetCanonicalName);
+        final matches =
+            await (select(exerciseIdentities)..where(
+                  (row) =>
+                      row.normalizedName.equals(targetNormalized) &
+                      row.status.equals(activeExerciseStatus) &
+                      row.mergedIntoIdentityId.isNull(),
+                ))
+                .get();
+        if (matches.length != 1 ||
+            matches.single.externalId != fix.targetExternalId ||
+            normalizeExerciseName(matches.single.canonicalName) !=
+                targetNormalized) {
+          skipped++;
+          continue;
+        }
+
+        final target = matches.single;
+        final existing =
+            await (select(clientTemplateExerciseOverrides)..where(
+                  (row) =>
+                      row.clientId.equals(fix.clientId) &
+                      row.templateExerciseId.equals(fix.templateExerciseId),
+                ))
+                .getSingleOrNull();
+        if (existing?.exerciseIdentityId case final existingIdentityId?
+            when existingIdentityId != target.id) {
+          skipped++;
+          continue;
+        }
+        if (existing?.exerciseIdentityId == target.id) continue;
+
+        await into(clientTemplateExerciseOverrides).insertOnConflictUpdate(
+          ClientTemplateExerciseOverridesCompanion(
+            id: existing == null ? const Value.absent() : Value(existing.id),
+            clientId: Value(fix.clientId),
+            templateExerciseId: Value(fix.templateExerciseId),
+            supersetGroup: Value(existing?.supersetGroup),
+            exerciseIdentityId: Value(target.id),
+          ),
+        );
+        corrected++;
+      }
+      return (corrected: corrected, skipped: skipped);
+    });
+  }
+
   Future<int?> _findCurrentExerciseBinding({
     required String sourceType,
     required int sourceId,
@@ -3370,6 +3577,23 @@ class AppDb extends _$AppDb {
       }
       return row?.readNullable<String>('name');
     }
+
+    final nameOverride = await customSelect(
+      '''
+      SELECT custom_name
+      FROM client_exercise_name_overrides
+      WHERE client_id = ? AND template_exercise_id = ?
+      LIMIT 1
+      ''',
+      variables: [
+        Variable.withString(clientId),
+        Variable.withInt(templateExerciseId),
+      ],
+    ).getSingleOrNull();
+    final customName = nameOverride
+        ?.readNullable<String>('custom_name')
+        ?.trim();
+    if (customName?.isNotEmpty == true) return customName;
 
     final clientOverride =
         await (select(clientTemplateExerciseOverrides)
@@ -5064,13 +5288,14 @@ class AppDb extends _$AppDb {
       final catalogName = identityId == null
           ? null
           : catalog[identityId]?.canonicalName;
+      final customName = nameOverrides[e.id]?.trim();
       merged.add((
         id: e.id,
         templateId: e.templateId,
         orderIndex: e.orderIndex,
-        name: catalogName?.trim().isNotEmpty == true
-            ? catalogName!
-            : (nameOverrides[e.id] ?? e.name),
+        name: customName?.isNotEmpty == true
+            ? customName!
+            : (catalogName?.trim().isNotEmpty == true ? catalogName! : e.name),
       ));
     }
 
@@ -9729,6 +9954,7 @@ class AppDb extends _$AppDb {
         await _applyConfirmedMotyaWorkoutConflictDataFix();
         await _applyConfirmedHistoricalExerciseBindingsDataFix();
         await _applyConfirmedUpperChestPressDataFix();
+        await _applyConfirmedCurrentExerciseOverridesDataFix();
         await _ensureTrainerUuid();
         if (!rawTables.containsKey(syncQueue.actualTableName)) {
           await _enqueueAllExistingWorkoutSessionsForSync();
